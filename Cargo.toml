@@ -1,0 +1,46 @@
+[dependencies.cosmwasm-std]
+version = "1.0.0-beta3"
+
+[dependencies.cw-storage-plus]
+version = "0.11.1"
+
+[dependencies.cw-utils]
+version = "0.11.1"
+
+[dependencies.cw2]
+version = "0.11.1"
+
+[dependencies.cw20]
+version = "0.11.1"
+
+[dependencies.hex]
+version = "0.3.1"
+
+[dependencies.schemars]
+version = "0.8.1"
+
+[dependencies.serde]
+default-features = false
+features = ["derive"]
+version = "1.0.103"
+
+[dependencies.sha2]
+version = "0.8.0"
+
+[dependencies.thiserror]
+version = "1.0.23"
+[dev-dependencies.cosmwasm-schema]
+version = "1.0.0-beta3"
+
+[features]
+backtraces = ["cosmwasm-std/backtraces"]
+library = []
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[package]
+edition = "2021"
+license = "Apache-2.0"
+name = "ics100-swap"
+version = "0.1.0"
