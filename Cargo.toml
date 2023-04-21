@@ -1,5 +1,6 @@
 [dependencies.cosmwasm-std]
 version = "1.0.0-beta3"
+features = ["stargate"]
 
 [dependencies.cw-storage-plus]
 version = "0.11.1"

@@ -1,5 +1,3 @@
 /target
 /Cargo.lock
-*.wasm
-.cargo_vcs_info.json
-.cargo/
+*.DS_Store

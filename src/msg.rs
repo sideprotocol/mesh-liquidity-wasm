@@ -1,49 +1,20 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::Coin;
-use cw20::{Cw20Coin, Cw20ReceiveMsg, Expiration};
+use cw20::{Balance, Cw20Coin};
+
+use cosmwasm_std::{Binary, Coin, Timestamp};
+
+use crate::state::Status;
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct InstantiateMsg {}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
-    Create(CreateMsg),
-    /// Release sends all tokens to the recipient.
-    Release {
-        id: String,
-        /// This is the preimage, must be exactly 32 bytes in hex (64 chars)
-        /// to release: sha256(from_hex(preimage)) == from_hex(hash)
-        preimage: String,
-    },
-    /// Refund returns all remaining tokens to the original sender,
-    Refund {
-        id: String,
-    },
-    /// This accepts a properly-encoded ReceiveMsg from a cw20 contract
-    Receive(Cw20ReceiveMsg),
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum ReceiveMsg {
-    Create(CreateMsg),
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct CreateMsg {
-    /// id is a human-readable name for the swap to use later.
-    /// 3-20 bytes of utf-8 text
-    pub id: String,
-    /// This is hex-encoded sha-256 hash of the preimage (must be 32*2 = 64 chars)
-    pub hash: String,
-    /// If approved, funds go to the recipient
-    pub recipient: String,
-    /// You can set expiration at time or at block height the contract is valid at.
-    /// After the contract is expired, it can be returned to the original funder.
-    pub expires: Expiration,
+    MakeSwap(MakeSwapMsg),
+    TakeSwap(TakeSwapMsg),
+    CancelSwap(CancelSwapMsg),
 }
 
 pub fn is_valid_name(name: &str) -> bool {
@@ -52,6 +23,64 @@ pub fn is_valid_name(name: &str) -> bool {
         return false;
     }
     true
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub enum SwapMessageType {
+    #[serde(rename = "TYPE_MSG_MAKE_SWAP")]
+    MakeSwap,
+    #[serde(rename = "TYPE_MSG_TAKE_SWAP")]
+    TakeSwap,
+    #[serde(rename = "TYPE_MSG_CANCEL_SWAP")]
+    CancelSwap,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct AtomicSwapPacketData {
+    pub message_type: SwapMessageType,
+    pub data: Binary,
+    pub memo: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug, JsonSchema)]
+pub struct MakeSwapMsg {
+    pub source_port: String,
+    pub source_channel: String,
+    pub sell_token: Balance,
+    pub buy_token: Balance,
+    pub maker_address: String,
+    pub maker_receiving_address: String,
+    pub desired_taker: Option<String>,
+    pub creation_timestamp: Timestamp,
+    pub expiration_timestamp: Timestamp,
+    pub timeout_height: u64,
+    pub timeout_timestamp: Timestamp,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug, JsonSchema)]
+pub struct TakeSwapMsg {
+    pub order_id: String,
+    pub sell_token: Balance,
+    pub taker_address: String,
+    pub taker_receiving_address: String,
+    pub creation_timestamp: Timestamp,
+    pub timeout_height: Timestamp,
+    pub timeout_timestamp: Timestamp,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug, JsonSchema)]
+pub struct CancelSwapMsg {
+    pub order_id: String,
+    pub maker_address: String,
+    pub creation_timestamp: Timestamp,
+    pub timeout_height: u64,
+    pub timeout_timestamp: u64,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub enum BalanceHuman {
+    Native(Vec<Coin>),
+    Cw20(Cw20Coin),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -75,22 +104,11 @@ pub struct ListResponse {
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct DetailsResponse {
-    /// Id of this swap
     pub id: String,
-    /// This is hex-encoded sha-256 hash of the preimage (must be 32*2 = 64 chars)
-    pub hash: String,
-    /// If released, funds go to the recipient
-    pub recipient: String,
-    /// If refunded, funds go to the source
-    pub source: String,
-    /// Once a swap is expired, it can be returned to the original source (via "refund").
-    pub expires: Expiration,
-    /// Balance in native tokens or cw20 token, with human-readable address
-    pub balance: BalanceHuman,
-}
-
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-pub enum BalanceHuman {
-    Native(Vec<Coin>),
-    Cw20(Cw20Coin),
+    pub maker: MakeSwapMsg,
+    pub status: Status,
+    pub path: String,
+    pub taker: Option<TakeSwapMsg>,
+    pub cancel_timestamp: Option<Timestamp>,
+    pub complete_timestamp: Option<Timestamp>,
 }
