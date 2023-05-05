@@ -60,11 +60,14 @@ pub struct MakeSwapMsg {
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug, JsonSchema)]
 pub struct TakeSwapMsg {
     pub order_id: String,
+    // the tokens to be sold
     pub sell_token: Balance,
+    // the taker's address
     pub taker_address: String,
+    // the taker's address on the maker chain
     pub taker_receiving_address: String,
     pub creation_timestamp: Timestamp,
-    pub timeout_height: Timestamp,
+    pub timeout_height: u64,
     pub timeout_timestamp: Timestamp,
 }
 
@@ -74,7 +77,7 @@ pub struct CancelSwapMsg {
     pub maker_address: String,
     pub creation_timestamp: Timestamp,
     pub timeout_height: u64,
-    pub timeout_timestamp: u64,
+    pub timeout_timestamp: Timestamp,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -97,12 +100,6 @@ pub enum QueryMsg {
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-pub struct ListResponse {
-    /// List all open swap ids
-    pub swaps: Vec<String>,
-}
-
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct DetailsResponse {
     pub id: String,
     pub maker: MakeSwapMsg,
@@ -111,4 +108,9 @@ pub struct DetailsResponse {
     pub taker: Option<TakeSwapMsg>,
     pub cancel_timestamp: Option<Timestamp>,
     pub complete_timestamp: Option<Timestamp>,
+}
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct ListResponse {
+    /// List all open swap ids
+    pub swaps: Vec<DetailsResponse>,
 }

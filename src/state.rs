@@ -22,24 +22,25 @@ pub struct ChannelInfo {
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Status {
-    Initial,
-    Sync,
-    Cancel,
-    Complete,
+    Initial,  // initialed on maker chain
+    Sync,     // synced to the taker chain
+    Cancel,   // canceled
+    Complete, // completed
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
-pub struct SwapOrder {
+pub struct AtomicSwapOrder {
     pub id: String,
     pub maker: MakeSwapMsg,
     pub status: Status,
+    // an IBC path, define channel and port on both Maker Chain and Taker Chain
     pub path: String,
     pub taker: Option<TakeSwapMsg>,
     pub cancel_timestamp: Option<Timestamp>,
     pub complete_timestamp: Option<Timestamp>,
 }
 
-pub const SWAP_ORDERS: Map<&str, SwapOrder> = Map::new("swap_order");
+pub const SWAP_ORDERS: Map<&str, AtomicSwapOrder> = Map::new("swap_order");
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct AtomicSwap {
@@ -73,6 +74,17 @@ pub fn all_swap_ids(
 }
 
 pub fn all_swap_order_ids(
+    storage: &dyn Storage,
+    start: Option<Bound>,
+    limit: usize,
+) -> StdResult<Vec<String>> {
+    SWAP_ORDERS
+        .keys(storage, start, None, Order::Ascending)
+        .take(limit)
+        .collect()
+}
+
+pub fn all_swap_orders(
     storage: &dyn Storage,
     start: Option<Bound>,
     limit: usize,

@@ -3,3 +3,895 @@
 The current state of the project is still in development and not yet ready for production use. 
 
 ibcswap-wasm is a Cosmwasm implementation of the ICS 100 and ICS 101 specifications within the Inter-Blockchain Communication (IBC) protocol of the Cosmos ecosystem. ICS 100 specifies the atomic swap functionality, while ICS 101 specifies the interchain swap functionality. As a community-driven project, ibcswap-wasm aims to provide a secure and efficient solution for cross-chain token exchanges, following the ICS 100 and ICS 101 specifications. Currently in active development, ibcswap-wasm holds the potential to enable seamless interoperability between Cosmos-based blockchains and empower decentralized finance (DeFi) applications.
+
+## Synopsis
+
+This document specifies states, msgs and testcases for ics100 cosmwasm integration demo.
+For the detailed specification of ics100, please check [ics100 ibc spec document](https://github.com/cosmos/ibc/blob/main/spec/app/ics-100-atomic-swap/README.md).
+
+### Motivation
+
+Ics100 go version is already developed and currently in the test and review phase. This cosmwasm integration is developed to interact between a chain that has integrated go version ics100 and a chain that doesn't have go version integration.
+It can be also used between the chains without ics100 integration, using this cosmwasm contract on each chain.
+
+### Definitions
+
+`Atomic Swap`: An exchange of tokens from separate chains without transfering tokens from one blockchain to another.  The exchange either happens or it doesn't -- there is no other alternative.
+
+`Order`: An offer to exchange quantity X of token A for quantity Y of token B. Tokens offered are sent to an escrow account (owned by the module).
+
+`Maker`: A user that makes or initiates an order.
+
+`Taker`: The counterparty who takes or responds to an order.
+
+`Maker Chain`: The blockchain where a maker makes or initiaties an order.
+
+`Taker Chain`: The blockchain where a taker takes or responds to an order.
+
+## Technical Specification
+
+### Data Structures
+
+Only one packet data type is required: `AtomicSwapPacketData`, which specifies the swap message type, data (protobuf marshalled) and a memo field.
+
+```rust
+pub enum SwapMessageType {
+    #[serde(rename = "TYPE_MSG_MAKE_SWAP")]
+    MakeSwap,
+    #[serde(rename = "TYPE_MSG_TAKE_SWAP")]
+    TakeSwap,
+    #[serde(rename = "TYPE_MSG_CANCEL_SWAP")]
+    CancelSwap,
+}
+```
+
+```rust
+pub struct AtomicSwapPacketData {
+    pub message_type: SwapMessageType,
+    pub data: Binary,
+    pub memo: Option<String>,
+}
+```
+
+```rust
+pub enum AtomicSwapPacketAcknowledgement {
+    Result(Binary),
+    Error(String),
+}
+```
+
+All `AtomicSwapPacketData` will be forwarded to the corresponding message handler to execute according to its type. There are 3 types:
+
+```rust
+pub struct MakeSwapMsg {
+  // the port on which the packet will be sent, specified by the maker when the message is created
+  pub source_port: String,
+  // the channel on which the packet will be sent, specified by the maker when the message is created
+  pub source_channel: String,
+  // the tokens to be exchanged
+  pub sell_token: Balance,
+  pub buy_token: Balance,
+  // the maker's address
+  pub maker_address: String,
+  // the maker's address on the taker chain
+  pub maker_receiving_address: String,
+  // if desiredTaker is specified,
+  // only the desiredTaker is allowed to take this order
+  // this is the address on the taker chain
+  pub desired_taker: Option<String>,
+  pub creation_timestamp: Timestamp,
+  pub expiration_timestamp: Timestamp,
+  pub timeout_height: u64,
+  pub timeout_timestamp: Timestamp,
+}
+```
+
+```rust
+pub struct TakeSwapMsg {
+    pub order_id: String,
+    // the tokens to be sold
+    pub sell_token: Balance,
+    // the taker's address
+    pub taker_address: String,
+    // the taker's address on the maker chain
+    pub taker_receiving_address: String,
+    pub creation_timestamp: Timestamp,
+    pub timeout_height: u64,
+    pub timeout_timestamp: Timestamp,
+}
+```
+
+```rust
+pub struct CancelSwapMsg {
+    pub order_id: String,
+    pub maker_address: String,
+    pub creation_timestamp: Timestamp,
+    pub timeout_height: u64,
+    pub timeout_timestamp: Timestamp,
+}
+```
+
+Both the maker chain and taker chain maintain separate order store. Orders are saved in both maker chain and taker chain.
+
+```rust
+// Status of order 
+pub enum Status {
+    Initial,  // initialed on maker chain
+    Sync,     // synced to the taker chain
+    Cancel,   // canceled
+    Complete, // completed
+}
+
+pub struct AtomicSwapOrder {
+    pub id: String,
+    pub maker: MakeSwapMsg,
+    pub status: Status,
+    // an IBC path, define channel and port on both Maker Chain and Taker Chain
+    pub path: String,
+    pub taker: Option<TakeSwapMsg>,
+    pub cancel_timestamp: Option<Timestamp>,
+    pub complete_timestamp: Option<Timestamp>,
+}
+```
+
+#### Making a swap
+
+1. A maker creates an order on the maker chain with specified parameters (see type `MakeSwap`).  The maker's sell tokens are sent to the escrow address owned by the module. The order is saved on the maker chain.
+2. An `AtomicSwapPacketData` is relayed to the taker chain where in `ibc_packet_receive` the order is also saved on the taker chain.  
+3. A packet is subsequently relayed back for acknowledgement. A packet timeout or a failure during `onAcknowledgePacket` will result in a refund of the escrowed tokens.
+
+#### Taking a swap
+
+1. A taker takes an order on the taker chain by triggering `TakeSwap`.  The taker's sell tokens are sent to the escrow address owned by the module.  An order cannot be taken if the current time is later than the `expirationTimestamp`.
+2. An `AtomicSwapPacketData` is relayed to the maker chain where in `ibc_packet_receive` the escrowed tokens are sent to the taker address on the maker chain.
+3. A packet is subsequently relayed back for acknowledgement. Upon acknowledgement escrowed tokens on the taker chain are sent to to the maker address on the taker chain. A packet timeout or a failure during `onAcknowledgePacket` will result in a refund of the escrowed tokens.
+
+#### Cancelling a swap
+
+1. A maker cancels a previously created order.  Expired orders can also be cancelled.
+2. An `AtomicSwapPacketData` is relayed to the taker chain where in `ibc_packet_receive` the order is cancelled on the taker chain. If the order is in the process of being taken (a packet with `TakeSwapMsg` is being relayed from the taker chain to the maker chain), the cancellation will be rejected.
+3. A packet is relayed back where upon acknowledgement the order on the maker chain is also cancelled.  The refund only occurs if the taker chain confirmed the cancellation request.
+
+### Execute Messages
+
+The message execute functions described herein should be implemented in a "Fungible Token Swap" module with access to a bank module and to the IBC routing module.
+
+```rust
+pub fn execute_make_swap(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    msg: MakeSwapMsg,
+) -> Result<Response, ContractError> {
+    // this ignores 0 value coins, must have one or more with positive balance
+    let balance = Balance::from(info.funds.clone());
+
+    if balance.is_empty() {
+        return Err(ContractError::EmptyBalance {});
+    }
+
+    let ibc_packet = AtomicSwapPacketData {
+        message_type: SwapMessageType::MakeSwap,
+        data: to_binary(&msg)?,
+        memo: None,
+    };
+
+    let ibc_msg = IbcMsg::SendPacket {
+        channel_id: msg.source_channel.clone(),
+        data: to_binary(&ibc_packet)?,
+        timeout: msg.timeout_timestamp.into(),
+    };
+
+    let order_id = generate_order_id(ibc_packet.clone())?;
+
+    let swap = AtomicSwapOrder {
+        id: order_id.clone(),
+        maker: msg.clone(),
+        status: Status::Initial,
+        taker: None,
+        cancel_timestamp: None,
+        complete_timestamp: None,
+        path: order_path(
+            msg.source_channel.clone(),
+            msg.source_port.clone(),
+            CHANNEL_INFO
+                .load(deps.storage, &msg.source_channel)?
+                .counterparty_endpoint
+                .channel_id
+                .clone(),
+            CHANNEL_INFO
+                .load(deps.storage, &msg.source_channel)?
+                .counterparty_endpoint
+                .port_id
+                .clone(),
+            order_id.clone(),
+        )?,
+    };
+
+    // Try to store it, fail if the id already exists (unmodifiable swaps)
+    SWAP_ORDERS.update(deps.storage, &order_id, |existing| match existing {
+        None => Ok(swap),
+        Some(_) => Err(ContractError::AlreadyExists {}),
+    })?;
+
+    let res = Response::new()
+        .add_message(ibc_msg)
+        .add_attribute("action", "make_swap")
+        .add_attribute("id", order_id.clone());
+    Ok(res)
+}
+```
+
+```rust
+pub fn execute_take_swap(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    msg: TakeSwapMsg,
+) -> Result<Response, ContractError> {
+    let balance = Balance::from(info.funds.clone());
+
+    if balance.is_empty() {
+        return Err(ContractError::EmptyBalance {});
+    }
+
+    let order_item = SWAP_ORDERS.load(deps.storage, &msg.order_id);
+    let order = order_item.unwrap();
+
+    if order.status != Status::Initial && order.status != Status::Sync {
+        return Err(ContractError::OrderTaken);
+    }
+
+    // Make sure the maker's buy token matches the taker's sell token
+    if order.maker.buy_token != msg.sell_token {
+        return Err(ContractError::InvalidSellToken);
+    }
+
+    // Checks if the order has already been taken
+    if order.taker != None {
+        return Err(ContractError::AlreadyTakenOrder);
+    }
+
+    // If `desiredTaker` is set, only the desiredTaker can accept the order.
+    if order.maker.desired_taker != None
+        && order.maker.desired_taker != Some(msg.clone().taker_address)
+    {
+        return Err(ContractError::InvalidTakerAddress);
+    }
+
+    // Update order state
+    // Mark that the order has been occupied
+    let new_order = AtomicSwapOrder {
+        id: order.id.clone(),
+        maker: order.maker.clone(),
+        status: order.status.clone(),
+        path: order.path.clone(),
+        taker: Some(msg.clone()),
+        cancel_timestamp: order.cancel_timestamp.clone(),
+        complete_timestamp: order.complete_timestamp.clone(),
+    };
+
+    let ibc_packet = AtomicSwapPacketData {
+        message_type: SwapMessageType::TakeSwap,
+        data: to_binary(&msg)?,
+        memo: None,
+    };
+
+    let ibc_msg = IbcMsg::SendPacket {
+        channel_id: extract_source_channel_for_taker_msg(&order.path)?,
+        data: to_binary(&ibc_packet)?,
+        timeout: msg.timeout_timestamp.into(),
+    };
+
+    SWAP_ORDERS.save(deps.storage, &order.id, &new_order)?;
+
+    let res = Response::new()
+        .add_message(ibc_msg)
+        .add_attribute("action", "take_swap")
+        .add_attribute("id", new_order.id.clone());
+    return Ok(res);
+}
+
+```
+
+```rust
+pub fn execute_cancel_swap(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    msg: CancelSwapMsg,
+) -> Result<Response, ContractError> {
+    let sender = info.sender.to_string();
+    let order = SWAP_ORDERS.load(deps.storage, &msg.order_id);
+    let order = order.unwrap();
+
+    if sender != order.maker.maker_address {
+        return Err(ContractError::InvalidSender);
+    }
+
+    // Make sure the sender is the maker of the order.
+    if order.maker.maker_address != msg.maker_address {
+        return Err(ContractError::InvalidMakerAddress);
+    }
+
+    // Make sure the order is in a valid state for cancellation
+    if order.status != Status::Sync && order.status != Status::Initial {
+        return Err(ContractError::InvalidStatus);
+    }
+
+    let packet = AtomicSwapPacketData {
+        message_type: SwapMessageType::CancelSwap,
+        data: to_binary(&msg)?,
+        memo: None,
+    };
+
+    let ibc_msg = IbcMsg::SendPacket {
+        channel_id: order.maker.source_channel,
+        data: to_binary(&packet)?,
+        timeout: msg.timeout_timestamp.into(),
+    };
+
+    let res = Response::new()
+        .add_message(ibc_msg)
+        .add_attribute("action", "cancel_swap")
+        .add_attribute("id", order.id.clone());
+    return Ok(res);
+}
+
+```
+
+#### Channel lifecycle management
+
+An fungible token swap module will accept new channels from any module on another machine, if and only if:
+
+- The channel being created is unordered.
+- The version string is `ics100-1`.
+
+```rust
+pub fn ibc_channel_open(
+    _deps: DepsMut,
+    _env: Env,
+    msg: IbcChannelOpenMsg,
+) -> Result<(), ContractError> {
+    enforce_order_and_version(msg.channel(), msg.counterparty_version())?;
+    Ok(())
+}
+
+fn enforce_order_and_version(
+    channel: &IbcChannel,
+    counterparty_version: Option<&str>,
+) -> Result<(), ContractError> {
+    if channel.version != ICS100_VERSION {
+        return Err(ContractError::InvalidIbcVersion {
+            version: channel.version.clone(),
+        });
+    }
+    if let Some(version) = counterparty_version {
+        if version != ICS100_VERSION {
+            return Err(ContractError::InvalidIbcVersion {
+                version: version.to_string(),
+            });
+        }
+    }
+    if channel.order != ICS100_ORDERING {
+        return Err(ContractError::OnlyOrderedChannel {});
+    }
+    Ok(())
+}
+```
+
+```rust
+pub fn ibc_channel_connect(
+    deps: DepsMut,
+    _env: Env,
+    msg: IbcChannelConnectMsg,
+) -> Result<IbcBasicResponse, ContractError> {
+    // we need to check the counter party version in try and ack (sometimes here)
+    enforce_order_and_version(msg.channel(), msg.counterparty_version())?;
+
+    let channel: IbcChannel = msg.into();
+    let info = ChannelInfo {
+        id: channel.endpoint.channel_id,
+        counterparty_endpoint: channel.counterparty_endpoint,
+        connection_id: channel.connection_id,
+    };
+    CHANNEL_INFO.save(deps.storage, &info.id, &info)?;
+
+    Ok(IbcBasicResponse::default())
+}
+```
+
+```rust
+pub fn ibc_packet_ack(
+    deps: DepsMut,
+    _env: Env,
+    msg: IbcPacketAckMsg,
+) -> Result<IbcBasicResponse, ContractError> {
+    let ics100msg: AtomicSwapPacketAcknowledgement = from_binary(&msg.acknowledgement.data)?;
+    match ics100msg {
+        AtomicSwapPacketAcknowledgement::Result(_) => on_packet_success(deps, msg.original_packet),
+        AtomicSwapPacketAcknowledgement::Error(err) => {
+            on_packet_failure(deps, msg.original_packet, err)
+        }
+    }
+}
+```
+
+```rust
+pub fn ibc_packet_timeout(
+    deps: DepsMut,
+    _env: Env,
+    msg: IbcPacketTimeoutMsg,
+) -> Result<IbcBasicResponse, ContractError> {
+    let packet = msg.packet;
+    on_packet_failure(deps, packet, "timeout".to_string())
+}
+
+```
+
+```typescript
+pub fn ibc_channel_close(
+    _deps: DepsMut,
+    _env: Env,
+    _channel: IbcChannelCloseMsg,
+) -> Result<IbcBasicResponse, ContractError> {
+    // TODO: what to do here?
+    // we will have locked funds that need to be returned somehow
+    unimplemented!();
+}
+```
+
+#### Packet relay
+
+`ibc_packet_receive` is called by the routing module when a packet addressed to this module has been received. 
+
+```rust
+pub fn ibc_packet_receive(
+    deps: DepsMut,
+    _env: Env,
+    msg: IbcPacketReceiveMsg,
+) -> Result<IbcReceiveResponse, Never> {
+    let packet = msg.packet;
+
+    do_ibc_packet_receive(deps, _env, &packet).or_else(|err| {
+        Ok(IbcReceiveResponse::new()
+            .set_ack(ack_fail(err.to_string()))
+            .add_attributes(vec![
+                attr("action", "receive"),
+                attr("success", "false"),
+                attr("error", err.to_string()),
+            ]))
+    })
+}
+
+fn do_ibc_packet_receive(
+    deps: DepsMut,
+    env: Env,
+    packet: &IbcPacket,
+) -> Result<IbcReceiveResponse, ContractError> {
+    let packet_data: AtomicSwapPacketData = from_binary(&packet.data)?;
+
+    match packet_data.message_type {
+        SwapMessageType::MakeSwap => {
+            let msg: MakeSwapMsg = from_binary(&packet_data.data.clone())?;
+            on_received_make(deps, env, packet, msg)
+        }
+        SwapMessageType::TakeSwap => {
+            let msg: TakeSwapMsg = from_binary(&packet_data.data.clone())?;
+            on_received_take(deps, env, packet, msg)
+        }
+        SwapMessageType::CancelSwap => {
+            let msg: CancelSwapMsg = from_binary(&packet_data.data.clone())?;
+            on_received_cancel(deps, env, packet, msg)
+        }
+    }
+}
+```
+
+`ibc_packet_timeout` is called by the routing module when a packet sent by this module has timed-out (such that the tokens will be refunded).
+
+```rust
+pub fn ibc_packet_timeout(
+    deps: DepsMut,
+    _env: Env,
+    msg: IbcPacketTimeoutMsg,
+) -> Result<IbcBasicResponse, ContractError> {
+    let packet = msg.packet;
+    on_packet_failure(deps, packet, "timeout".to_string())
+}
+```
+
+## Testcase
+
+In this section, we describe the example test of ics100 cosmwasm contract with 2 wasmd chains locally.
+
+### Setup Local Wasmd Chains
+
+In this tutorial, I am running 2 chains on local machine, they are called source chain(maker chain) and target chain(taker chain).
+
+You need to install wasmd on your machine. You can reference the installation guide from [wasmd github repo](https://github.com/CosmWasm/wasmd#quick-start).
+
+To setup 2 different wasmd chains in one machine, you need to setup 2 different configurations. You can divide the home folder of chains into 2 different locations.
+
+I've created an example shell scripts to run 2 chains. It looks like this.
+
+```sh
+wasmd init my-node --chain-id $CHAIN_ID1 --home $HOME1
+wasmd keys add main1 --keyring-backend test --home $HOME1
+wasmd keys add validator1 --keyring-backend test --home $HOME1
+wasmd add-genesis-account $(wasmd keys show main1 -a --keyring-backend test --home $HOME1) 10000000000stake --home $HOME1 --keyring-backend test
+wasmd add-genesis-account $(wasmd keys show validator1 -a --keyring-backend test --home $HOME1) 10000000000stake --home $HOME1 --keyring-backend test
+wasmd gentx validator1 1000000000stake --chain-id $CHAIN_ID1 --home $HOME1 --keyring-backend test
+wasmd collect-gentxs --home $HOME1
+wasmd validate-genesis --home $HOME1
+```
+
+Or you can modify parameters in `./scripts/run-makerchain.sh` and `./scripts/run-takerchain.sh` and run the files.
+
+```sh
+./run-makerchain.sh
+./run-takerchain.sh
+```
+
+Don't forget to setup a proper permission to the shell files.
+
+### Prepare ics100 cosmwasm contract
+
+You should compile and build the ics100 cosmwasm contract to deploy to the wasmd chains.
+The optimized build version is already in the location of `/target/wasm32-unknown-unknown/release/ics100_swap.wasm`.
+
+The next step is to deploy this wasm contract to the wasmd chain.
+You can use the following shell command to deploy this wasm contract.
+
+```sh
+# Store wasmd code to the wasmd chain
+wasmd tx wasm store ../target/wasm32-unknown-unknown/release/ics100_swap.wasm --from $KEY1 -y -b block --keyring-backend test --home $HOME1 --chain-id $CHAIN_ID1 --gas-prices 0.025stake --gas auto --gas-adjustment 1.3
+
+# Init the wasmd contract
+wasmd tx wasm instantiate $CODE1 "$INIT" --from $KEY1 --chain-id $CHAIN_ID1 --label "$LABEL" --no-admin --keyring-backend test --home $HOME1
+```
+
+You should run this command on both maker chain and taker chain.
+
+The example shell codes are already written in shell script files `./scripts/deploy-contract-wasmd.sh` and `./scripts/init-contract-wasmd.sh`.
+You can modify code id, key and chain id parameters in the shell script files and run these script files to setup the contracts deployment.
+
+```sh
+./deploy-contract-wasmd.sh
+./init-contract-wasmd.sh
+```
+
+### Relayer between maker chain and taker chain
+
+After the contracts are ready, you need to setup relayer between the 2 contracts on maker chain and taker chain.
+In this tutorial, we are using [go relayer](https://github.com/cosmos/relayer).
+
+You should setup go relayer on your machine using the [go relayer guide](https://github.com/cosmos/relayer#readme).
+
+The next step is to create a path between the maker chain and taker chain.
+Please reference to the [go relayer path guide](https://github.com/cosmos/relayer/blob/main/docs/create-path-across-chain.md).
+
+The next setp is to create a channel between the cosmwasm contracts.
+
+```sh
+rly tx channel $PATH_NAME --src-port "$SRC_PORT" --dst-port "$DST_PORT" --version "$VERSION"
+```
+
+Version name should be `ics100-1`.
+SRC_PORT should be `wasm.[maker chain contract address]`.
+DST_PORT should be `wasm.[taker chain contract address]`.
+
+I've written a shell script file to create a channel between the 2 contracts.
+You can modifiy the parameters in `rly-create-channel.sh` file and run it.
+
+```sh
+./rly-create-channel.sh
+```
+
+The successful channel creation will result the following command lines.
+
+```sh
+2023-05-05T09:37:08.427362Z	info	Starting event processor for channel handshake	{"src_chain_id": "source-chain", "src_port_id": "wasm.wasm1wn625s4jcmvk0szpl85rj5azkfc6suyvf75q6vrddscjdphtve8s5lsurx", "dst_chain_id": "target-chain", "dst_port_id": "wasm.wasm1eyfccmjm6732k7wp4p6gdjwhxjwsvje44j0hfx8nkgrm8fs7vqfsuw7sel"}
+2023-05-05T09:37:08.429903Z	info	Chain is in sync	{"chain_name": "source", "chain_id": "source-chain"}
+2023-05-05T09:37:08.429927Z	info	Chain is in sync	{"chain_name": "target", "chain_id": "target-chain"}
+2023-05-05T09:37:15.279068Z	info	Successful transaction	{"provider_type": "cosmos", "chain_id": "source-chain", "gas_used": 191886, "fees": "5776stake", "fee_payer": "wasm15f0j8n2pmet97zaztucpsnxgz7gmrtruvh5ayt", "height": 38085, "msg_types": ["/ibc.core.client.v1.MsgUpdateClient", "/ibc.core.channel.v1.MsgChannelOpenInit"], "tx_hash": "520BDCAF9882863955D1BEEB62E3B48EC7E6C3A73967D98A066B3754AA3BB4DC"}
+2023-05-05T09:37:36.964060Z	info	Successful transaction	{"provider_type": "cosmos", "chain_id": "target-chain", "gas_used": 152963, "fees": "4511stake", "fee_payer": "wasm19cmekqgu779n6hjpga7jyvl4gvrd8uhhksa27d", "height": 36103, "msg_types": ["/ibc.core.client.v1.MsgUpdateClient", "/ibc.core.channel.v1.MsgChannelOpenConfirm"], "tx_hash": "C13DF78E9B4BB0587E1B48C8C992F4CA287FB261B253F97335A1D8C097BF9F70"}
+2023-05-05T09:37:37.487297Z	info	Found termination condition for channel handshake	{"path_name": "ics100", "chain_id": "target-chain", "client_id": "07-tendermint-0"}
+```
+
+### Test make swap and take swap
+
+After the contracts are ready, we can try making and taking the atomic swaps between 2 contracts on maker chain and taker chain.
+
+```sh
+wasmd tx wasm execute $CONTRACT1 '$MAKE_SWAP_MSG' --from $KEY1 --keyring-backend test --home "$HOME1" --chain-id $CHAIN_ID1 --gas-prices 0.025stake --gas auto --gas-adjustment 1.3 --amount 100stake --trace
+```
+
+To make this test easy, I created `make-swap.sh` shell script file. You can modify proper parameters in the script file and run.
+
+```sh
+./make-swap.sh
+```
+
+The important parameter is MAKE_SWAP_MSG here. It is MakeSwapMsg struct value we descripted in the technical specification section.
+The example message looks like the following.
+
+```json
+{
+   "MakeSwap":{
+      "source_port":"wasm.wasm1wn625s4jcmvk0szpl85rj5azkfc6suyvf75q6vrddscjdphtve8s5lsurx",
+      "source_channel":"channel-6",
+      "sell_token":{
+         "native":[
+            {
+               "amount":"100",
+               "denom":"stake"
+            }
+         ]
+      },
+      "buy_token":{
+         "native":[
+            {
+               "amount":"100",
+               "denom":"token"
+            }
+         ]
+      },
+      "maker_address":"wasm15f0j8n2pmet97zaztucpsnxgz7gmrtruvh5ayt",
+      "maker_receiving_address":"wasm15f0j8n2pmet97zaztucpsnxgz7gmrtruvh5ayt",
+      "creation_timestamp":"1683279635000000000",
+      "expiration_timestamp":"1683289635000000000",
+      "timeout_height":200,
+      "timeout_timestamp":"1683289635000000000"
+   }
+}
+```
+
+Here the source port and source channel values would come from the relayer section I descriped above.
+One of the important value is `timeout_timestamp`, if this timestamp is earlier than the current block timestamp, the ibc message will fail. These timestamp values are calculated by nanoseconds.
+
+After making the swap, you can check if the atomic swap is created exactly with the contract queries.
+
+```sh
+# List atomic swap query
+wasmd query wasm contract-state smart $CONTRACT1 '{"list": {}}' --output json --home $HOME1
+
+# Details atomic swap response query
+wasmd query wasm contract-state smart $CONTRACT1 '{"details": {"id":"66a661747fede287cc6f6439eb3597683ae973a9c1b738bd9430798ae71ff013"}}' --output json --home $HOME1
+```
+
+The shell script files `list-swap.sh` and `details-query.sh` will show you the atomic swap queries both on maker chain and taker chain.
+
+```sh
+./list-swap.sh
+./details-query.sh
+```
+
+If the atomic swap is created correctly, now we can test take swap on taker chain.
+
+```sh
+wasmd tx wasm execute $CONTRACT2 '$TAKE_SWAP_MSG' --from $KEY2 --keyring-backend test --home $HOME2 --chain-id $CHAINID2 --gas-prices 0.025stake --gas auto --gas-adjustment 1.3 --amount 100token --trace
+```
+
+The example TAKE_SWAP_MSG looks like the following.
+
+```json
+{
+   "TakeSwap":{
+      "order_id":"825e9cfb35eac2d3e6b8add9dc0134308e7c3fbc067b46e43c86503996a48c60",
+      "sell_token":{
+         "native":[
+            {
+               "amount":"100",
+               "denom":"token"
+            }
+         ]
+      },
+      "taker_address":"wasm19cmekqgu779n6hjpga7jyvl4gvrd8uhhksa27d",
+      "taker_receiving_address":"wasm19cmekqgu779n6hjpga7jyvl4gvrd8uhhksa27d",
+      "creation_timestamp":"1683279635000000000",
+      "timeout_height":200,
+      "timeout_timestamp":"1683289635000000000"
+   }
+}
+```
+
+There's shell script file that you can use by modification.
+
+```sh
+./take-swap.sh
+```
+
+You need to set the `order_id` value with the one you got from the list query command.
+If the take swap transaction is successful, you can check the list query or details query command again to check if the atomic swap data is updated.
+
+The completed atomic swap data looks like this.
+
+```json
+{
+   "data":{
+      "swaps":[
+         {
+            "id":"825e9cfb35eac2d3e6b8add9dc0134308e7c3fbc067b46e43c86503996a48c60",
+            "maker":{
+               "source_port":"wasm.wasm1wn625s4jcmvk0szpl85rj5azkfc6suyvf75q6vrddscjdphtve8s5lsurx",
+               "source_channel":"channel-6",
+               "sell_token":{
+                  "native":[
+                     {
+                        "denom":"stake",
+                        "amount":"100"
+                     }
+                  ]
+               },
+               "buy_token":{
+                  "native":[
+                     {
+                        "denom":"token",
+                        "amount":"100"
+                     }
+                  ]
+               },
+               "maker_address":"wasm15f0j8n2pmet97zaztucpsnxgz7gmrtruvh5ayt",
+               "maker_receiving_address":"wasm15f0j8n2pmet97zaztucpsnxgz7gmrtruvh5ayt",
+               "desired_taker":null,
+               "creation_timestamp":"1683279635000000000",
+               "expiration_timestamp":"1683289635000000000",
+               "timeout_height":200,
+               "timeout_timestamp":"1683289635000000000"
+            },
+            "status":"COMPLETE",
+            "path":"channel/channel-6/port/wasm.wasm1wn625s4jcmvk0szpl85rj5azkfc6suyvf75q6vrddscjdphtve8s5lsurx/channel/channel-5/port/wasm.wasm1eyfccmjm6732k7wp4p6gdjwhxjwsvje44j0hfx8nkgrm8fs7vqfsuw7sel/sequence/825e9cfb35eac2d3e6b8add9dc0134308e7c3fbc067b46e43c86503996a48c60",
+            "taker":{
+               "order_id":"825e9cfb35eac2d3e6b8add9dc0134308e7c3fbc067b46e43c86503996a48c60",
+               "sell_token":{
+                  "native":[
+                     {
+                        "denom":"token",
+                        "amount":"100"
+                     }
+                  ]
+               },
+               "taker_address":"wasm19cmekqgu779n6hjpga7jyvl4gvrd8uhhksa27d",
+               "taker_receiving_address":"wasm19cmekqgu779n6hjpga7jyvl4gvrd8uhhksa27d",
+               "creation_timestamp":"1683279635000000000",
+               "timeout_height":200,
+               "timeout_timestamp":"1683289635000000000"
+            },
+            "cancel_timestamp":null,
+            "complete_timestamp":"1683280675918561000"
+         }
+      ]
+   }
+}
+```
+
+Now the atomicswap making and taking are completed and everything works as intended.
+
+### Test cancel atomic swap
+
+Another message we need to test is cancel atomic swap.
+The first step is to create atomic swap as I explained in the above section.
+
+After the atomic swap is created successfully, we can run cancel swap message.
+
+```sh
+wasmd tx wasm execute $CONTRACT1 '$CANCEL_SWAP_MSG' --from $KEY1 --keyring-backend test --home "$HOME1" --chain-id $CHAIN_ID1 --gas-prices 0.025stake --gas auto --gas-adjustment 1.3 --trace
+```
+
+The example CANCEL_SWAP_MSG will look like this.
+
+```json
+{
+   "CancelSwap":{
+      "order_id":"66a661747fede287cc6f6439eb3597683ae973a9c1b738bd9430798ae71ff013",
+      "maker_address":"wasm15f0j8n2pmet97zaztucpsnxgz7gmrtruvh5ayt",
+      "creation_timestamp":"1683125169",
+      "timeout_height":200,
+      "timeout_timestamp":1683126169
+   }
+}
+```
+
+You can use `cancel-swap.sh` shell script file for a quick test.
+
+After cancelling the atomic swap, you can check the list query or details query if the atomic swap is cancelled exactly.
+The cancelled atomic swap query reponse looks like this.
+
+```json
+{
+   "data":{
+      "id":"66a661747fede287cc6f6439eb3597683ae973a9c1b738bd9430798ae71ff013",
+      "maker":{
+         "source_port":"wasm.wasm1466nf3zuxpya8q9emxukd7vftaf6h4psr0a07srl5zw74zh84yjqeam05w",
+         "source_channel":"channel-5",
+         "sell_token":{
+            "native":[
+               {
+                  "denom":"stake",
+                  "amount":"100"
+               }
+            ]
+         },
+         "buy_token":{
+            "native":[
+               {
+                  "denom":"token",
+                  "amount":"100"
+               }
+            ]
+         },
+         "maker_address":"wasm15f0j8n2pmet97zaztucpsnxgz7gmrtruvh5ayt",
+         "maker_receiving_address":"wasm15f0j8n2pmet97zaztucpsnxgz7gmrtruvh5ayt",
+         "desired_taker":null,
+         "creation_timestamp":"1683125170",
+         "expiration_timestamp":"1683125170",
+         "timeout_height":200,
+         "timeout_timestamp":"1683125170"
+      },
+      "status":"CANCEL",
+      "path":"channel/channel-5/port/wasm.wasm1466nf3zuxpya8q9emxukd7vftaf6h4psr0a07srl5zw74zh84yjqeam05w/channel/channel-4/port/wasm.wasm1zwv6feuzhy6a9wekh96cd57lsarmqlwxdypdsplw6zhfncqw6ftqm3x37s/sequence/66a661747fede287cc6f6439eb3597683ae973a9c1b738bd9430798ae71ff013",
+      "taker":null,
+      "cancel_timestamp":"1683125169",
+      "complete_timestamp":null
+   }
+}
+```
+
+### Check balances of accounts and contracts
+
+In each testing step, you can test current balances of the accounts and contracts you use on maker chain and taker chain with `wasmd q bank balances` shell command.
+You can simply use `check-balance.sh` shell script file to check all the accounts and contracts on maker and taker chains.
+
+The response will look like this.
+
+```sh
+./check-balance.sh 
+Balance of main1 on source chain
+balances:
+- amount: "9999440835"
+  denom: stake
+pagination:
+  next_key: null
+  total: "0"
+
+Balance of main1 on target chain
+balances:
+- amount: "100"
+  denom: token
+pagination:
+  next_key: null
+  total: "0"
+
+
+Balance of main2 on source chain
+balances:
+- amount: "100"
+  denom: stake
+pagination:
+  next_key: null
+  total: "0"
+
+Balance of main2 on target chain
+balances:
+- amount: "9999545221"
+  denom: stake
+- amount: "999999999800"
+  denom: token
+pagination:
+  next_key: null
+  total: "0"
+
+
+Balance of contract1 on source chain
+balances: []
+pagination:
+  next_key: null
+  total: "0"
+
+Balance of contract2 on target chain
+balances: []
+pagination:
+  next_key: null
+  total: "0"
+```

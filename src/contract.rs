@@ -13,13 +13,12 @@ use crate::msg::{
     AtomicSwapPacketData, CancelSwapMsg, DetailsResponse, ExecuteMsg, InstantiateMsg, ListResponse,
     MakeSwapMsg, QueryMsg, SwapMessageType, TakeSwapMsg,
 };
-use crate::state::{all_swap_order_ids, Status, SwapOrder, CHANNEL_INFO, SWAP_ORDERS};
+use crate::state::{all_swap_order_ids, AtomicSwapOrder, Status, CHANNEL_INFO, SWAP_ORDERS};
 use cw_storage_plus::Bound;
 
 // Version info, for migration info
 const CONTRACT_NAME: &str = "ics100-swap";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
-const TIMEOUT_DELTA: u64 = 100;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -47,9 +46,11 @@ pub fn execute(
     }
 }
 
+// MakeSwap is called when the maker wants to make atomic swap. The method create new order and lock tokens.
+// This is the step 1 (Create order & Lock Token) of the atomic swap: https://github.com/cosmos/ibc/tree/main/spec/app/ics-100-atomic-swap
 pub fn execute_make_swap(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
     msg: MakeSwapMsg,
 ) -> Result<Response, ContractError> {
@@ -60,8 +61,6 @@ pub fn execute_make_swap(
         return Err(ContractError::EmptyBalance {});
     }
 
-    let timeout = env.block.time.plus_seconds(TIMEOUT_DELTA);
-
     let ibc_packet = AtomicSwapPacketData {
         message_type: SwapMessageType::MakeSwap,
         data: to_binary(&msg)?,
@@ -71,12 +70,12 @@ pub fn execute_make_swap(
     let ibc_msg = IbcMsg::SendPacket {
         channel_id: msg.source_channel.clone(),
         data: to_binary(&ibc_packet)?,
-        timeout: timeout.into(),
+        timeout: msg.timeout_timestamp.into(),
     };
 
     let order_id = generate_order_id(ibc_packet.clone())?;
 
-    let swap = SwapOrder {
+    let swap = AtomicSwapOrder {
         id: order_id.clone(),
         maker: msg.clone(),
         status: Status::Initial,
@@ -113,9 +112,11 @@ pub fn execute_make_swap(
     Ok(res)
 }
 
+// TakeSwap is the step 5 (Lock Order & Lock Token) of the atomic swap: https://github.com/liangping/ibc/blob/atomic-swap/spec/app/ics-100-atomic-swap/ibcswap.png
+// This method lock the order (set a value to the field "Taker") and lock Token
 pub fn execute_take_swap(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
     msg: TakeSwapMsg,
 ) -> Result<Response, ContractError> {
@@ -132,21 +133,26 @@ pub fn execute_take_swap(
         return Err(ContractError::OrderTaken);
     }
 
+    // Make sure the maker's buy token matches the taker's sell token
     if order.maker.buy_token != msg.sell_token {
         return Err(ContractError::InvalidSellToken);
     }
 
+    // Checks if the order has already been taken
     if order.taker != None {
         return Err(ContractError::AlreadyTakenOrder);
     }
 
+    // If `desiredTaker` is set, only the desiredTaker can accept the order.
     if order.maker.desired_taker != None
         && order.maker.desired_taker != Some(msg.clone().taker_address)
     {
         return Err(ContractError::InvalidTakerAddress);
     }
 
-    let new_order = SwapOrder {
+    // Update order state
+    // Mark that the order has been occupied
+    let new_order = AtomicSwapOrder {
         id: order.id.clone(),
         maker: order.maker.clone(),
         status: order.status.clone(),
@@ -162,12 +168,10 @@ pub fn execute_take_swap(
         memo: None,
     };
 
-    let timeout = env.block.time.plus_seconds(TIMEOUT_DELTA);
-
     let ibc_msg = IbcMsg::SendPacket {
         channel_id: extract_source_channel_for_taker_msg(&order.path)?,
         data: to_binary(&ibc_packet)?,
-        timeout: timeout.into(),
+        timeout: msg.timeout_timestamp.into(),
     };
 
     SWAP_ORDERS.save(deps.storage, &order.id, &new_order)?;
@@ -179,9 +183,11 @@ pub fn execute_take_swap(
     return Ok(res);
 }
 
+// CancelSwap is the step 10 (Cancel Request) of the atomic swap: https://github.com/cosmos/ibc/tree/main/spec/app/ics-100-atomic-swap.
+// It is executed on the Maker chain. Only the maker of the order can cancel the order.
 pub fn execute_cancel_swap(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
     msg: CancelSwapMsg,
 ) -> Result<Response, ContractError> {
@@ -193,10 +199,12 @@ pub fn execute_cancel_swap(
         return Err(ContractError::InvalidSender);
     }
 
+    // Make sure the sender is the maker of the order.
     if order.maker.maker_address != msg.maker_address {
         return Err(ContractError::InvalidMakerAddress);
     }
 
+    // Make sure the order is in a valid state for cancellation
     if order.status != Status::Sync && order.status != Status::Initial {
         return Err(ContractError::InvalidStatus);
     }
@@ -207,12 +215,10 @@ pub fn execute_cancel_swap(
         memo: None,
     };
 
-    let timeout = env.block.time.plus_seconds(TIMEOUT_DELTA);
-
     let ibc_msg = IbcMsg::SendPacket {
         channel_id: order.maker.source_channel,
         data: to_binary(&packet)?,
-        timeout: timeout.into(),
+        timeout: msg.timeout_timestamp.into(),
     };
 
     let res = Response::new()
@@ -285,10 +291,25 @@ fn query_list(
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
     let start = start_after.map(|s| Bound::exclusive(s.as_bytes()));
+    let swap_ids = all_swap_order_ids(deps.storage, start, limit)?;
 
-    Ok(ListResponse {
-        swaps: all_swap_order_ids(deps.storage, start, limit)?,
-    })
+    let mut swaps = vec![];
+
+    for i in 0..swap_ids.len() {
+        let swap_order = SWAP_ORDERS.load(deps.storage, &swap_ids[i])?;
+        let details = DetailsResponse {
+            id: swap_ids[i].clone(),
+            maker: swap_order.maker.clone(),
+            status: swap_order.status.clone(),
+            path: swap_order.path.clone(),
+            taker: swap_order.taker.clone(),
+            cancel_timestamp: swap_order.cancel_timestamp.clone(),
+            complete_timestamp: swap_order.complete_timestamp.clone(),
+        };
+        swaps.push(details);
+    }
+
+    Ok(ListResponse { swaps })
 }
 
 #[cfg(test)]
