@@ -1,7 +1,8 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Binary, Deps, DepsMut, Env, IbcMsg, MessageInfo, Response, StdError, StdResult,
+    to_binary, Binary, Deps, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Response, StdError,
+    StdResult, Timestamp,
 };
 use sha2::{Digest, Sha256};
 
@@ -70,7 +71,8 @@ pub fn execute_make_swap(
     let ibc_msg = IbcMsg::SendPacket {
         channel_id: msg.source_channel.clone(),
         data: to_binary(&ibc_packet)?,
-        timeout: msg.timeout_timestamp.into(),
+        // timeout: msg.timeout_timestamp.into(),
+        timeout: IbcTimeout::from(Timestamp::from_nanos(msg.timeout_timestamp)),
     };
 
     let order_id = generate_order_id(ibc_packet.clone())?;
@@ -314,8 +316,10 @@ fn query_list(
 
 #[cfg(test)]
 mod tests {
-    use cosmwasm_std::coins;
+    use cosmwasm_std::coin;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
+
+    use crate::msg::Height;
 
     use super::*;
 
@@ -340,8 +344,8 @@ mod tests {
 
         let sender = String::from("sender0001");
         // let balance = coins(100, "tokens");
-        let balance1 = Balance::from(coins(100, "token1"));
-        let balance2 = Balance::from(coins(200, "token2"));
+        let balance1 = coin(100, "token1");
+        let balance2 = coin(200, "token2");
         let source_port = String::from("100");
         let source_channel = String::from("ics100-1");
 
@@ -355,10 +359,13 @@ mod tests {
             maker_address: "maker0001".to_string(),
             maker_receiving_address: "makerrcpt0001".to_string(),
             desired_taker: None,
-            creation_timestamp: env.block.time,
-            expiration_timestamp: env.block.time.plus_seconds(100),
-            timeout_height: 0,
-            timeout_timestamp: env.block.time.plus_seconds(100),
+            create_timestamp: 0,
+            expiration_timestamp: env.block.time.plus_seconds(100).nanos(),
+            timeout_height: Height {
+                revision_number: 0,
+                revision_height: 0,
+            },
+            timeout_timestamp: env.block.time.plus_seconds(100).nanos(),
         };
         let err = execute(
             deps.as_mut(),

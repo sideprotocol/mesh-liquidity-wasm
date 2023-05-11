@@ -1,4 +1,4 @@
-use cw20::{Balance, Cw20ExecuteMsg};
+// use cw20::{Balance, Cw20ExecuteMsg};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -9,10 +9,34 @@ use crate::{
     state::{AtomicSwapOrder, Status, SWAP_ORDERS},
 };
 use cosmwasm_std::{
-    attr, entry_point, from_binary, to_binary, Addr, BankMsg, Binary, DepsMut, Env,
-    IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg,
-    IbcOrder, IbcPacket, IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg,
-    IbcReceiveResponse, Reply, Response, StdResult, SubMsg, SubMsgResult, WasmMsg,
+    attr,
+    entry_point,
+    from_binary,
+    to_binary,
+    Addr,
+    BankMsg,
+    Binary,
+    Coin,
+    DepsMut,
+    Env,
+    IbcBasicResponse,
+    IbcChannel,
+    IbcChannelCloseMsg,
+    IbcChannelConnectMsg,
+    IbcChannelOpenMsg,
+    IbcOrder,
+    IbcPacket,
+    IbcPacketAckMsg,
+    IbcPacketReceiveMsg,
+    IbcPacketTimeoutMsg,
+    IbcReceiveResponse,
+    Reply,
+    Response,
+    StdResult,
+    SubMsg,
+    SubMsgResult,
+    Timestamp,
+    // WasmMsg,
 };
 
 use crate::state::{ChannelInfo, CHANNEL_INFO};
@@ -150,6 +174,13 @@ fn do_ibc_packet_receive(
     let packet_data: AtomicSwapPacketData = from_binary(&packet.data)?;
 
     match packet_data.message_type {
+        SwapMessageType::Unspecified => {
+            let res = IbcReceiveResponse::new()
+                .set_ack(ack_success())
+                .add_attribute("action", "receive")
+                .add_attribute("success", "true");
+            Ok(res)
+        }
         SwapMessageType::MakeSwap => {
             let msg: MakeSwapMsg = from_binary(&packet_data.data.clone())?;
             on_received_make(deps, env, packet, msg)
@@ -165,32 +196,37 @@ fn do_ibc_packet_receive(
     }
 }
 
-fn send_tokens(to: &Addr, amount: Balance) -> StdResult<Vec<SubMsg>> {
-    if amount.is_empty() {
-        Ok(vec![])
-    } else {
-        match amount {
-            Balance::Native(coins) => {
-                let msg = BankMsg::Send {
-                    to_address: to.into(),
-                    amount: coins.into_vec(),
-                };
-                Ok(vec![SubMsg::new(msg)])
-            }
-            Balance::Cw20(coin) => {
-                let msg = Cw20ExecuteMsg::Transfer {
-                    recipient: to.into(),
-                    amount: coin.amount,
-                };
-                let exec = WasmMsg::Execute {
-                    contract_addr: coin.address.into(),
-                    msg: to_binary(&msg)?,
-                    funds: vec![],
-                };
-                Ok(vec![SubMsg::new(exec)])
-            }
-        }
-    }
+fn send_tokens(to: &Addr, amount: Coin) -> StdResult<Vec<SubMsg>> {
+    // if amount.is_empty() {
+    //     Ok(vec![])
+    // } else {
+    //     match amount {
+    //         Balance::Native(coins) => {
+    //             let msg = BankMsg::Send {
+    //                 to_address: to.into(),
+    //                 amount: coins.into_vec(),
+    //             };
+    //             Ok(vec![SubMsg::new(msg)])
+    //         }
+    //         Balance::Cw20(coin) => {
+    //             let msg = Cw20ExecuteMsg::Transfer {
+    //                 recipient: to.into(),
+    //                 amount: coin.amount,
+    //             };
+    //             let exec = WasmMsg::Execute {
+    //                 contract_addr: coin.address.into(),
+    //                 msg: to_binary(&msg)?,
+    //                 funds: vec![],
+    //             };
+    //             Ok(vec![SubMsg::new(exec)])
+    //         }
+    //     }
+    // }
+    let msg = BankMsg::Send {
+        to_address: to.into(),
+        amount: vec![amount],
+    };
+    Ok(vec![SubMsg::new(msg)])
 }
 
 fn on_received_make(
@@ -356,6 +392,7 @@ fn on_packet_success(deps: DepsMut, packet: IbcPacket) -> Result<IbcBasicRespons
     match packet_data.message_type {
         // This is the step 4 (Acknowledge Make Packet) of the atomic swap: https://github.com/liangping/ibc/blob/atomic-swap/spec/app/ics-100-atomic-swap/ibcswap.png
         // This logic is executed when Taker chain acknowledge the make swap packet.
+        SwapMessageType::Unspecified => Ok(IbcBasicResponse::new()),
         SwapMessageType::MakeSwap => {
             let order_id = generate_order_id(packet_data.clone())?;
             let msg: MakeSwapMsg = from_binary(&packet_data.data.clone())?;
@@ -458,6 +495,7 @@ fn refund_packet_token(
         // This logic will be executed when Relayer sends make swap packet to the taker chain, but the request timeout
         // and locked tokens form the first step (see the picture on the link above) MUST be returned to the account of
         // the maker on the maker chain.
+        SwapMessageType::Unspecified => Ok(vec![]),
         SwapMessageType::MakeSwap => {
             let msg: MakeSwapMsg = from_binary(&packet.data.clone())?;
             let order_id: String = generate_order_id(packet.clone())?;
@@ -470,7 +508,9 @@ fn refund_packet_token(
                 maker: msg.clone(),
                 status: Status::Cancel,
                 taker: None,
-                cancel_timestamp: Some(msg.creation_timestamp),
+                cancel_timestamp: Some(Timestamp::from_seconds(
+                    msg.create_timestamp.try_into().unwrap(),
+                )),
                 complete_timestamp: None,
                 path: swap_order.path.clone(),
             };

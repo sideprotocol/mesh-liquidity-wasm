@@ -48,7 +48,7 @@ pub enum ContractError {
     #[error("Got a submessage reply with unknown id: {id}")]
     UnknownReplyId { id: u64 },
 
-    #[error("Only supports channel with ibc version ics20-1, got {version}")]
+    #[error("Only supports channel with ibc version ics100-1, got {version}")]
     InvalidIbcVersion { version: String },
 
     #[error("Only supports unordered channel")]

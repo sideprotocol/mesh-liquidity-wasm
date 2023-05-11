@@ -1,11 +1,20 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cw20::{Balance, Cw20Coin};
+use cw20::Cw20Coin;
 
 use cosmwasm_std::{Binary, Coin, Timestamp};
 
 use crate::state::Status;
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct Height {
+    #[serde(rename = "revision_number")]
+    pub revision_number: u64,
+
+    #[serde(rename = "revision_height")]
+    pub revision_height: u64,
+}
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct InstantiateMsg {}
@@ -27,12 +36,14 @@ pub fn is_valid_name(name: &str) -> bool {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub enum SwapMessageType {
-    #[serde(rename = "TYPE_MSG_MAKE_SWAP")]
-    MakeSwap,
-    #[serde(rename = "TYPE_MSG_TAKE_SWAP")]
-    TakeSwap,
-    #[serde(rename = "TYPE_MSG_CANCEL_SWAP")]
-    CancelSwap,
+    #[serde(rename = "UNSPECIFIED")]
+    Unspecified = 0,
+    #[serde(rename = "MAKE_SWAP")]
+    MakeSwap = 1,
+    #[serde(rename = "TAKE_SWAP")]
+    TakeSwap = 2,
+    #[serde(rename = "CANCEL_SWAP")]
+    CancelSwap = 3,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -43,25 +54,59 @@ pub struct AtomicSwapPacketData {
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug, JsonSchema)]
+// pub struct MakeSwapMsg {
+//     pub source_port: String,
+//     pub source_channel: String,
+//     pub sell_token: Balance,
+//     pub buy_token: Balance,
+//     pub maker_address: String,
+//     pub maker_receiving_address: String,
+//     pub desired_taker: Option<String>,
+//     pub creation_timestamp: Timestamp,
+//     pub expiration_timestamp: Timestamp,
+//     pub timeout_height: u64,
+//     pub timeout_timestamp: Timestamp,
+// }
 pub struct MakeSwapMsg {
+    #[serde(rename = "source_port")]
     pub source_port: String,
+
+    #[serde(rename = "source_channel")]
     pub source_channel: String,
-    pub sell_token: Balance,
-    pub buy_token: Balance,
+
+    #[serde(rename = "sell_token")]
+    pub sell_token: Coin,
+
+    #[serde(rename = "buy_token")]
+    pub buy_token: Coin,
+
+    #[serde(rename = "maker_address")]
     pub maker_address: String,
+
+    #[serde(rename = "maker_receiving_address")]
     pub maker_receiving_address: String,
+
+    #[serde(rename = "desired_taker")]
     pub desired_taker: Option<String>,
-    pub creation_timestamp: Timestamp,
-    pub expiration_timestamp: Timestamp,
-    pub timeout_height: u64,
-    pub timeout_timestamp: Timestamp,
+
+    #[serde(rename = "create_timestamp")]
+    pub create_timestamp: i64,
+
+    #[serde(rename = "timeout_height")]
+    pub timeout_height: Height,
+
+    #[serde(rename = "timeout_timestamp")]
+    pub timeout_timestamp: u64,
+
+    #[serde(rename = "expiration_timestamp")]
+    pub expiration_timestamp: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug, JsonSchema)]
 pub struct TakeSwapMsg {
     pub order_id: String,
     // the tokens to be sold
-    pub sell_token: Balance,
+    pub sell_token: Coin,
     // the taker's address
     pub taker_address: String,
     // the taker's address on the maker chain
