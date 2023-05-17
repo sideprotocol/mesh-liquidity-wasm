@@ -11,10 +11,16 @@ use cw20::Balance;
 
 use crate::error::ContractError;
 use crate::msg::{
-    AtomicSwapPacketData, CancelSwapMsg, DetailsResponse, ExecuteMsg, InstantiateMsg, ListResponse,
-    MakeSwapMsg, QueryMsg, SwapMessageType, TakeSwapMsg,
+    AtomicSwapPacketData, CancelSwapMsg, DetailsResponse, ExecuteMsg, HeightOutput, InstantiateMsg,
+    ListResponse, MakeSwapMsg, MakeSwapMsgOutput, QueryMsg, SwapMessageType, TakeSwapMsg,
 };
-use crate::state::{all_swap_order_ids, AtomicSwapOrder, Status, CHANNEL_INFO, SWAP_ORDERS};
+use crate::state::{
+    all_swap_order_ids,
+    AtomicSwapOrder,
+    Status,
+    // CHANNEL_INFO,
+    SWAP_ORDERS,
+};
 use cw_storage_plus::Bound;
 
 // Version info, for migration info
@@ -50,7 +56,7 @@ pub fn execute(
 // MakeSwap is called when the maker wants to make atomic swap. The method create new order and lock tokens.
 // This is the step 1 (Create order & Lock Token) of the atomic swap: https://github.com/cosmos/ibc/tree/main/spec/app/ics-100-atomic-swap
 pub fn execute_make_swap(
-    deps: DepsMut,
+    _deps: DepsMut,
     _env: Env,
     info: MessageInfo,
     msg: MakeSwapMsg,
@@ -63,9 +69,9 @@ pub fn execute_make_swap(
     }
 
     let ibc_packet = AtomicSwapPacketData {
-        message_type: SwapMessageType::MakeSwap,
+        r#type: SwapMessageType::MakeSwap,
         data: to_binary(&msg)?,
-        memo: None,
+        memo: String::new(),
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -75,42 +81,9 @@ pub fn execute_make_swap(
         timeout: IbcTimeout::from(Timestamp::from_nanos(msg.timeout_timestamp)),
     };
 
-    let order_id = generate_order_id(ibc_packet.clone())?;
-
-    let swap = AtomicSwapOrder {
-        id: order_id.clone(),
-        maker: msg.clone(),
-        status: Status::Initial,
-        taker: None,
-        cancel_timestamp: None,
-        complete_timestamp: None,
-        path: order_path(
-            msg.source_channel.clone(),
-            msg.source_port.clone(),
-            CHANNEL_INFO
-                .load(deps.storage, &msg.source_channel)?
-                .counterparty_endpoint
-                .channel_id
-                .clone(),
-            CHANNEL_INFO
-                .load(deps.storage, &msg.source_channel)?
-                .counterparty_endpoint
-                .port_id
-                .clone(),
-            order_id.clone(),
-        )?,
-    };
-
-    // Try to store it, fail if the id already exists (unmodifiable swaps)
-    SWAP_ORDERS.update(deps.storage, &order_id, |existing| match existing {
-        None => Ok(swap),
-        Some(_) => Err(ContractError::AlreadyExists {}),
-    })?;
-
     let res = Response::new()
         .add_message(ibc_msg)
-        .add_attribute("action", "make_swap")
-        .add_attribute("id", order_id.clone());
+        .add_attribute("action", "make_swap");
     Ok(res)
 }
 
@@ -146,9 +119,7 @@ pub fn execute_take_swap(
     }
 
     // If `desiredTaker` is set, only the desiredTaker can accept the order.
-    if order.maker.desired_taker != None
-        && order.maker.desired_taker != Some(msg.clone().taker_address)
-    {
+    if order.maker.desired_taker != "" && order.maker.desired_taker != msg.clone().taker_address {
         return Err(ContractError::InvalidTakerAddress);
     }
 
@@ -165,15 +136,15 @@ pub fn execute_take_swap(
     };
 
     let ibc_packet = AtomicSwapPacketData {
-        message_type: SwapMessageType::TakeSwap,
+        r#type: SwapMessageType::TakeSwap,
         data: to_binary(&msg)?,
-        memo: None,
+        memo: String::new(),
     };
 
     let ibc_msg = IbcMsg::SendPacket {
         channel_id: extract_source_channel_for_taker_msg(&order.path)?,
         data: to_binary(&ibc_packet)?,
-        timeout: msg.timeout_timestamp.into(),
+        timeout: IbcTimeout::from(Timestamp::from_nanos(msg.timeout_timestamp)),
     };
 
     SWAP_ORDERS.save(deps.storage, &order.id, &new_order)?;
@@ -212,9 +183,9 @@ pub fn execute_cancel_swap(
     }
 
     let packet = AtomicSwapPacketData {
-        message_type: SwapMessageType::CancelSwap,
+        r#type: SwapMessageType::CancelSwap,
         data: to_binary(&msg)?,
-        memo: None,
+        memo: String::new(),
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -230,10 +201,33 @@ pub fn execute_cancel_swap(
     return Ok(res);
 }
 
-pub fn generate_order_id(packet: AtomicSwapPacketData) -> StdResult<String> {
-    let bytes = to_binary(&packet)?;
-    let hash = Sha256::digest(&bytes);
+pub fn generate_order_id(order_path: &str, msg: MakeSwapMsg) -> StdResult<String> {
+    let prefix = order_path.as_bytes();
+
+    let msg_output = MakeSwapMsgOutput {
+        source_port: msg.source_port.clone(),
+        source_channel: msg.source_channel.clone(),
+        sell_token: msg.sell_token.clone(),
+        buy_token: msg.buy_token.clone(),
+        maker_address: msg.maker_address.clone(),
+        maker_receiving_address: msg.maker_receiving_address.clone(),
+        desired_taker: msg.desired_taker.clone(),
+        create_timestamp: msg.create_timestamp.clone().to_string(),
+        timeout_height: HeightOutput {
+            revision_number: msg.timeout_height.revision_number.clone().to_string(),
+            revision_height: msg.timeout_height.revision_height.clone().to_string(),
+        },
+        timeout_timestamp: msg.timeout_timestamp.clone().to_string(),
+        expiration_timestamp: msg.expiration_timestamp.clone().to_string(),
+    };
+
+    let binding_output = to_binary(&msg_output)?;
+    let msg_bytes = binding_output.as_slice();
+    let res: Vec<u8> = [prefix.clone(), msg_bytes.clone()].concat();
+
+    let hash = Sha256::digest(&res);
     let id = hex::encode(hash);
+
     Ok(id)
 }
 
@@ -242,10 +236,10 @@ pub fn order_path(
     source_port: String,
     destination_channel: String,
     destination_port: String,
-    id: String,
+    id: u64,
 ) -> StdResult<String> {
     let path = format!(
-        "channel/{}/port/{}/channel/{}/port/{}/sequence/{}",
+        "channel/{}/port/{}/channel/{}/port/{}/{}",
         source_channel, source_port, destination_channel, destination_port, id,
     );
     Ok(path)
@@ -316,10 +310,10 @@ fn query_list(
 
 #[cfg(test)]
 mod tests {
-    use cosmwasm_std::coin;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
+    use cosmwasm_std::{coin, from_binary};
 
-    use crate::msg::Height;
+    use crate::msg::{Height, TakeSwapMsgOutput};
 
     use super::*;
 
@@ -358,7 +352,7 @@ mod tests {
             buy_token: balance2,
             maker_address: "maker0001".to_string(),
             maker_receiving_address: "makerrcpt0001".to_string(),
-            desired_taker: None,
+            desired_taker: "".to_string(),
             create_timestamp: 0,
             expiration_timestamp: env.block.time.plus_seconds(100).nanos(),
             timeout_height: Height {
@@ -375,5 +369,125 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(err, ContractError::EmptyBalance {});
+    }
+
+    #[test]
+    fn test_order_id() {
+        let mut deps = mock_dependencies();
+
+        let info = mock_info("anyone", &[]);
+        let env = mock_env();
+        instantiate(deps.as_mut(), env.clone(), info, InstantiateMsg {}).unwrap();
+        // let balance = coins(100, "tokens");
+        let balance1 = coin(100, "token");
+        let balance2 = coin(100, "aside");
+        let source_port =
+            String::from("wasm.wasm1ghd753shjuwexxywmgs4xz7x2q732vcnkm6h2pyv9s6ah3hylvrq8epk7w");
+        let source_channel = String::from("channel-9");
+        let destination_channel = String::from("channel-10");
+        let destination_port = String::from("swap");
+        let sequence = 3;
+
+        // Cannot create, no funds
+        // let info = mock_info(&sender, &[]);
+        let create = MakeSwapMsg {
+            source_port: source_port.clone(),
+            source_channel: source_channel.clone(),
+            sell_token: balance1,
+            buy_token: balance2,
+            maker_address: "wasm1kj2t5txvwznrdx32v6xsw46yqztsyahqwxwlve".to_string(),
+            maker_receiving_address: "wasm1kj2t5txvwznrdx32v6xsw46yqztsyahqwxwlve".to_string(),
+            desired_taker: "".to_string(),
+            create_timestamp: 1683279635,
+            expiration_timestamp: 1693399749000000000,
+            timeout_height: Height {
+                revision_number: 0,
+                revision_height: 0,
+            },
+            timeout_timestamp: 1693399799000000000,
+        };
+
+        let path = order_path(
+            source_channel.clone(),
+            source_port.clone(),
+            destination_channel.clone(),
+            destination_port.clone(),
+            sequence.clone(),
+        )
+        .unwrap();
+
+        let order_id = generate_order_id(&path, create.clone());
+        println!("order_id is {:?}", &order_id);
+    }
+
+    #[test]
+    fn test_takeswap_msg_decode() {
+        let mut deps = mock_dependencies();
+
+        let info = mock_info("anyone", &[]);
+        let env = mock_env();
+        instantiate(deps.as_mut(), env.clone(), info, InstantiateMsg {}).unwrap();
+        // let balance = coins(100, "tokens");
+        let balance2 = coin(100, "aside");
+        let taker_address = String::from("side1lqd386kze5355mgpncu5y52jcdhs85ckj7kdv0");
+        let taker_receiving_address = String::from("wasm19zl4l2hafcdw6p99kc00znttgpdyk32a02puj2");
+
+        let create = TakeSwapMsg {
+            order_id: String::from(
+                "bf4dd83fc04ea4bf565a0294ed15d189ee2d7662a1174428d3d46b46af55c7a2",
+            ),
+            sell_token: balance2,
+            taker_address,
+            taker_receiving_address,
+            timeout_height: Height {
+                revision_number: 0,
+                revision_height: 0,
+            },
+            timeout_timestamp: 1693399799000000000,
+            create_timestamp: 1684328527,
+        };
+
+        let create_bytes = to_binary(&create.clone()).unwrap();
+        println!("create_bytes is {:?}", &create_bytes.clone().to_base64());
+
+        let bytes = Binary::from_base64("eyJvcmRlcl9pZCI6ImJmNGRkODNmYzA0ZWE0YmY1NjVhMDI5NGVkMTVkMTg5ZWUyZDc2NjJhMTE3NDQyOGQzZDQ2YjQ2YWY1NWM3YTIiLCJzZWxsX3Rva2VuIjp7ImRlbm9tIjoiYXNpZGUiLCJhbW91bnQiOiIxMDAifSwidGFrZXJfYWRkcmVzcyI6InNpZGUxbHFkMzg2a3plNTM1NW1ncG5jdTV5NTJqY2Roczg1Y2tqN2tkdjAiLCJ0YWtlcl9yZWNlaXZpbmdfYWRkcmVzcyI6Indhc20xOXpsNGwyaGFmY2R3NnA5OWtjMDB6bnR0Z3BkeWszMmEwMnB1ajIiLCJ0aW1lb3V0X2hlaWdodCI6eyJyZXZpc2lvbl9udW1iZXIiOiIwIiwicmV2aXNpb25faGVpZ2h0IjoiOTk5OTk5NiJ9LCJ0aW1lb3V0X3RpbWVzdGFtcCI6IjE2OTMzOTk3OTkwMDAwMDAwMDAiLCJjcmVhdGVfdGltZXN0YW1wIjoiMTY4NDMyODUyNyJ9").unwrap();
+
+        println!("bytes is {:?}", &bytes.clone());
+        // let msg: TakeSwapMsg = from_binary(&bytes.clone()).unwrap();
+
+        let msg_res: Result<TakeSwapMsg, StdError> = from_binary(&bytes);
+        let msg: TakeSwapMsg;
+
+        match msg_res {
+            Ok(value) => {
+                msg = value.clone();
+            }
+            Err(_err) => {
+                let msg_output: TakeSwapMsgOutput = from_binary(&bytes).unwrap();
+                msg = TakeSwapMsg {
+                    order_id: msg_output.order_id.clone(),
+                    sell_token: msg_output.sell_token.clone(),
+                    taker_address: msg_output.taker_address.clone(),
+                    taker_receiving_address: msg_output.taker_receiving_address.clone(),
+                    timeout_height: Height {
+                        revision_number: msg_output
+                            .timeout_height
+                            .revision_number
+                            .clone()
+                            .parse()
+                            .unwrap(),
+                        revision_height: msg_output
+                            .timeout_height
+                            .revision_height
+                            .clone()
+                            .parse()
+                            .unwrap(),
+                    },
+                    timeout_timestamp: msg_output.timeout_timestamp.parse().unwrap(),
+                    create_timestamp: msg_output.create_timestamp.parse().unwrap(),
+                }
+            }
+        }
+        println!("msg is {:?}", &msg);
     }
 }

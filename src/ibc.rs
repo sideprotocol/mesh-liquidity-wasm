@@ -5,38 +5,18 @@ use serde::{Deserialize, Serialize};
 use crate::{
     contract::{generate_order_id, order_path},
     error::{ContractError, Never},
-    msg::{AtomicSwapPacketData, CancelSwapMsg, MakeSwapMsg, SwapMessageType, TakeSwapMsg},
+    msg::{
+        AtomicSwapPacketData, CancelSwapMsg, Height, MakeSwapMsg, SwapMessageType, TakeSwapMsg,
+        TakeSwapMsgOutput,
+    },
     state::{AtomicSwapOrder, Status, SWAP_ORDERS},
 };
 use cosmwasm_std::{
-    attr,
-    entry_point,
-    from_binary,
-    to_binary,
-    Addr,
-    BankMsg,
-    Binary,
-    Coin,
-    DepsMut,
-    Env,
-    IbcBasicResponse,
-    IbcChannel,
-    IbcChannelCloseMsg,
-    IbcChannelConnectMsg,
-    IbcChannelOpenMsg,
-    IbcOrder,
-    IbcPacket,
-    IbcPacketAckMsg,
-    IbcPacketReceiveMsg,
-    IbcPacketTimeoutMsg,
-    IbcReceiveResponse,
-    Reply,
-    Response,
-    StdResult,
-    SubMsg,
-    SubMsgResult,
-    Timestamp,
-    // WasmMsg,
+    attr, entry_point, from_binary, to_binary, Addr, BankMsg, Binary, Coin, DepsMut, Env,
+    IbcAcknowledgement, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg,
+    IbcChannelOpenMsg, IbcOrder, IbcPacket, IbcPacketAckMsg, IbcPacketReceiveMsg,
+    IbcPacketTimeoutMsg, IbcReceiveResponse, Reply, Response, StdError, StdResult, SubMsg,
+    SubMsgResult, Timestamp,
 };
 
 use crate::state::{ChannelInfo, CHANNEL_INFO};
@@ -45,6 +25,7 @@ pub const ICS100_VERSION: &str = "ics100-1";
 pub const ICS100_ORDERING: IbcOrder = IbcOrder::Unordered;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub enum AtomicSwapPacketAcknowledgement {
     Result(Binary),
     Error(String),
@@ -173,7 +154,7 @@ fn do_ibc_packet_receive(
 ) -> Result<IbcReceiveResponse, ContractError> {
     let packet_data: AtomicSwapPacketData = from_binary(&packet.data)?;
 
-    match packet_data.message_type {
+    match packet_data.r#type {
         SwapMessageType::Unspecified => {
             let res = IbcReceiveResponse::new()
                 .set_ack(ack_success())
@@ -186,7 +167,40 @@ fn do_ibc_packet_receive(
             on_received_make(deps, env, packet, msg)
         }
         SwapMessageType::TakeSwap => {
-            let msg: TakeSwapMsg = from_binary(&packet_data.data.clone())?;
+            let msg_res: Result<TakeSwapMsg, StdError> = from_binary(&packet_data.data.clone());
+            let msg: TakeSwapMsg;
+
+            match msg_res {
+                Ok(value) => {
+                    msg = value.clone();
+                }
+                Err(_err) => {
+                    let msg_output: TakeSwapMsgOutput =
+                        from_binary(&packet_data.data.clone()).unwrap();
+                    msg = TakeSwapMsg {
+                        order_id: msg_output.order_id.clone(),
+                        sell_token: msg_output.sell_token.clone(),
+                        taker_address: msg_output.taker_address.clone(),
+                        taker_receiving_address: msg_output.taker_receiving_address.clone(),
+                        timeout_height: Height {
+                            revision_number: msg_output
+                                .timeout_height
+                                .revision_number
+                                .clone()
+                                .parse()
+                                .unwrap(),
+                            revision_height: msg_output
+                                .timeout_height
+                                .revision_height
+                                .clone()
+                                .parse()
+                                .unwrap(),
+                        },
+                        timeout_timestamp: msg_output.timeout_timestamp.parse().unwrap(),
+                        create_timestamp: msg_output.create_timestamp.parse().unwrap(),
+                    }
+                }
+            }
             on_received_take(deps, env, packet, msg)
         }
         SwapMessageType::CancelSwap => {
@@ -235,8 +249,15 @@ fn on_received_make(
     packet: &IbcPacket,
     msg: MakeSwapMsg,
 ) -> Result<IbcReceiveResponse, ContractError> {
-    let packet_data: AtomicSwapPacketData = from_binary(&packet.data)?;
-    let order_id = generate_order_id(packet_data)?;
+    // let packet_data: AtomicSwapPacketData = from_binary(&packet.data)?;
+    let path = order_path(
+        msg.source_channel.clone(),
+        msg.source_port.clone(),
+        packet.dest.channel_id.clone(),
+        packet.dest.port_id.clone(),
+        packet.sequence,
+    )?;
+    let order_id = generate_order_id(&path, msg.clone())?;
     let swap_order = AtomicSwapOrder {
         id: order_id.clone(),
         maker: msg.clone(),
@@ -244,13 +265,7 @@ fn on_received_make(
         taker: None,
         cancel_timestamp: None,
         complete_timestamp: None,
-        path: order_path(
-            msg.source_channel,
-            msg.source_port,
-            packet.dest.channel_id.clone(),
-            packet.dest.port_id.clone(),
-            order_id.clone(),
-        )?,
+        path: path.clone(),
     };
 
     SWAP_ORDERS.update(deps.storage, &order_id.clone(), |existing| match existing {
@@ -278,8 +293,8 @@ fn on_received_take(
         return Err(ContractError::InvalidSellToken);
     }
 
-    if swap_order.maker.desired_taker != None
-        && swap_order.maker.desired_taker != Some(msg.taker_address.clone())
+    if swap_order.maker.desired_taker != ""
+        && swap_order.maker.desired_taker != msg.taker_address.clone()
     {
         return Err(ContractError::InvalidTakerAddress);
     }
@@ -355,6 +370,16 @@ fn on_received_cancel(
     Ok(res)
 }
 
+pub fn try_get_ack_error(ack: &IbcAcknowledgement) -> Option<String> {
+    let ack: AtomicSwapPacketAcknowledgement =
+	// What we can not parse is an ACK fail.
+        from_binary(&ack.data).unwrap_or_else(|_| AtomicSwapPacketAcknowledgement::Error(ack.data.to_base64()));
+    match ack {
+        AtomicSwapPacketAcknowledgement::Error(e) => Some(e),
+        _ => None,
+    }
+}
+
 #[cfg_attr(not(feature = "library"), entry_point)]
 // check if success or failure and update balance, or return funds
 pub fn ibc_packet_ack(
@@ -362,12 +387,10 @@ pub fn ibc_packet_ack(
     _env: Env,
     msg: IbcPacketAckMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
-    let ics100msg: AtomicSwapPacketAcknowledgement = from_binary(&msg.acknowledgement.data)?;
-    match ics100msg {
-        AtomicSwapPacketAcknowledgement::Result(_) => on_packet_success(deps, msg.original_packet),
-        AtomicSwapPacketAcknowledgement::Error(err) => {
-            on_packet_failure(deps, msg.original_packet, err)
-        }
+    if let Some(error) = try_get_ack_error(&msg.acknowledgement) {
+        on_packet_failure(deps, msg.original_packet, error)
+    } else {
+        on_packet_success(deps, msg.original_packet)
     }
 }
 
@@ -389,23 +412,30 @@ fn on_packet_success(deps: DepsMut, packet: IbcPacket) -> Result<IbcBasicRespons
     // similar event messages like ibctransfer module
     let attributes = vec![attr("action", "acknowledge"), attr("success", "true")];
 
-    match packet_data.message_type {
+    match packet_data.r#type {
         // This is the step 4 (Acknowledge Make Packet) of the atomic swap: https://github.com/liangping/ibc/blob/atomic-swap/spec/app/ics-100-atomic-swap/ibcswap.png
         // This logic is executed when Taker chain acknowledge the make swap packet.
         SwapMessageType::Unspecified => Ok(IbcBasicResponse::new()),
         SwapMessageType::MakeSwap => {
-            let order_id = generate_order_id(packet_data.clone())?;
             let msg: MakeSwapMsg = from_binary(&packet_data.data.clone())?;
-            let swap_order = SWAP_ORDERS.load(deps.storage, &order_id)?;
+            let path = order_path(
+                msg.source_channel.clone(),
+                msg.source_port.clone(),
+                packet.dest.channel_id.clone(),
+                packet.dest.port_id.clone(),
+                packet.sequence,
+            )?;
+            let order_id = generate_order_id(&path, msg.clone())?;
+            // let swap_order = SWAP_ORDERS.load(deps.storage, &order_id)?;
 
             let new_order = AtomicSwapOrder {
                 id: order_id.clone(),
                 maker: msg.clone(),
                 status: Status::Sync,
-                path: swap_order.path.clone(),
-                taker: swap_order.taker.clone(),
-                cancel_timestamp: swap_order.cancel_timestamp.clone(),
-                complete_timestamp: swap_order.complete_timestamp.clone(),
+                path: path.clone(),
+                taker: None,
+                cancel_timestamp: None,
+                complete_timestamp: None,
             };
 
             SWAP_ORDERS.save(deps.storage, &order_id, &new_order)?;
@@ -414,7 +444,41 @@ fn on_packet_success(deps: DepsMut, packet: IbcPacket) -> Result<IbcBasicRespons
         // This is the step 9 (Transfer Take Token & Close order): https://github.com/cosmos/ibc/tree/main/spec/app/ics-100-atomic-swap
         // The step is executed on the Taker chain.
         SwapMessageType::TakeSwap => {
-            let msg: TakeSwapMsg = from_binary(&packet_data.data.clone())?;
+            let msg_res: Result<TakeSwapMsg, StdError> = from_binary(&packet_data.data.clone());
+            let msg: TakeSwapMsg;
+
+            match msg_res {
+                Ok(value) => {
+                    msg = value.clone();
+                }
+                Err(_err) => {
+                    let msg_output: TakeSwapMsgOutput =
+                        from_binary(&packet_data.data.clone()).unwrap();
+                    msg = TakeSwapMsg {
+                        order_id: msg_output.order_id.clone(),
+                        sell_token: msg_output.sell_token.clone(),
+                        taker_address: msg_output.taker_address.clone(),
+                        taker_receiving_address: msg_output.taker_receiving_address.clone(),
+                        timeout_height: Height {
+                            revision_number: msg_output
+                                .timeout_height
+                                .revision_number
+                                .clone()
+                                .parse()
+                                .unwrap(),
+                            revision_height: msg_output
+                                .timeout_height
+                                .revision_height
+                                .clone()
+                                .parse()
+                                .unwrap(),
+                        },
+                        timeout_timestamp: msg_output.timeout_timestamp.parse().unwrap(),
+                        create_timestamp: msg_output.create_timestamp.parse().unwrap(),
+                    }
+                }
+            }
+
             let order_id = msg.order_id;
             let swap_order = SWAP_ORDERS.load(deps.storage, &order_id)?;
 
@@ -431,7 +495,7 @@ fn on_packet_success(deps: DepsMut, packet: IbcPacket) -> Result<IbcBasicRespons
                 path: swap_order.path.clone(),
                 taker: swap_order.taker.clone(),
                 cancel_timestamp: swap_order.cancel_timestamp.clone(),
-                complete_timestamp: Some(msg.creation_timestamp),
+                complete_timestamp: Some(Timestamp::from_seconds(msg.create_timestamp as u64)),
             };
 
             SWAP_ORDERS.save(deps.storage, &order_id, &new_order)?;
@@ -490,7 +554,7 @@ fn refund_packet_token(
     deps: DepsMut,
     packet: AtomicSwapPacketData,
 ) -> Result<Vec<SubMsg>, ContractError> {
-    match packet.message_type {
+    match packet.r#type {
         // This is the step 3.2 (Refund) of the atomic swap: https://github.com/liangping/ibc/blob/atomic-swap/spec/app/ics-100-atomic-swap/ibcswap.png
         // This logic will be executed when Relayer sends make swap packet to the taker chain, but the request timeout
         // and locked tokens form the first step (see the picture on the link above) MUST be returned to the account of
@@ -498,32 +562,18 @@ fn refund_packet_token(
         SwapMessageType::Unspecified => Ok(vec![]),
         SwapMessageType::MakeSwap => {
             let msg: MakeSwapMsg = from_binary(&packet.data.clone())?;
-            let order_id: String = generate_order_id(packet.clone())?;
-            let swap_order: AtomicSwapOrder = SWAP_ORDERS.load(deps.storage, &order_id)?;
-            let maker_address: Addr = deps.api.addr_validate(&swap_order.maker.maker_address)?;
-            let submsg = send_tokens(&maker_address, swap_order.maker.sell_token)?;
-
-            let new_order: AtomicSwapOrder = AtomicSwapOrder {
-                id: order_id.clone(),
-                maker: msg.clone(),
-                status: Status::Cancel,
-                taker: None,
-                cancel_timestamp: Some(Timestamp::from_seconds(
-                    msg.create_timestamp.try_into().unwrap(),
-                )),
-                complete_timestamp: None,
-                path: swap_order.path.clone(),
-            };
-
-            SWAP_ORDERS.save(deps.storage, &order_id, &new_order)?;
+            // let order_id: String = generate_order_id(packet.clone())?;
+            // let swap_order: AtomicSwapOrder = SWAP_ORDERS.load(deps.storage, &order_id)?;
+            let maker_address: Addr = deps.api.addr_validate(&msg.maker_address)?;
+            let submsg = send_tokens(&maker_address, msg.sell_token)?;
 
             Ok(submsg)
         }
         // This is the step 7.2 (Unlock order and refund) of the atomic swap: https://github.com/cosmos/ibc/tree/main/spec/app/ics-100-atomic-swap
         // This step is executed on the Taker chain when Take Swap request timeout.
         SwapMessageType::TakeSwap => {
-            let order_id: String = generate_order_id(packet.clone())?;
             let msg: TakeSwapMsg = from_binary(&packet.data.clone())?;
+            let order_id: String = msg.order_id.clone();
             let swap_order: AtomicSwapOrder = SWAP_ORDERS.load(deps.storage, &order_id)?;
             let taker_address: Addr = deps.api.addr_validate(&msg.taker_address)?;
 

@@ -1,0 +1,11 @@
+HOME1="/Users/ghostprince/.wasmd1"
+HOME2="/Users/ghostprince/.wasmd2"
+CONTRACT1="wasm1tqwwyth34550lg2437m05mjnjp8w7h5ka7m70jtzpxn4uh2ktsmqt0n86u"
+CONTRACT2="wasm1nc5tatafv6eyq7llkr2gv50ff9e22mnf70qgjlv737ktmt4eswrqr5j2ht"
+CHAIN_ID="sidechain_7070-1"
+SWAPID="bd1cbceb5b58aec2d8a3948b00724586473e7b2bd0f9b652608c4f7bf3712592"
+KEY1="main1"
+KEY2="main2"
+BOB="bob"
+
+sidechaind tx ibc-swap take $SWAPID 100aside  wasm15vaswpu2pwmlwxsjsuejttkr40n7v0e5dy7jwa --from $BOB --keyring-backend test --chain-id $CHAIN_ID --gas-prices 0.01aside --gas auto --gas-adjustment 1.2 --trace --packet-timeout-height "0-9999995" --packet-timeout-timestamp "1693399799000000000"

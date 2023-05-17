@@ -1,0 +1,10 @@
+HOME1="/Users/ghostprince/.wasmd1"
+HOME2="/Users/ghostprince/.wasmd2"
+CONTRACT1="wasm1tqwwyth34550lg2437m05mjnjp8w7h5ka7m70jtzpxn4uh2ktsmqt0n86u"
+CONTRACT2="wasm1pvrwmjuusn9wh34j7y520g8gumuy9xtl3gvprlljfdpwju3x7ucsfg5rpz"
+CHAINID1="source-chain"
+CHAINID2="target-chain"
+SWAPID="a056de0b35273253bb5999ed095d466f044fef36348fc10da898909cb0d65d41"
+KEY1="main1"
+KEY2="main2"
+wasmd tx wasm execute $CONTRACT1 '{"TakeSwap": { "order_id": "a056de0b35273253bb5999ed095d466f044fef36348fc10da898909cb0d65d41", "sell_token": { "native": [{"amount": "100", "denom": "stake"}] }, "taker_address": "wasm15f0j8n2pmet97zaztucpsnxgz7gmrtruvh5ayt", "taker_receiving_address": "wasm15f0j8n2pmet97zaztucpsnxgz7gmrtruvh5ayt", "creation_timestamp": "1683279635000000000", "timeout_height": 200, "timeout_timestamp": "1693399749000000000" }}' --from $KEY1 --keyring-backend test --home $HOME1 --chain-id $CHAINID1 --gas-prices 0.025stake --gas auto --gas-adjustment 1.3 --amount 100stake --trace
