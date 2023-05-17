@@ -1,0 +1,17 @@
+{
+  "type": "cosmos",
+  "value": {
+    "key": "bob",
+    "chain-id": "sidechain_7070-1",
+    "rpc-addr": "http://localhost:26657",
+    "account-prefix": "side",
+    "keyring-backend": "test",
+    "extra-codecs": ["ethermint"],
+    "gas-adjustment": 1.2,
+    "gas-prices": "0.01aside",
+    "debug": true,
+    "timeout": "20s",
+    "output-format": "json",
+    "sign-mode": "direct"
+  }
+}

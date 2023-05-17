@@ -47,7 +47,7 @@ pub enum SwapMessageType {
 
 ```rust
 pub struct AtomicSwapPacketData {
-    pub message_type: SwapMessageType,
+    pub r#type: SwapMessageType,
     pub data: Binary,
     pub memo: Option<String>,
 }
@@ -171,7 +171,7 @@ pub fn execute_make_swap(
     }
 
     let ibc_packet = AtomicSwapPacketData {
-        message_type: SwapMessageType::MakeSwap,
+        r#type: SwapMessageType::MakeSwap,
         data: to_binary(&msg)?,
         memo: None,
     };
@@ -272,7 +272,7 @@ pub fn execute_take_swap(
     };
 
     let ibc_packet = AtomicSwapPacketData {
-        message_type: SwapMessageType::TakeSwap,
+        r#type: SwapMessageType::TakeSwap,
         data: to_binary(&msg)?,
         memo: None,
     };
@@ -320,7 +320,7 @@ pub fn execute_cancel_swap(
     }
 
     let packet = AtomicSwapPacketData {
-        message_type: SwapMessageType::CancelSwap,
+        r#type: SwapMessageType::CancelSwap,
         data: to_binary(&msg)?,
         memo: None,
     };
@@ -471,7 +471,7 @@ fn do_ibc_packet_receive(
 ) -> Result<IbcReceiveResponse, ContractError> {
     let packet_data: AtomicSwapPacketData = from_binary(&packet.data)?;
 
-    match packet_data.message_type {
+    match packet_data.r#type {
         SwapMessageType::MakeSwap => {
             let msg: MakeSwapMsg = from_binary(&packet_data.data.clone())?;
             on_received_make(deps, env, packet, msg)
