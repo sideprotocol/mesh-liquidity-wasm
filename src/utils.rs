@@ -134,6 +134,47 @@ pub(crate) fn decode_take_swap_msg(data: &Binary) -> TakeSwapMsg {
     msg
 }
 
+pub(crate) fn decode_make_swap_msg(data: &Binary) -> MakeSwapMsg {
+    let msg_res: Result<MakeSwapMsg, StdError> = from_binary(data);
+    let msg: MakeSwapMsg;
+
+    match msg_res {
+        Ok(value) => {
+            msg = value.clone();
+        }
+        Err(_err) => {
+            let msg_output: MakeSwapMsgOutput = from_binary(data).unwrap();
+            msg = MakeSwapMsg {
+                source_port: msg_output.source_port.clone(),
+                source_channel: msg_output.source_channel.clone(),
+                sell_token: msg_output.sell_token.clone(),
+                buy_token: msg_output.buy_token.clone(),
+                maker_address: msg_output.maker_address.clone(),
+                maker_receiving_address: msg_output.maker_receiving_address.clone(),
+                desired_taker: msg_output.desired_taker.clone(),
+                create_timestamp: msg_output.create_timestamp.parse().unwrap(),
+                timeout_height: Height {
+                    revision_number: msg_output
+                        .timeout_height
+                        .revision_number
+                        .clone()
+                        .parse()
+                        .unwrap(),
+                    revision_height: msg_output
+                        .timeout_height
+                        .revision_height
+                        .clone()
+                        .parse()
+                        .unwrap(),
+                },
+                timeout_timestamp: msg_output.timeout_timestamp.parse().unwrap(),
+                expiration_timestamp: msg_output.expiration_timestamp.parse().unwrap(),
+            }
+        }
+    }
+    msg
+}
+
 pub(crate) fn send_tokens(to: &Addr, amount: Coin) -> StdResult<Vec<SubMsg>> {
     // if amount.is_empty() {
     //     Ok(vec![])

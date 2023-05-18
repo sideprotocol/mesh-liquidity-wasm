@@ -3,16 +3,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     error::ContractError,
-    msg::{
-        AtomicSwapPacketData, CancelSwapMsg, Height, MakeSwapMsg, SwapMessageType, TakeSwapMsg,
-        TakeSwapMsgOutput,
-    },
+    msg::{AtomicSwapPacketData, CancelSwapMsg, MakeSwapMsg, SwapMessageType, TakeSwapMsg},
     state::{AtomicSwapOrder, Status, SWAP_ORDERS},
-    utils::{decode_take_swap_msg, generate_order_id, order_path, send_tokens},
+    utils::{
+        decode_make_swap_msg, decode_take_swap_msg, generate_order_id, order_path, send_tokens,
+    },
 };
 use cosmwasm_std::{
     attr, from_binary, to_binary, Addr, Binary, DepsMut, Env, IbcBasicResponse, IbcPacket,
-    IbcReceiveResponse, StdError, SubMsg, Timestamp,
+    IbcReceiveResponse, SubMsg, Timestamp,
 };
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
@@ -50,45 +49,11 @@ pub(crate) fn do_ibc_packet_receive(
             Ok(res)
         }
         SwapMessageType::MakeSwap => {
-            let msg: MakeSwapMsg = from_binary(&packet_data.data.clone())?;
+            let msg: MakeSwapMsg = decode_make_swap_msg(&packet_data.data.clone());
             on_received_make(deps, env, packet, msg)
         }
         SwapMessageType::TakeSwap => {
             let msg: TakeSwapMsg = decode_take_swap_msg(&packet_data.data.clone());
-            // let msg_res: Result<TakeSwapMsg, StdError> = from_binary(&packet_data.data.clone());
-            // let msg: TakeSwapMsg;
-
-            // match msg_res {
-            //     Ok(value) => {
-            //         msg = value.clone();
-            //     }
-            //     Err(_err) => {
-            //         let msg_output: TakeSwapMsgOutput =
-            //             from_binary(&packet_data.data.clone()).unwrap();
-            //         msg = TakeSwapMsg {
-            //             order_id: msg_output.order_id.clone(),
-            //             sell_token: msg_output.sell_token.clone(),
-            //             taker_address: msg_output.taker_address.clone(),
-            //             taker_receiving_address: msg_output.taker_receiving_address.clone(),
-            //             timeout_height: Height {
-            //                 revision_number: msg_output
-            //                     .timeout_height
-            //                     .revision_number
-            //                     .clone()
-            //                     .parse()
-            //                     .unwrap(),
-            //                 revision_height: msg_output
-            //                     .timeout_height
-            //                     .revision_height
-            //                     .clone()
-            //                     .parse()
-            //                     .unwrap(),
-            //             },
-            //             timeout_timestamp: msg_output.timeout_timestamp.parse().unwrap(),
-            //             create_timestamp: msg_output.create_timestamp.parse().unwrap(),
-            //         }
-            //     }
-            // }
             on_received_take(deps, env, packet, msg)
         }
         SwapMessageType::CancelSwap => {
@@ -240,7 +205,8 @@ pub(crate) fn on_packet_success(
         // This logic is executed when Taker chain acknowledge the make swap packet.
         SwapMessageType::Unspecified => Ok(IbcBasicResponse::new()),
         SwapMessageType::MakeSwap => {
-            let msg: MakeSwapMsg = from_binary(&packet_data.data.clone())?;
+            // let msg: MakeSwapMsg = from_binary(&packet_data.data.clone())?;
+            let msg: MakeSwapMsg = decode_make_swap_msg(&packet_data.data.clone());
             let path = order_path(
                 msg.source_channel.clone(),
                 msg.source_port.clone(),
@@ -267,40 +233,7 @@ pub(crate) fn on_packet_success(
         // This is the step 9 (Transfer Take Token & Close order): https://github.com/cosmos/ibc/tree/main/spec/app/ics-100-atomic-swap
         // The step is executed on the Taker chain.
         SwapMessageType::TakeSwap => {
-            let msg_res: Result<TakeSwapMsg, StdError> = from_binary(&packet_data.data.clone());
-            let msg: TakeSwapMsg;
-
-            match msg_res {
-                Ok(value) => {
-                    msg = value.clone();
-                }
-                Err(_err) => {
-                    let msg_output: TakeSwapMsgOutput =
-                        from_binary(&packet_data.data.clone()).unwrap();
-                    msg = TakeSwapMsg {
-                        order_id: msg_output.order_id.clone(),
-                        sell_token: msg_output.sell_token.clone(),
-                        taker_address: msg_output.taker_address.clone(),
-                        taker_receiving_address: msg_output.taker_receiving_address.clone(),
-                        timeout_height: Height {
-                            revision_number: msg_output
-                                .timeout_height
-                                .revision_number
-                                .clone()
-                                .parse()
-                                .unwrap(),
-                            revision_height: msg_output
-                                .timeout_height
-                                .revision_height
-                                .clone()
-                                .parse()
-                                .unwrap(),
-                        },
-                        timeout_timestamp: msg_output.timeout_timestamp.parse().unwrap(),
-                        create_timestamp: msg_output.create_timestamp.parse().unwrap(),
-                    }
-                }
-            }
+            let msg: TakeSwapMsg = decode_take_swap_msg(&packet_data.data.clone());
 
             let order_id = msg.order_id;
             let swap_order = SWAP_ORDERS.load(deps.storage, &order_id)?;
@@ -384,7 +317,8 @@ pub(crate) fn refund_packet_token(
         // the maker on the maker chain.
         SwapMessageType::Unspecified => Ok(vec![]),
         SwapMessageType::MakeSwap => {
-            let msg: MakeSwapMsg = from_binary(&packet.data.clone())?;
+            // let msg: MakeSwapMsg = from_binary(&packet.data.clone())?;
+            let msg: MakeSwapMsg = decode_make_swap_msg(&packet.data.clone());
             // let order_id: String = generate_order_id(packet.clone())?;
             // let swap_order: AtomicSwapOrder = SWAP_ORDERS.load(deps.storage, &order_id)?;
             let maker_address: Addr = deps.api.addr_validate(&msg.maker_address)?;
@@ -395,7 +329,8 @@ pub(crate) fn refund_packet_token(
         // This is the step 7.2 (Unlock order and refund) of the atomic swap: https://github.com/cosmos/ibc/tree/main/spec/app/ics-100-atomic-swap
         // This step is executed on the Taker chain when Take Swap request timeout.
         SwapMessageType::TakeSwap => {
-            let msg: TakeSwapMsg = from_binary(&packet.data.clone())?;
+            // let msg: TakeSwapMsg = from_binary(&packet.data.clone())?;
+            let msg: TakeSwapMsg = decode_take_swap_msg(&packet.data.clone());
             let order_id: String = msg.order_id.clone();
             let swap_order: AtomicSwapOrder = SWAP_ORDERS.load(deps.storage, &order_id)?;
             let taker_address: Addr = deps.api.addr_validate(&msg.taker_address)?;
