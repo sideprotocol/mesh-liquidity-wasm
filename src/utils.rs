@@ -5,7 +5,7 @@ use cosmwasm_std::{
 use sha2::{Digest, Sha256};
 
 use crate::{
-    ibc_utils::AtomicSwapPacketAcknowledgement,
+    atomic_swap_handler::AtomicSwapPacketAcknowledgement,
     msg::{Height, HeightOutput, MakeSwapMsg, MakeSwapMsgOutput, TakeSwapMsg, TakeSwapMsgOutput},
     ContractError,
 };
