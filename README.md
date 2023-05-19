@@ -1,6 +1,6 @@
 # ibcswap-wasm
 
-The current state of the project is still in development and not yet ready for production use. 
+The current state of the project is still in development and not yet ready for production use.
 
 ibcswap-wasm is a Cosmwasm implementation of the ICS 100 and ICS 101 specifications within the Inter-Blockchain Communication (IBC) protocol of the Cosmos ecosystem. ICS 100 specifies the atomic swap functionality, while ICS 101 specifies the interchain swap functionality. As a community-driven project, ibcswap-wasm aims to provide a secure and efficient solution for cross-chain token exchanges, following the ICS 100 and ICS 101 specifications. Currently in active development, ibcswap-wasm holds the potential to enable seamless interoperability between Cosmos-based blockchains and empower decentralized finance (DeFi) applications.
 
@@ -443,7 +443,7 @@ pub fn ibc_channel_close(
 
 #### Packet relay
 
-`ibc_packet_receive` is called by the routing module when a packet addressed to this module has been received. 
+`ibc_packet_receive` is called by the routing module when a packet addressed to this module has been received.
 
 ```rust
 pub fn ibc_packet_receive(
@@ -591,12 +591,12 @@ You can modifiy the parameters in `rly-create-channel.sh` file and run it.
 The successful channel creation will result the following command lines.
 
 ```sh
-2023-05-05T09:37:08.427362Z	info	Starting event processor for channel handshake	{"src_chain_id": "source-chain", "src_port_id": "wasm.wasm1wn625s4jcmvk0szpl85rj5azkfc6suyvf75q6vrddscjdphtve8s5lsurx", "dst_chain_id": "target-chain", "dst_port_id": "wasm.wasm1eyfccmjm6732k7wp4p6gdjwhxjwsvje44j0hfx8nkgrm8fs7vqfsuw7sel"}
-2023-05-05T09:37:08.429903Z	info	Chain is in sync	{"chain_name": "source", "chain_id": "source-chain"}
-2023-05-05T09:37:08.429927Z	info	Chain is in sync	{"chain_name": "target", "chain_id": "target-chain"}
-2023-05-05T09:37:15.279068Z	info	Successful transaction	{"provider_type": "cosmos", "chain_id": "source-chain", "gas_used": 191886, "fees": "5776stake", "fee_payer": "wasm15f0j8n2pmet97zaztucpsnxgz7gmrtruvh5ayt", "height": 38085, "msg_types": ["/ibc.core.client.v1.MsgUpdateClient", "/ibc.core.channel.v1.MsgChannelOpenInit"], "tx_hash": "520BDCAF9882863955D1BEEB62E3B48EC7E6C3A73967D98A066B3754AA3BB4DC"}
-2023-05-05T09:37:36.964060Z	info	Successful transaction	{"provider_type": "cosmos", "chain_id": "target-chain", "gas_used": 152963, "fees": "4511stake", "fee_payer": "wasm19cmekqgu779n6hjpga7jyvl4gvrd8uhhksa27d", "height": 36103, "msg_types": ["/ibc.core.client.v1.MsgUpdateClient", "/ibc.core.channel.v1.MsgChannelOpenConfirm"], "tx_hash": "C13DF78E9B4BB0587E1B48C8C992F4CA287FB261B253F97335A1D8C097BF9F70"}
-2023-05-05T09:37:37.487297Z	info	Found termination condition for channel handshake	{"path_name": "ics100", "chain_id": "target-chain", "client_id": "07-tendermint-0"}
+2023-05-05T09:37:08.427362Z info Starting event processor for channel handshake {"src_chain_id": "source-chain", "src_port_id": "wasm.wasm1wn625s4jcmvk0szpl85rj5azkfc6suyvf75q6vrddscjdphtve8s5lsurx", "dst_chain_id": "target-chain", "dst_port_id": "wasm.wasm1eyfccmjm6732k7wp4p6gdjwhxjwsvje44j0hfx8nkgrm8fs7vqfsuw7sel"}
+2023-05-05T09:37:08.429903Z info Chain is in sync {"chain_name": "source", "chain_id": "source-chain"}
+2023-05-05T09:37:08.429927Z info Chain is in sync {"chain_name": "target", "chain_id": "target-chain"}
+2023-05-05T09:37:15.279068Z info Successful transaction {"provider_type": "cosmos", "chain_id": "source-chain", "gas_used": 191886, "fees": "5776stake", "fee_payer": "wasm15f0j8n2pmet97zaztucpsnxgz7gmrtruvh5ayt", "height": 38085, "msg_types": ["/ibc.core.client.v1.MsgUpdateClient", "/ibc.core.channel.v1.MsgChannelOpenInit"], "tx_hash": "520BDCAF9882863955D1BEEB62E3B48EC7E6C3A73967D98A066B3754AA3BB4DC"}
+2023-05-05T09:37:36.964060Z info Successful transaction {"provider_type": "cosmos", "chain_id": "target-chain", "gas_used": 152963, "fees": "4511stake", "fee_payer": "wasm19cmekqgu779n6hjpga7jyvl4gvrd8uhhksa27d", "height": 36103, "msg_types": ["/ibc.core.client.v1.MsgUpdateClient", "/ibc.core.channel.v1.MsgChannelOpenConfirm"], "tx_hash": "C13DF78E9B4BB0587E1B48C8C992F4CA287FB261B253F97335A1D8C097BF9F70"}
+2023-05-05T09:37:37.487297Z info Found termination condition for channel handshake {"path_name": "ics100", "chain_id": "target-chain", "client_id": "07-tendermint-0"}
 ```
 
 ### Test make swap and take swap
@@ -894,4 +894,23 @@ balances: []
 pagination:
   next_key: null
   total: "0"
+```
+
+## Deploy contract to the wasmd malaga testnet
+
+Here is example commands to deploy ics100 contract to the malaga testnet.
+
+```sh
+wasmd keys add wallet --keyring-backend test
+wasmd keys add wallet2 --keyring-backend test
+source <(curl -sSL https://raw.githubusercontent.com/CosmWasm/testnets/master/malaga-420/defaults.env)
+JSON=$(jq -n --arg addr $(wasmd keys show -a wallet --keyring-backend test) '{"denom":"umlg","address":$addr}') && curl -X POST --header "Content-Type: application/json" --data "$JSON" https://faucet.malaga-420.cosmwasm.com/credit
+JSON=$(jq -n --arg addr $(wasmd keys show -a wallet2 --keyring-backend test) '{"denom":"umlg","address":$addr}') && curl -X POST --header "Content-Type: application/json" --data "$JSON" https://faucet.malaga-420.cosmwasm.com/credit
+NODE="--node $RPC"
+TXFLAG="${NODE} --chain-id ${CHAIN_ID} --gas-prices 0.25${FEE_DENOM} --gas auto --gas-adjustment 1.3"
+wasmd query bank total --node https://rpc.malaga-420.cosmwasm.com:443
+wasmd query bank balances $(wasmd keys show -a wallet --keyring-backend test) --node https://rpc.malaga-420.cosmwasm.com:443
+wasmd query bank balances $(wasmd keys show -a wallet2 --keyring-backend test) --node https://rpc.malaga-420.cosmwasm.com:443
+wasmd tx wasm store target/wasm32-unknown-unknown/release/ics100_swap.wasm --from wallet -y -b block --keyring-backend test --chain-id malaga-420 --node https://rpc.malaga-420.cosmwasm.com:443 --gas-prices 0.25umlg --gas auto --gas-adjustment 1.3
+wasmd tx wasm instantiate $CODE_ID "$INIT" --from $KEY --chain-id malaga-420 --label "$LABEL" --no-admin --keyring-backend test --node https://rpc.malaga-420.cosmwasm.com:443 --gas-prices 0.25umlg --gas auto --gas-adjustment 1.3 -y
 ```

@@ -1,18 +1,17 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Binary, Deps, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Response, StdError,
-    StdResult, Timestamp,
+    to_binary, Binary, Deps, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Response, StdResult,
+    Timestamp,
 };
-use sha2::{Digest, Sha256};
 
 use cw2::set_contract_version;
 use cw20::Balance;
 
 use crate::error::ContractError;
 use crate::msg::{
-    AtomicSwapPacketData, CancelSwapMsg, DetailsResponse, ExecuteMsg, HeightOutput, InstantiateMsg,
-    ListResponse, MakeSwapMsg, MakeSwapMsgOutput, QueryMsg, SwapMessageType, TakeSwapMsg,
+    AtomicSwapPacketData, CancelSwapMsg, DetailsResponse, ExecuteMsg, InstantiateMsg, ListResponse,
+    MakeSwapMsg, QueryMsg, SwapMessageType, TakeSwapMsg,
 };
 use crate::state::{
     all_swap_order_ids,
@@ -21,6 +20,7 @@ use crate::state::{
     // CHANNEL_INFO,
     SWAP_ORDERS,
 };
+use crate::utils::extract_source_channel_for_taker_msg;
 use cw_storage_plus::Bound;
 
 // Version info, for migration info
@@ -201,58 +201,6 @@ pub fn execute_cancel_swap(
     return Ok(res);
 }
 
-pub fn generate_order_id(order_path: &str, msg: MakeSwapMsg) -> StdResult<String> {
-    let prefix = order_path.as_bytes();
-
-    let msg_output = MakeSwapMsgOutput {
-        source_port: msg.source_port.clone(),
-        source_channel: msg.source_channel.clone(),
-        sell_token: msg.sell_token.clone(),
-        buy_token: msg.buy_token.clone(),
-        maker_address: msg.maker_address.clone(),
-        maker_receiving_address: msg.maker_receiving_address.clone(),
-        desired_taker: msg.desired_taker.clone(),
-        create_timestamp: msg.create_timestamp.clone().to_string(),
-        timeout_height: HeightOutput {
-            revision_number: msg.timeout_height.revision_number.clone().to_string(),
-            revision_height: msg.timeout_height.revision_height.clone().to_string(),
-        },
-        timeout_timestamp: msg.timeout_timestamp.clone().to_string(),
-        expiration_timestamp: msg.expiration_timestamp.clone().to_string(),
-    };
-
-    let binding_output = to_binary(&msg_output)?;
-    let msg_bytes = binding_output.as_slice();
-    let res: Vec<u8> = [prefix.clone(), msg_bytes.clone()].concat();
-
-    let hash = Sha256::digest(&res);
-    let id = hex::encode(hash);
-
-    Ok(id)
-}
-
-pub fn order_path(
-    source_channel: String,
-    source_port: String,
-    destination_channel: String,
-    destination_port: String,
-    id: u64,
-) -> StdResult<String> {
-    let path = format!(
-        "channel/{}/port/{}/channel/{}/port/{}/{}",
-        source_channel, source_port, destination_channel, destination_port, id,
-    );
-    Ok(path)
-}
-
-fn extract_source_channel_for_taker_msg(path: &str) -> StdResult<String> {
-    let parts: Vec<&str> = path.split('/').collect();
-    if parts.len() < 6 {
-        return Err(StdError::generic_err("Invalid path"));
-    }
-    Ok(parts[5].to_string())
-}
-
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
@@ -311,9 +259,10 @@ fn query_list(
 #[cfg(test)]
 mod tests {
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{coin, from_binary};
+    use cosmwasm_std::{coin, from_binary, StdError};
 
     use crate::msg::{Height, TakeSwapMsgOutput};
+    use crate::utils::{generate_order_id, order_path};
 
     use super::*;
 
