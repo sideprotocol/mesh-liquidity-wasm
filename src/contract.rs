@@ -191,7 +191,7 @@ pub fn execute_cancel_swap(
     let ibc_msg = IbcMsg::SendPacket {
         channel_id: order.maker.source_channel,
         data: to_binary(&packet)?,
-        timeout: msg.timeout_timestamp.into(),
+        timeout: Timestamp::from_nanos(msg.timeout_timestamp.parse().unwrap()).into(),
     };
 
     let res = Response::new()
@@ -205,6 +205,16 @@ pub fn execute_cancel_swap(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::List { start_after, limit } => to_binary(&query_list(deps, start_after, limit)?),
+        QueryMsg::ListByDesiredTaker {
+            start_after,
+            limit,
+            desired_taker,
+        } => to_binary(&query_list_by_desired_taker(
+            deps,
+            start_after,
+            limit,
+            desired_taker,
+        )?),
         QueryMsg::Details { id } => to_binary(&query_details(deps, id)?),
     }
 }
@@ -251,6 +261,37 @@ fn query_list(
             complete_timestamp: swap_order.complete_timestamp.clone(),
         };
         swaps.push(details);
+    }
+
+    Ok(ListResponse { swaps })
+}
+
+fn query_list_by_desired_taker(
+    deps: Deps,
+    start_after: Option<String>,
+    limit: Option<u32>,
+    desired_taker: String,
+) -> StdResult<ListResponse> {
+    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
+    let start = start_after.map(|s| Bound::exclusive(s.as_bytes()));
+    let swap_ids = all_swap_order_ids(deps.storage, start, limit)?;
+
+    let mut swaps = vec![];
+
+    for i in 0..swap_ids.len() {
+        let swap_order = SWAP_ORDERS.load(deps.storage, &swap_ids[i])?;
+        if swap_order.maker.desired_taker == desired_taker {
+            let details = DetailsResponse {
+                id: swap_ids[i].clone(),
+                maker: swap_order.maker.clone(),
+                status: swap_order.status.clone(),
+                path: swap_order.path.clone(),
+                taker: swap_order.taker.clone(),
+                cancel_timestamp: swap_order.cancel_timestamp.clone(),
+                complete_timestamp: swap_order.complete_timestamp.clone(),
+            };
+            swaps.push(details);
+        }
     }
 
     Ok(ListResponse { swaps })

@@ -176,7 +176,9 @@ pub(crate) fn on_received_cancel(
         status: Status::Cancel,
         path: swap_order.path.clone(),
         taker: swap_order.taker.clone(),
-        cancel_timestamp: Some(msg.creation_timestamp.clone()),
+        cancel_timestamp: Some(Timestamp::from_seconds(
+            msg.create_timestamp.parse().unwrap(),
+        )),
         complete_timestamp: None,
     };
 
@@ -277,7 +279,9 @@ pub(crate) fn on_packet_success(
                 status: Status::Cancel,
                 path: swap_order.path.clone(),
                 taker: swap_order.taker.clone(),
-                cancel_timestamp: Some(msg.creation_timestamp),
+                cancel_timestamp: Some(Timestamp::from_seconds(
+                    msg.create_timestamp.parse().unwrap(),
+                )),
                 complete_timestamp: None,
             };
 
