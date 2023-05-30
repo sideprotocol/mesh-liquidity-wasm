@@ -204,11 +204,20 @@ pub struct TakeSwapMsgOutput {
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug, JsonSchema)]
 pub struct CancelSwapMsg {
+    #[serde(rename = "order_id")]
     pub order_id: String,
+
+    #[serde(rename = "maker_address")]
     pub maker_address: String,
-    pub creation_timestamp: Timestamp,
-    pub timeout_height: u64,
-    pub timeout_timestamp: Timestamp,
+
+    #[serde(rename = "timeout_height")]
+    pub timeout_height: HeightOutput,
+
+    #[serde(rename = "timeout_timestamp")]
+    pub timeout_timestamp: String,
+
+    #[serde(rename = "create_timestamp")]
+    pub create_timestamp: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -224,6 +233,11 @@ pub enum QueryMsg {
     List {
         start_after: Option<String>,
         limit: Option<u32>,
+    },
+    ListByDesiredTaker {
+        start_after: Option<String>,
+        limit: Option<u32>,
+        desired_taker: String,
     },
     /// Returns the details of the named swap, error if not created.
     /// Return type: DetailsResponse.
