@@ -1,7 +1,7 @@
 HOME1="/Users/ghostprince/.wasmd1"
 HOME2="/Users/ghostprince/.wasmd2"
 CHAIN_ID="sidechain_7070-1"
-SWAPID="294139cd2bfd6952010184a376a5a675834c8469045609f5f5b192a5e4b8f380"
+SWAPID="9b66a7a3223317a81435c4ef5e31f2120205ddaebf53ff5f4617b2db89d863c4"
 KEY1="main1"
 KEY2="main2"
 BOB="bob"
