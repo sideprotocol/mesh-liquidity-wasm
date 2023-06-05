@@ -1,5 +1,5 @@
 INIT='{}'
-CODE_ID="4848"
+CODE_ID="4929"
 LABEL="ics100 contract"
 KEY="wallet"
 

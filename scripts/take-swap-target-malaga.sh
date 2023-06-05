@@ -1,0 +1,10 @@
+HOME1="/Users/ghostprince/.wasmd1"
+HOME2="/Users/ghostprince/.wasmd2"
+CONTRACT_MALAGA="wasm150fkh66zrd54rnjp2dpa85sjpu8v5lx49y82vt3cljuhdfp84ltqhxvuft"
+CHAINID1="source-chain"
+CHAINID2="target-chain"
+SWAPID="42b3d7998f40c595cb14615ec68e5aa5f4083ae4d33f94b19adcb67281e88ea3"
+KEY1="main1"
+KEY2="main2"
+KEY3="main3"
+wasmd tx wasm execute $CONTRACT_MALAGA '{"TakeSwap": { "order_id": "8961e94f1b9550088f08931ebe62fab7f39a6342b2f8c1a01a68f7e941643058", "sell_token": {"amount": "100", "denom": "umlg"}, "taker_address": "wasm10r5pur2neqk3hkmegnm5qqlf8t4sll3l5x0tns", "taker_receiving_address": "wasm1ts2jqyjjee9dxxhljchx2kg2y248qs85pfvle6", "create_timestamp": 1683279635,  "timeout_height": { "revision_number": 0, "revision_height": 99999991 },     "timeout_timestamp": 1693399799000000000 }}' --from $KEY3 --keyring-backend test --amount 100umlg --trace --node https://rpc.malaga-420.cosmwasm.com:443 --gas-prices 0.25umlg --gas auto --gas-adjustment 1.3 -y --chain-id malaga-420
