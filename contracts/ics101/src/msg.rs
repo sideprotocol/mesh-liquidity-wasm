@@ -1,7 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{Coin, Response, StdError, Binary};
+use cosmwasm_std::{Coin, Response, StdError};
 
 use crate::error::ContractError;
 use crate::market::{InterchainLiquidityPool, InterchainMarketMaker};
@@ -17,27 +17,6 @@ pub enum ExecuteMsg {
     SingleAssetWithdraw(MsgSingleAssetWithdrawRequest),
     MultiAssetWithdraw(MsgMultiAssetWithdrawRequest),
     Swap(MsgSwapRequest),
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub enum InterchainSwapMessageType {
-    #[serde(rename = "TYPE_UNSPECIFIED")]
-    Unspecified = 0,
-    #[serde(rename = "TYPE_MSG_CREATE_POOL")]
-    CreatePool = 1,
-    #[serde(rename = "TYPE_MSG_SINGLE_ASSET_DEPOSIT")]
-    SingleAssetDeposit = 2,
-    #[serde(rename = "TYPE_MSG_MULTI_ASSET_DEPOSIT")]
-    MultiAssetDeposit = 3,
-    #[serde(rename = "TYPE_MSG_SWAP")]
-    Swap = 4,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct InterchainSwapPacketData {
-    pub r#type: InterchainSwapMessageType,
-    pub data: Binary,
-    pub memo: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]

@@ -3,11 +3,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     error::ContractError,
-    msg::{AtomicSwapPacketData, CancelSwapMsg, MakeSwapMsg, SwapMessageType, TakeSwapMsg},
+    types::{IBCSwapPacketData, SwapMessageType},
     state::{AtomicSwapOrder, Status, SWAP_ORDERS},
     utils::{
         decode_make_swap_msg, decode_take_swap_msg, generate_order_id, order_path, send_tokens,
-    },
+    }, msg::{MsgCreatePoolRequest, MsgSingleAssetDepositRequest, MsgMultiAssetDepositRequest, MsgSingleAssetWithdrawRequest, MsgMultiAssetWithdrawRequest, MsgSwapRequest},
 };
 use cosmwasm_std::{
     attr, from_binary, to_binary, Addr, Binary, DepsMut, Env, IbcBasicResponse, IbcPacket,
@@ -38,12 +38,13 @@ pub(crate) fn do_ibc_packet_receive(
     env: Env,
     packet: &IbcPacket,
 ) -> Result<IbcReceiveResponse, ContractError> {
-    let packet_data: AtomicSwapPacketData = from_binary(&packet.data)?;
+    let packet_data: IBCSwapPacketData = from_binary(&packet.data)?;
 
     match packet_data.r#type {
         // TODO: Update these messages to interchain messages
         // Add all the functions
         // Add test for each operation
+        // This is receive part
         SwapMessageType::Unspecified => {
             let res = IbcReceiveResponse::new()
                 .set_ack(ack_success())
@@ -51,16 +52,34 @@ pub(crate) fn do_ibc_packet_receive(
                 .add_attribute("success", "true");
             Ok(res)
         }
-        SwapMessageType::MakeSwap => {
-            let msg: MakeSwapMsg = decode_make_swap_msg(&packet_data.data.clone());
+        // Save pool data
+        SwapMessageType::CreatePool => {
+            let msg: MsgCreatePoolRequest = decode_make_swap_msg(&packet_data.data.clone());
             on_received_make(deps, env, packet, msg)
         }
-        SwapMessageType::TakeSwap => {
-            let msg: TakeSwapMsg = decode_take_swap_msg(&packet_data.data.clone());
+        //
+        SwapMessageType::SingleDeposit => {
+            let msg: MsgSingleAssetDepositRequest = decode_take_swap_msg(&packet_data.data.clone());
             on_received_take(deps, env, packet, msg)
         }
-        SwapMessageType::CancelSwap => {
-            let msg: CancelSwapMsg = from_binary(&packet_data.data.clone())?;
+        SwapMessageType::MultiDeposit => {
+            let msg: MsgMultiAssetDepositRequest = from_binary(&packet_data.data.clone())?;
+            on_received_cancel(deps, env, packet, msg)
+        }
+        SwapMessageType::SingleWithdraw => {
+            let msg: MsgSingleAssetWithdrawRequest = from_binary(&packet_data.data.clone())?;
+            on_received_cancel(deps, env, packet, msg)
+        }
+        SwapMessageType::MultiWithdraw => {
+            let msg: MsgMultiAssetWithdrawRequest = from_binary(&packet_data.data.clone())?;
+            on_received_cancel(deps, env, packet, msg)
+        }
+        SwapMessageType::LeftSwap => {
+            let msg: MsgSwapRequest = from_binary(&packet_data.data.clone())?;
+            on_received_cancel(deps, env, packet, msg)
+        }
+        SwapMessageType::RightSwap => {
+            let msg: MsgSwapRequest = from_binary(&packet_data.data.clone())?;
             on_received_cancel(deps, env, packet, msg)
         }
     }
@@ -196,6 +215,7 @@ pub(crate) fn on_received_cancel(
 }
 
 // update the balance stored on this (channel, denom) index
+// acknowledgement
 pub(crate) fn on_packet_success(
     deps: DepsMut,
     packet: IbcPacket,

@@ -1,10 +1,10 @@
 use cosmwasm_std::{
     from_binary, Addr, BankMsg, Coin, Decimal, IbcAcknowledgement, IbcChannel, IbcOrder, StdResult,
-    SubMsg, Uint128,
+    SubMsg, Uint128, Binary, StdError,
 };
 use sha2::{Digest, Sha256};
 
-use crate::{interchainswap_handler::InterchainSwapPacketAcknowledgement, ContractError};
+use crate::{interchainswap_handler::InterchainSwapPacketAcknowledgement, ContractError, msg::MsgCreatePoolRequest};
 use hex;
 
 pub fn get_pool_id_with_tokens(tokens: &[Coin]) -> String {
@@ -130,4 +130,49 @@ pub(crate) fn send_tokens(to: &Addr, amount: Coin) -> StdResult<Vec<SubMsg>> {
         amount: vec![amount],
     };
     Ok(vec![SubMsg::new(msg)])
+}
+
+pub(crate) fn decode_create_pool_msg(data: &Binary) -> MsgCreatePoolRequest {
+    let msg_res: Result<MsgCreatePoolRequest, StdError> = from_binary(data);
+    let msg: MsgCreatePoolRequest;
+
+    match msg_res {
+        Ok(value) => {
+            msg = value.clone();
+        }
+        Err(_err) => {
+            let msg_output: MakeSwapMsgOutput = from_binary(data).unwrap();
+            msg = MsgCreatePoolRequest {
+                source_port: msg_output.source_port.clone(),
+                source_channel: msg_output.source_channel.clone(),
+                sender: msg_output.sender,
+                tokens: ,
+                decimals: ,
+                weight: ,
+                // sell_token: msg_output.sell_token.clone(),
+                // buy_token: msg_output.buy_token.clone(),
+                // maker_address: msg_output.maker_address.clone(),
+                // maker_receiving_address: msg_output.maker_receiving_address.clone(),
+                // desired_taker: msg_output.desired_taker.clone(),
+                // create_timestamp: msg_output.create_timestamp.parse().unwrap(),
+                // timeout_height: Height {
+                //     revision_number: msg_output
+                //         .timeout_height
+                //         .revision_number
+                //         .clone()
+                //         .parse()
+                //         .unwrap(),
+                //     revision_height: msg_output
+                //         .timeout_height
+                //         .revision_height
+                //         .clone()
+                //         .parse()
+                //         .unwrap(),
+                // },
+                // timeout_timestamp: msg_output.timeout_timestamp.parse().unwrap(),
+                // expiration_timestamp: msg_output.expiration_timestamp.parse().unwrap(),
+            }
+        }
+    }
+    msg
 }
