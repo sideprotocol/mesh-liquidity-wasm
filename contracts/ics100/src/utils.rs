@@ -207,3 +207,6 @@ pub(crate) fn send_tokens(to: &Addr, amount: Coin) -> StdResult<Vec<SubMsg>> {
     };
     Ok(vec![SubMsg::new(msg)])
 }
+
+
+// Add function to transfer cw20 tokens

@@ -4,10 +4,11 @@ use serde::{Deserialize, Serialize};
 use crate::{
     error::ContractError,
     types::{IBCSwapPacketData, SwapMessageType},
-    state::{AtomicSwapOrder, Status, SWAP_ORDERS},
+    state::{AtomicSwapOrder, Status, POOLS},
     utils::{
-        decode_make_swap_msg, decode_take_swap_msg, generate_order_id, order_path, send_tokens,
-    }, msg::{MsgCreatePoolRequest, MsgSingleAssetDepositRequest, MsgMultiAssetDepositRequest, MsgSingleAssetWithdrawRequest, MsgMultiAssetWithdrawRequest, MsgSwapRequest},
+        decode_make_swap_msg, decode_take_swap_msg, generate_order_id, order_path, send_tokens, decode_create_pool_msg, get_pool_id_with_tokens,
+    }, msg::{MsgCreatePoolRequest, MsgSingleAssetDepositRequest, MsgMultiAssetDepositRequest, MsgSingleAssetWithdrawRequest, MsgMultiAssetWithdrawRequest, MsgSwapRequest}
+    ,market::{InterchainLiquidityPool, PoolStatusInitial},
 };
 use cosmwasm_std::{
     attr, from_binary, to_binary, Addr, Binary, DepsMut, Env, IbcBasicResponse, IbcPacket,
@@ -54,70 +55,76 @@ pub(crate) fn do_ibc_packet_receive(
         }
         // Save pool data
         SwapMessageType::CreatePool => {
-            let msg: MsgCreatePoolRequest = decode_make_swap_msg(&packet_data.data.clone());
-            on_received_make(deps, env, packet, msg)
+            let msg: MsgCreatePoolRequest = decode_create_pool_msg(&packet_data.data.clone());
+            on_received_create_pool(deps, env, packet, msg)
         }
         //
         SwapMessageType::SingleDeposit => {
-            let msg: MsgSingleAssetDepositRequest = decode_take_swap_msg(&packet_data.data.clone());
-            on_received_take(deps, env, packet, msg)
+            let msg: MsgSingleAssetDepositRequest = decode_single_deposit_msg(&packet_data.data.clone());
+            on_received_single_deposit(deps, env, packet, msg)
         }
         SwapMessageType::MultiDeposit => {
             let msg: MsgMultiAssetDepositRequest = from_binary(&packet_data.data.clone())?;
-            on_received_cancel(deps, env, packet, msg)
+            on_received_multi_deposit(deps, env, packet, msg)
         }
         SwapMessageType::SingleWithdraw => {
             let msg: MsgSingleAssetWithdrawRequest = from_binary(&packet_data.data.clone())?;
-            on_received_cancel(deps, env, packet, msg)
+            on_received_single_withdraw(deps, env, packet, msg)
         }
         SwapMessageType::MultiWithdraw => {
             let msg: MsgMultiAssetWithdrawRequest = from_binary(&packet_data.data.clone())?;
-            on_received_cancel(deps, env, packet, msg)
+            on_received_multi_withdraw(deps, env, packet, msg)
         }
         SwapMessageType::LeftSwap => {
             let msg: MsgSwapRequest = from_binary(&packet_data.data.clone())?;
-            on_received_cancel(deps, env, packet, msg)
+            on_received_left_swap(deps, env, packet, msg)
         }
         SwapMessageType::RightSwap => {
             let msg: MsgSwapRequest = from_binary(&packet_data.data.clone())?;
-            on_received_cancel(deps, env, packet, msg)
+            on_received_right_swap(deps, env, packet, msg)
         }
     }
 }
 
-pub(crate) fn on_received_make(
+pub(crate) fn on_received_create_pool(
     deps: DepsMut,
     _env: Env,
     packet: &IbcPacket,
-    msg: MakeSwapMsg,
+    msg: MsgCreatePoolRequest,
 ) -> Result<IbcReceiveResponse, ContractError> {
-    // let packet_data: AtomicSwapPacketData = from_binary(&packet.data)?;
-    let path = order_path(
-        msg.source_channel.clone(),
-        msg.source_port.clone(),
-        packet.dest.channel_id.clone(),
-        packet.dest.port_id.clone(),
-        packet.sequence,
-    )?;
-    let order_id = generate_order_id(&path, msg.clone())?;
-    let swap_order = AtomicSwapOrder {
-        id: order_id.clone(),
-        maker: msg.clone(),
-        status: Status::Initial,
-        taker: None,
-        cancel_timestamp: None,
-        complete_timestamp: None,
-        path: path.clone(),
+    // get pool asset from tokens and weight
+    // construct assets
+    if (msg.tokens.length() != msg.weight.length() || msg.weight.length() != msg.decimals) {
+        // TODO:throw error
+    }
+    let construct_assets = vec![];
+    for (let i = 0; i < msg.tokens.length; i++) {
+        assets.push(PoolAsset {
+            // TODO: check if this token has supply in this chain using cosmwasm
+            side: ,
+            balance: tokens[i],
+            weight: weight[i],
+            decimal: decimal[i],
+        })
+    }
+
+    let pool_id = get_pool_id_with_tokens(&msg.tokens);
+    let supply: Coin = Coin {amount: 0, denom: pool_id}
+    let interchain_pool: InterchainLiquidityPool = InterchainLiquidityPool {
+        pool_id: pool_id,
+        creator: msg.sender,
+        assets: construct_assets, supply: supply, pool_price: 0, status: PoolStatusInitial,
+        encounter_party_port: msg.source_port,
+        encounter_party_channel: msg.source_channel
     };
 
-    SWAP_ORDERS.update(deps.storage, &order_id.clone(), |existing| match existing {
-        None => Ok(swap_order),
-        Some(_) => Err(ContractError::AlreadyExists {}),
-    })?;
+    POOLS.save(deps.storage, &pool_id, &interchain_pool)?;
+
     let res = IbcReceiveResponse::new()
         .set_ack(ack_success())
         .add_attribute("action", "receive")
-        .add_attribute("success", "true");
+        .add_attribute("success", "true")
+        .add_attribute("sucess", "create_pool_receive");
 
     Ok(res)
 }

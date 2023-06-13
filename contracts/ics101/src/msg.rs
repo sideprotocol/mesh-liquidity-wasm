@@ -27,7 +27,7 @@ pub struct MsgCreatePoolRequest {
     pub sender: String,
     pub tokens: Vec<Coin>,
     pub decimals: Vec<u32>,
-    pub weight: String,
+    pub weight: Vec<String>,
 }
 
 impl MsgCreatePoolRequest {
