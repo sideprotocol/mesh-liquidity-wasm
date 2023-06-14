@@ -7,7 +7,7 @@ use cw20::Cw20Coin;
 
 use cosmwasm_std::{Binary, Coin, Timestamp};
 
-use crate::state::Status;
+use crate::state::{AtomicSwapOrder, Status};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Height {
@@ -239,6 +239,16 @@ pub enum QueryMsg {
         limit: Option<u32>,
         desired_taker: String,
     },
+    ListByMaker {
+        start_after: Option<String>,
+        limit: Option<u32>,
+        maker: String,
+    },
+    ListByTaker {
+        start_after: Option<String>,
+        limit: Option<u32>,
+        taker: String,
+    },
     /// Returns the details of the named swap, error if not created.
     /// Return type: DetailsResponse.
     Details { id: String },
@@ -257,5 +267,5 @@ pub struct DetailsResponse {
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct ListResponse {
     /// List all open swap ids
-    pub swaps: Vec<DetailsResponse>,
+    pub swaps: Vec<AtomicSwapOrder>,
 }

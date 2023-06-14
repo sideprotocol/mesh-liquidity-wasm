@@ -1,8 +1,8 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Binary, Deps, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Response, StdResult,
-    Timestamp,
+    to_binary, Binary, Deps, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Order, Response,
+    StdResult, Timestamp,
 };
 
 use cw2::set_contract_version;
@@ -14,7 +14,6 @@ use crate::msg::{
     MakeSwapMsg, QueryMsg, SwapMessageType, TakeSwapMsg,
 };
 use crate::state::{
-    all_swap_order_ids,
     AtomicSwapOrder,
     Status,
     // CHANNEL_INFO,
@@ -215,6 +214,16 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             limit,
             desired_taker,
         )?),
+        QueryMsg::ListByMaker {
+            start_after,
+            limit,
+            maker,
+        } => to_binary(&query_list_by_maker(deps, start_after, limit, maker)?),
+        QueryMsg::ListByTaker {
+            start_after,
+            limit,
+            taker,
+        } => to_binary(&query_list_by_taker(deps, start_after, limit, taker)?),
         QueryMsg::Details { id } => to_binary(&query_details(deps, id)?),
     }
 }
@@ -244,26 +253,14 @@ fn query_list(
     limit: Option<u32>,
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.map(|s| Bound::exclusive(s.as_bytes()));
-    let swap_ids = all_swap_order_ids(deps.storage, start, limit)?;
+    let start = start_after.map(|s| Bound::exclusive(s.into_bytes()));
+    let swap_orders = SWAP_ORDERS
+        .range(deps.storage, start, None, Order::Ascending)
+        .take(limit)
+        .map(|item: Result<(String, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
+        .collect::<Vec<AtomicSwapOrder>>();
 
-    let mut swaps = vec![];
-
-    for i in 0..swap_ids.len() {
-        let swap_order = SWAP_ORDERS.load(deps.storage, &swap_ids[i])?;
-        let details = DetailsResponse {
-            id: swap_ids[i].clone(),
-            maker: swap_order.maker.clone(),
-            status: swap_order.status.clone(),
-            path: swap_order.path.clone(),
-            taker: swap_order.taker.clone(),
-            cancel_timestamp: swap_order.cancel_timestamp.clone(),
-            complete_timestamp: swap_order.complete_timestamp.clone(),
-        };
-        swaps.push(details);
-    }
-
-    Ok(ListResponse { swaps })
+    Ok(ListResponse { swaps: swap_orders })
 }
 
 fn query_list_by_desired_taker(
@@ -273,28 +270,53 @@ fn query_list_by_desired_taker(
     desired_taker: String,
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.map(|s| Bound::exclusive(s.as_bytes()));
-    let swap_ids = all_swap_order_ids(deps.storage, start, limit)?;
+    let start = start_after.map(|s| Bound::exclusive(s.into_bytes()));
+    let swap_orders = SWAP_ORDERS
+        .range(deps.storage, start, None, Order::Ascending)
+        .take(limit)
+        .map(|item: Result<(String, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
+        .filter(|swap_order| swap_order.maker.desired_taker == desired_taker)
+        .collect::<Vec<AtomicSwapOrder>>();
 
-    let mut swaps = vec![];
+    Ok(ListResponse { swaps: swap_orders })
+}
 
-    for i in 0..swap_ids.len() {
-        let swap_order = SWAP_ORDERS.load(deps.storage, &swap_ids[i])?;
-        if swap_order.maker.desired_taker == desired_taker {
-            let details = DetailsResponse {
-                id: swap_ids[i].clone(),
-                maker: swap_order.maker.clone(),
-                status: swap_order.status.clone(),
-                path: swap_order.path.clone(),
-                taker: swap_order.taker.clone(),
-                cancel_timestamp: swap_order.cancel_timestamp.clone(),
-                complete_timestamp: swap_order.complete_timestamp.clone(),
-            };
-            swaps.push(details);
-        }
-    }
+fn query_list_by_maker(
+    deps: Deps,
+    start_after: Option<String>,
+    limit: Option<u32>,
+    maker: String,
+) -> StdResult<ListResponse> {
+    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
+    let start = start_after.map(|s| Bound::exclusive(s.into_bytes()));
+    let swap_orders = SWAP_ORDERS
+        .range(deps.storage, start, None, Order::Ascending)
+        .take(limit)
+        .map(|item: Result<(String, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
+        .filter(|swap_order| swap_order.maker.maker_address == maker)
+        .collect::<Vec<AtomicSwapOrder>>();
 
-    Ok(ListResponse { swaps })
+    Ok(ListResponse { swaps: swap_orders })
+}
+
+fn query_list_by_taker(
+    deps: Deps,
+    start_after: Option<String>,
+    limit: Option<u32>,
+    taker: String,
+) -> StdResult<ListResponse> {
+    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
+    let start = start_after.map(|s| Bound::exclusive(s.into_bytes()));
+    let swap_orders = SWAP_ORDERS
+        .range(deps.storage, start, None, Order::Ascending)
+        .take(limit)
+        .map(|item: Result<(String, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
+        .filter(|swap_order| {
+            swap_order.taker.is_some() && swap_order.taker.clone().unwrap().taker_address == taker
+        })
+        .collect::<Vec<AtomicSwapOrder>>();
+
+    Ok(ListResponse { swaps: swap_orders })
 }
 
 #[cfg(test)]
