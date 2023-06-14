@@ -26,7 +26,7 @@ pub enum Status {
     Complete, // completed
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct AtomicSwapOrder {
     pub id: String,
     pub maker: MakeSwapMsg,
