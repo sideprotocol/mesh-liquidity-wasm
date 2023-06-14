@@ -1,4 +1,4 @@
-HOME1="/Users/ghostprince/.wasmd1"
+HOME1="~/.wasmd1"
 CONTRACT1="wasm1466nf3zuxpya8q9emxukd7vftaf6h4psr0a07srl5zw74zh84yjqeam05w"
 CONTRACT2="wasm1zwv6feuzhy6a9wekh96cd57lsarmqlwxdypdsplw6zhfncqw6ftqm3x37s"
 KEY1="main1"
