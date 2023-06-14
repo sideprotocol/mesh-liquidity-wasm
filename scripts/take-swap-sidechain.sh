@@ -1,5 +1,5 @@
-HOME1="/Users/ghostprince/.wasmd1"
-HOME2="/Users/ghostprince/.wasmd2"
+HOME1="~/.wasmd1"
+HOME2="~/.wasmd2"
 CHAIN_ID="sidechain_7070-1"
 SWAPID="294139cd2bfd6952010184a376a5a675834c8469045609f5f5b192a5e4b8f380"
 KEY1="main1"
