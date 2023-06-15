@@ -52,6 +52,38 @@ impl InterchainLiquidityPool {
         }
         Err(StdError::generic_err("Denom not found in pool"))
     }
+
+    pub fn add_asset(mut self, token: Coin) -> StdResult<Coin> {
+        for mut asset in self.assets {
+            if asset.balance.denom == token.denom {
+                asset.balance.amount += token.amount;
+            }
+        }
+        Err(StdError::generic_err("Denom not found in pool"))
+    }
+
+    pub fn add_supply(mut self, token: Coin) -> StdResult<Coin> {
+        if self.supply.denom == token.denom {
+            self.supply.amount += token.amount
+        }
+        Err(StdError::generic_err("Denom not found"))
+    }
+
+    pub fn subtract_asset(mut self, token: Coin) -> StdResult<Coin> {
+        for mut asset in self.assets {
+            if asset.balance.denom == token.denom {
+                asset.balance.amount -= token.amount;
+            }
+        }
+        Err(StdError::generic_err("Denom not found in pool"))
+    }
+
+    pub fn subtract_supply(mut self, token: Coin) -> StdResult<Coin> {
+        if self.supply.denom == token.denom {
+            self.supply.amount -= token.amount
+        }
+        Err(StdError::generic_err("Denom not found"))
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]

@@ -150,7 +150,7 @@ pub(crate) fn decode_create_pool_msg(data: &Binary) -> MsgCreatePoolRequest {
                 sender: msg_output.sender,
                 tokens: msg_output.tokens,
                 decimals: msg_output.decimals,
-                weight: msg_output.weight,
+                weights: msg_output.weights,
             }
         }
     }

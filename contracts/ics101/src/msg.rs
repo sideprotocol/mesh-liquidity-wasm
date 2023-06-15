@@ -27,7 +27,7 @@ pub struct MsgCreatePoolRequest {
     pub sender: String,
     pub tokens: Vec<Coin>,
     pub decimals: Vec<u32>,
-    pub weight: Vec<String>,
+    pub weights: Vec<u32>,
 }
 
 impl MsgCreatePoolRequest {
@@ -42,15 +42,15 @@ impl MsgCreatePoolRequest {
             return Err(ContractError::InvalidDecimalPair.into());
         }
 
-        let weights: Vec<&str> = self.weight.split(':').collect();
-        if weights.len() != 2 {
-            return Err(ContractError::InvalidWeightPair.into());
-        }
+        // let weights: Vec<&str> = self.weight.split(':').collect();
+        // if weights.len() != 2 {
+        //     return Err(ContractError::InvalidWeightPair.into());
+        // }
 
         let mut total_weight: u32 = 0;
 
-        for i in 0..weights.len() {
-            total_weight += weights[i].parse::<u32>().unwrap();
+        for i in 0..self.weights.len() {
+            total_weight += self.weights[i];
         }
 
         if total_weight != 100 {
