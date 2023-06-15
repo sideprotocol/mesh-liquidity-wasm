@@ -1,10 +1,18 @@
 use cosmwasm_std::{
     from_binary, Addr, BankMsg, Coin, Decimal, IbcAcknowledgement, IbcChannel, IbcOrder, StdResult,
+<<<<<<< HEAD
     SubMsg, Uint128, Binary, StdError,
 };
 use sha2::{Digest, Sha256};
 
 use crate::{interchainswap_handler::InterchainSwapPacketAcknowledgement, ContractError, msg::MsgCreatePoolRequest};
+=======
+    SubMsg, Uint128,
+};
+use sha2::{Digest, Sha256};
+
+use crate::{interchainswap_handler::InterchainSwapPacketAcknowledgement, ContractError};
+>>>>>>> 5964b71 (merge)
 use hex;
 
 pub fn get_pool_id_with_tokens(tokens: &[Coin]) -> String {
@@ -131,6 +139,7 @@ pub(crate) fn send_tokens(to: &Addr, amount: Coin) -> StdResult<Vec<SubMsg>> {
     };
     Ok(vec![SubMsg::new(msg)])
 }
+<<<<<<< HEAD
 
 pub(crate) fn decode_create_pool_msg(data: &Binary) -> MsgCreatePoolRequest {
     let msg_res: Result<MsgCreatePoolRequest, StdError> = from_binary(data);
@@ -156,3 +165,5 @@ pub(crate) fn decode_create_pool_msg(data: &Binary) -> MsgCreatePoolRequest {
     }
     msg
 }
+=======
+>>>>>>> 5964b71 (merge)

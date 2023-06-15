@@ -92,7 +92,10 @@ pub enum ContractError {
 
     #[error("Invalid swap type")]
     InvalidSwapType,
+<<<<<<< HEAD
 
     #[error("Invalid assets input length")]
     InvalidAssetInput,
+=======
+>>>>>>> 5964b71 (merge)
 }
