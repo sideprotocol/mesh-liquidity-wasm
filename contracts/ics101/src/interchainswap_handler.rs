@@ -150,7 +150,7 @@ pub(crate) fn on_received_single_deposit(
     let mut interchain_pool = POOLS.load(deps.storage, &msg.pool_id)?;
 
     // Check status and update states accordingly
-    if (interchain_pool.status == PoolStatusReady) {
+    if interchain_pool.status == PoolStatusReady {
         // increase lp token mint amount
         interchain_pool.add_supply(state_change.pool_tokens.unwrap()[0]);
 

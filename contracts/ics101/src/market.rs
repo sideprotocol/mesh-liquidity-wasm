@@ -52,7 +52,6 @@ impl InterchainLiquidityPool {
         }
         Err(StdError::generic_err("Denom not found in pool"))
     }
-<<<<<<< HEAD
 
     pub fn add_asset(mut self, token: Coin) -> StdResult<Coin> {
         for mut asset in self.assets {
@@ -85,8 +84,6 @@ impl InterchainLiquidityPool {
         }
         Err(StdError::generic_err("Denom not found"))
     }
-=======
->>>>>>> 5964b71 (merge)
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
