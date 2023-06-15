@@ -561,26 +561,6 @@ dependencies = [
 
 [[package]]
 name = "ics100"
-<<<<<<< HEAD
-=======
-version = "0.1.0"
-dependencies = [
- "cosmwasm-schema",
- "cosmwasm-std",
- "cw-storage-plus",
- "cw-utils",
- "cw2",
- "cw20",
- "hex 0.3.2",
- "schemars",
- "serde",
- "sha2 0.8.2",
- "thiserror",
-]
-
-[[package]]
-name = "ics101"
->>>>>>> 5964b71 (merge)
 version = "0.1.0"
 dependencies = [
  "cosmwasm-schema",
@@ -786,7 +766,6 @@ dependencies = [
 ]
 
 [[package]]
-<<<<<<< HEAD
 name = "semver"
 version = "1.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -796,11 +775,6 @@ checksum = "bebd363326d05ec3e2f532ab7660680f3b02130d780c299bca73469d521bc0ed"
 name = "serde"
 version = "1.0.163"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-=======
-name = "serde"
-version = "1.0.163"
-source = "registry+https://github.com/rust-lang/crates.io-index"
->>>>>>> 5964b71 (merge)
 checksum = "2113ab51b87a539ae008b5c6c02dc020ffa39afd2d83cffcb3f4eb2722cebec2"
 dependencies = [
  "serde_derive",
