@@ -2,3 +2,5 @@
 Cargo.lock
 /.DS_Store
 contracts/.DS_Store
+contracts/ics100/.DS_Store
+contracts/ics101/.DS_Store
