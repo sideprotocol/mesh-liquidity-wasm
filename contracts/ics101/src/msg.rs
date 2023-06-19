@@ -4,53 +4,51 @@ use serde::{Deserialize, Serialize};
 use cosmwasm_std::{Coin, Response, StdError};
 
 use crate::error::ContractError;
-use crate::market::{InterchainLiquidityPool, InterchainMarketMaker};
+use crate::market::{InterchainLiquidityPool, InterchainMarketMaker, PoolAsset};
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct InstantiateMsg {}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub enum ExecuteMsg {
-    CreatePool(MsgCreatePoolRequest),
+    MakePool(MsgMakePoolRequest),
+    TakePool(MsgTakePoolRequest),
     SingleAssetDeposit(MsgSingleAssetDepositRequest),
-    MultiAssetDeposit(MsgMultiAssetDepositRequest),
-    SingleAssetWithdraw(MsgSingleAssetWithdrawRequest),
+    MakeMultiAssetDeposit(MsgMakeMultiAssetDepositRequest),
+    TakeMultiAssetDeposit(MsgTakeMultiAssetDepositRequest),
+    //SingleAssetWithdraw(MsgSingleAssetWithdrawRequest),
     MultiAssetWithdraw(MsgMultiAssetWithdrawRequest),
     Swap(MsgSwapRequest),
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct MsgCreatePoolRequest {
+pub struct MsgMakePoolRequest {
     pub source_port: String,
     pub source_channel: String,
-    pub sender: String,
-    pub tokens: Vec<Coin>,
-    pub decimals: Vec<u32>,
-    pub weights: Vec<u32>,
+    pub creator: String,
+    pub counterparty_creator: String,
+    pub liquidity:  Vec<PoolAsset>,
+    pub swap_fee: u32,
+    pub timeout_height: u64,
+    pub timeout_timestamp: u64
+    // pub tokens: Vec<Coin>,
+    // pub decimals: Vec<u32>,
+    // pub weights: Vec<u32>,
 }
 
-impl MsgCreatePoolRequest {
+impl MsgMakePoolRequest {
     pub fn validate_basic(&self) -> Result<Response, ContractError> {
-        let denom_size = self.tokens.len();
-        // validation message
+        let denom_size = self.liquidity.len();
+        // // validation message
         if denom_size != 2 {
             return Err(ContractError::InvalidDenomPair);
         }
 
-        if self.decimals.len() != 2 {
-            return Err(ContractError::InvalidDecimalPair.into());
-        }
-
-        // let weights: Vec<&str> = self.weight.split(':').collect();
-        // if weights.len() != 2 {
-        //     return Err(ContractError::InvalidWeightPair.into());
-        // }
-
         let mut total_weight: u32 = 0;
 
-        for i in 0..self.weights.len() {
-            total_weight += self.weights[i];
+        for i in 0..self.liquidity.len() {
+            total_weight += self.liquidity[i].weight;
         }
 
         if total_weight != 100 {
@@ -63,10 +61,27 @@ impl MsgCreatePoolRequest {
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "camelCase")]
+pub struct MsgMakePoolResponse {
+    pool_id: String
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct MsgTakePoolRequest {
+    pub creator: String,
+    pub pool_id: String,
+    pub timeout_height: u64,
+    pub timeout_timestamp: u64
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct MsgSingleAssetDepositRequest {
     pub pool_id: String,
     pub sender: String,
     pub token: Coin,
+    pub timeout_height: u64,
+    pub timeout_timestamp: u64
 }
 
 impl MsgSingleAssetDepositRequest {
@@ -83,31 +98,64 @@ impl MsgSingleAssetDepositRequest {
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct MsgMultiAssetDepositRequest {
+pub struct MsgSingleAssetDepositResponse {
+    pub pool_token: Coin
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct DepositAsset {
+    pub sender: String,
+    pub balance: Coin
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct MsgMakeMultiAssetDepositRequest {
     pub pool_id: String,
-    pub local_deposit: LocalDeposit,
-    pub remote_deposit: RemoteDeposit,
+    pub deposits: Vec<DepositAsset>,
+    pub timeout_height: u64,
+    pub timeout_timestamp: u64
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-pub struct LocalDeposit {
+#[serde(rename_all = "camelCase")]
+pub struct MsgTakeMultiAssetDepositRequest {
     pub sender: String,
-    pub token: Coin,
+    pub pool_id: String,
+    pub order_id: u64,
+    pub timeout_height: u64,
+    pub timeout_timestamp: u64
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-pub struct RemoteDeposit {
-    pub sender: String,
-    pub token: Coin,
-    pub sequence: u64,
-    pub signature: Vec<u8>,
+#[serde(rename_all = "camelCase")]
+pub struct MsgMultiAssetDepositResponse {
+    pub pool_token: Vec<Coin>
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct WithdrawAsset {
+    pub receiver: String,
+    pub balance: Coin
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct MsgMultiAssetWithdrawRequest {
-    pub local_withdraw: MsgSingleAssetWithdrawRequest,
-    pub remote_withdraw: MsgSingleAssetWithdrawRequest,
+    pub pool_id: String,
+    pub receiver: String,
+    pub counterparty_receiver: String,
+    pub pool_token: Coin,
+    pub timeout_height: u64,
+    pub timeout_timestamp: u64
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct MsgMultiAssetWithdrawResponse {
+    pub tokens: Vec<Coin>
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -135,6 +183,8 @@ pub struct MsgSwapRequest {
     pub token_out: Coin,
     pub slippage: u64,
     pub recipient: String,
+    pub timeout_height: u64,
+    pub timeout_timestamp: u64
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]

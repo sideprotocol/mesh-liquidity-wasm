@@ -4,7 +4,7 @@ use cosmwasm_std::{
 };
 use sha2::{Digest, Sha256};
 
-use crate::{interchainswap_handler::InterchainSwapPacketAcknowledgement, ContractError, msg::MsgCreatePoolRequest};
+use crate::{interchainswap_handler::InterchainSwapPacketAcknowledgement, ContractError, msg::MsgMakePoolRequest};
 use hex;
 
 pub fn get_pool_id_with_tokens(tokens: &[Coin]) -> String {
@@ -132,9 +132,9 @@ pub(crate) fn send_tokens(to: &Addr, amount: Coin) -> StdResult<Vec<SubMsg>> {
     Ok(vec![SubMsg::new(msg)])
 }
 
-pub(crate) fn decode_create_pool_msg(data: &Binary) -> MsgCreatePoolRequest {
-    let msg_res: Result<MsgCreatePoolRequest, StdError> = from_binary(data);
-    let msg: MsgCreatePoolRequest;
+pub(crate) fn decode_create_pool_msg(data: &Binary) -> MsgMakePoolRequest {
+    let msg_res: Result<MsgMakePoolRequest, StdError> = from_binary(data);
+    let msg: MsgMakePoolRequest;
 
     match msg_res {
         Ok(value) => {
@@ -143,15 +143,15 @@ pub(crate) fn decode_create_pool_msg(data: &Binary) -> MsgCreatePoolRequest {
         Err(_err) => {
             // TODO:handle error
             // Why do we need MSgOUtput ? does it not unwrap string
-            let msg_output: MsgCreatePoolRequest = from_binary(data).unwrap();
-            msg = MsgCreatePoolRequest {
-                source_port: msg_output.source_port.clone(),
-                source_channel: msg_output.source_channel.clone(),
-                sender: msg_output.sender,
-                tokens: msg_output.tokens,
-                decimals: msg_output.decimals,
-                weights: msg_output.weights,
-            }
+            let msg_output: MsgMakePoolRequest = from_binary(data).unwrap();
+            // msg = MsgMakePoolRequest {
+            //     source_port: msg_output.source_port.clone(),
+            //     source_channel: msg_output.source_channel.clone(),
+            //     sender: msg_output.sender,
+            //     tokens: msg_output.tokens,
+            //     decimals: msg_output.decimals,
+            //     weights: msg_output.weights,
+            // }
         }
     }
     msg
