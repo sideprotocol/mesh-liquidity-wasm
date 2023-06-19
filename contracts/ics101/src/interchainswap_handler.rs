@@ -51,34 +51,42 @@ pub(crate) fn do_ibc_packet_receive(
             Ok(res)
         }
         // Save pool data
-        SwapMessageType::CreatePool => {
+        SwapMessageType::MakePool => {
             let msg: MsgCreatePoolRequest = decode_create_pool_msg(&packet_data.data.clone());
-            on_received_create_pool(deps, env, packet, msg)
+            on_received_make_pool(deps, env, packet, msg)
+        }
+        SwapMessageType::TakePool => {
+            let msg: MsgCreatePoolRequest = decode_create_pool_msg(&packet_data.data.clone());
+            on_received_take_pool(deps, env, packet, msg)
         }
         //
         SwapMessageType::SingleDeposit => {
             let msg: MsgSingleAssetDepositRequest = from_binary(&packet_data.data.clone())?;
             on_received_single_deposit(deps, env, packet, msg, packet_data.state_change.unwrap())
         }
-        SwapMessageType::MultiDeposit => {
+        SwapMessageType::MakeMultiDeposit => {
             let msg: MsgMultiAssetDepositRequest = from_binary(&packet_data.data.clone())?;
-            on_received_multi_deposit(deps, env, packet, msg, packet_data.state_change.unwrap())
+            on_received_make_multi_deposit(deps, env, packet, msg, packet_data.state_change.unwrap())
         }
-        SwapMessageType::SingleWithdraw => {
-            let msg: MsgSingleAssetWithdrawRequest = from_binary(&packet_data.data.clone())?;
-            on_received_single_withdraw(deps, env, packet, msg, packet_data.state_change.unwrap())
+        SwapMessageType::TakeMultiDeposit => {
+            let msg: MsgMultiAssetDepositRequest = from_binary(&packet_data.data.clone())?;
+            on_received_take_multi_deposit(deps, env, packet, msg, packet_data.state_change.unwrap())
         }
+        // SwapMessageType::SingleWithdraw => {
+        //     let msg: MsgSingleAssetWithdrawRequest = from_binary(&packet_data.data.clone())?;
+        //     on_received_single_withdraw(deps, env, packet, msg, packet_data.state_change.unwrap())
+        // }
         SwapMessageType::MultiWithdraw => {
             let msg: MsgMultiAssetWithdrawRequest = from_binary(&packet_data.data.clone())?;
             on_received_multi_withdraw(deps, env, packet, msg)
         }
         SwapMessageType::LeftSwap => {
             let msg: MsgSwapRequest = from_binary(&packet_data.data.clone())?;
-            on_received_left_swap(deps, env, packet, msg)
+            on_received_swap(deps, env, packet, msg)
         }
         SwapMessageType::RightSwap => {
             let msg: MsgSwapRequest = from_binary(&packet_data.data.clone())?;
-            on_received_right_swap(deps, env, packet, msg)
+            on_received_swap(deps, env, packet, msg)
         }
     }
 }

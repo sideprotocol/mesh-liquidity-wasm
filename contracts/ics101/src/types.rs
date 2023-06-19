@@ -27,18 +27,20 @@ pub struct IBCSwapPacketData {
 pub enum SwapMessageType {
     #[serde(rename = "TYPE_UNSPECIFIED")]
     Unspecified = 0,
-    #[serde(rename = "TYPE_CREATE_POOL")]
-    CreatePool = 1,
+    #[serde(rename = "TYPE_MAKE_POOL")]
+    MakePool = 1,
+    #[serde(rename = "TYPE_TAKE_POOL")]
+    TakePool = 2,
     #[serde(rename = "TYPE_SINGLE_DEPOSIT")]
-    SingleDeposit = 2,
-    #[serde(rename = "TYPE_MULTI_DEPOSIT")]
-    MultiDeposit = 3,
-    #[serde(rename = "TYPE_SINGLE_WITHDRAW")]
-    SingleWithdraw = 4,
+    SingleDeposit = 3,
+    #[serde(rename = "TYPE_MAKE_MULTI_DEPOSIT")]
+    MakeMultiDeposit = 4,
+    #[serde(rename = "TYPE_TAKE_MULTI_DEPOSIT")]
+    TakeMultiDeposit = 5,
     #[serde(rename = "TYPE_MULTI_WITHDRAW")]
-    MultiWithdraw = 5,
+    MultiWithdraw = 6,
     #[serde(rename = "TYPE_LEFT_SWAP")]
-    LeftSwap = 6,
+    LeftSwap = 7,
     #[serde(rename = "TYPE_RIGHT_SWAP")]
-    RightSwap = 7,
+    RightSwap = 8,
 }

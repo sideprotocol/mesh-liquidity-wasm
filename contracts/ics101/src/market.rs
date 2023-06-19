@@ -11,8 +11,8 @@ use crate::utils::{decimal_to_f64, uint128_to_f64};
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub enum PoolSide {
-    NATIVE = 0,
-    REMOTE = 1,
+    SOURCE = 0,
+    DESTINATION = 1,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -34,13 +34,16 @@ pub struct PoolAsset {
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct InterchainLiquidityPool {
     pub pool_id: String,
-    pub creator: String,
+    pub source_creator: String,
+    pub destination_creator: String,
     pub assets: Vec<PoolAsset>,
+    pub swap_fee: u32,
     pub supply: Coin,
-    pub pool_price: f32,
     pub status: PoolStatus,
-    pub encounter_party_port: String,
-    pub encounter_party_channel: String,
+    pub pool_price: f32,
+    pub originating_chain_id: String,
+    pub counter_party_port: String,
+    pub counter_party_channel: String,
 }
 
 impl InterchainLiquidityPool {
@@ -51,6 +54,15 @@ impl InterchainLiquidityPool {
             }
         }
         Err(StdError::generic_err("Denom not found in pool"))
+    }
+
+    pub fn find_asset_by_side(self, side: PoolSide) -> StdResult<PoolAsset> {
+        for asset in self.assets {
+            if asset.side == side {
+                return Ok(asset)
+            }
+        }
+        Err(StdError::generic_err("Asset side not found in pool"))
     }
 
     pub fn add_asset(mut self, token: Coin) -> StdResult<Coin> {

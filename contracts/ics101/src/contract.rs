@@ -10,11 +10,11 @@ use cosmwasm_std::{
 use cw2::set_contract_version;
 
 use crate::error::ContractError;
-use crate::market::{InterchainMarketMaker, PoolStatus};
+use crate::market::{InterchainMarketMaker, PoolStatus, PoolSide};
 use crate::msg::{
-    ExecuteMsg, InstantiateMsg, MsgCreatePoolRequest, MsgMultiAssetDepositRequest,
+    ExecuteMsg, InstantiateMsg,
     MsgMultiAssetWithdrawRequest, MsgSingleAssetDepositRequest, MsgSingleAssetWithdrawRequest,
-    MsgSwapRequest, SwapMsgType,
+    MsgSwapRequest, SwapMsgType, MsgMakePoolRequest, MsgTakePoolRequest,
 };
 use crate::state::POOLS;
 use crate::types::{IBCSwapPacketData, StateChange, SwapMessageType};
@@ -47,20 +47,21 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::CreatePool(msg) => create_pool(deps, env, info, msg),
+        ExecuteMsg::MakePool(msg) => make_pool(deps, env, info, msg),
+        ExecuteMsg::TakePool(msg) => take_pool(deps, env, info, msg),
         ExecuteMsg::SingleAssetDeposit(msg) => single_asset_deposit(deps, env, info, msg),
-        ExecuteMsg::MultiAssetDeposit(msg) => multi_asset_deposit(deps, env, info, msg),
-        ExecuteMsg::SingleAssetWithdraw(msg) => singe_asset_withdraw(deps, env, info, msg),
+        ExecuteMsg::MakeMultiAssetDeposit(msg) => multi_asset_deposit(deps, env, info, msg),
+        ExecuteMsg::TakeMultiAssetDeposit(msg) => multi_asset_deposit(deps, env, info, msg),
         ExecuteMsg::MultiAssetWithdraw(msg) => multi_asset_withdraw(deps, env, info, msg),
         ExecuteMsg::Swap(msg) => swap(deps, env, info, msg),
     }
 }
 
-fn create_pool(
-    _deps: DepsMut,
+fn make_pool(
+    deps: DepsMut,
     env: Env,
-    _info: MessageInfo,
-    msg: MsgCreatePoolRequest,
+    info: MessageInfo,
+    msg: MsgMakePoolRequest,
 ) -> Result<Response, ContractError> {
     // validate message
     let _source_port = msg.source_port.clone();
@@ -73,11 +74,27 @@ fn create_pool(
         ))));
     }
 
-    let _pool_id = get_pool_id_with_tokens(&msg.tokens);
+    let tokens = [];
+    tokens[0] = msg.liquidity[0].balance;
+    tokens[1] = msg.liquidity[1].balance;
+
+    // check if given tokens are received here
+    let mut ok = false;
+    // First token in this chain only first token needs to be verified
+    for asset in info.funds {
+        if asset.denom == tokens[0].denom && asset.amount == tokens[0].amount {
+            ok = true;
+        }
+    }
+    if !ok {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Funds mismatch: Funds mismatched to with message and sent values: Make Pool"
+        ))));
+    }
 
     let pool_data = to_binary(&msg).unwrap();
     let ibc_packet_data = IBCSwapPacketData {
-        r#type: SwapMessageType::CreatePool,
+        r#type: SwapMessageType::MakePool,
         data: pool_data.clone(),
         state_change: None,
     };
@@ -94,7 +111,63 @@ fn create_pool(
 
     let res = Response::default()
         .add_message(ibc_msg)
-        .add_attribute("action", "create_pool");
+        .add_attribute("action", "make_pool");
+    Ok(res)
+}
+
+fn take_pool(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    msg: MsgTakePoolRequest,
+) -> Result<Response, ContractError> {
+    // load pool throw error if not found
+    let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id)?;
+    let interchain_pool;
+    if let Some(pool) = interchain_pool_temp {
+        interchain_pool = pool
+    } else {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Pool doesn't exist {}", msg.pool_id
+        ))));
+    }
+    // check balance and funds sent handle error
+    // TODO: Handle unwrap
+    let token = interchain_pool.find_asset_by_side(PoolSide::SOURCE).unwrap();
+    // check if given tokens are received here
+    let mut ok = false;
+    // First token in this chain only first token needs to be verified
+    for asset in info.funds {
+        if asset.denom == token.balance.denom && asset.amount == token.balance.amount {
+            ok = true;
+        }
+    }
+    if !ok {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Funds mismatch: Funds mismatched to with message and sent values: Take Pool"
+        ))));
+    }
+
+    let pool_data = to_binary(&msg).unwrap();
+    let ibc_packet_data = IBCSwapPacketData {
+        r#type: SwapMessageType::TakePool,
+        data: pool_data.clone(),
+        state_change: None,
+    };
+
+    let ibc_msg = IbcMsg::SendPacket {
+        channel_id: interchain_pool.counter_party_channel.clone(),
+        data: to_binary(&ibc_packet_data)?,
+        timeout: IbcTimeout::from(
+            env.block
+                .time
+                .plus_seconds(DEFAULT_TIMEOUT_TIMESTAMP_OFFSET),
+        ),
+    };
+
+    let res = Response::default()
+        .add_message(ibc_msg)
+        .add_attribute("action", "make_pool");
     Ok(res)
 }
 
