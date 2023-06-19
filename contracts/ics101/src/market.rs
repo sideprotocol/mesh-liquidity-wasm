@@ -17,10 +17,10 @@ pub enum PoolSide {
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub enum PoolStatus {
-    #[serde(rename = "POOL_STATUS_INITIAL")]
-    PoolStatusInitial = 0,
-    #[serde(rename = "POOL_STATUS_READY")]
-    PoolStatusReady = 1,
+    #[serde(rename = "POOL_STATUS_INITIALIZED")]
+    PoolStatusInitialized = 0,
+    #[serde(rename = "POOL_STATUS_ACTIVE")]
+    PoolStatusActive = 1,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -150,15 +150,8 @@ impl InterchainMarketMaker {
 
         let issue_amount: Uint128;
 
-        if self.pool.status == PoolStatus::PoolStatusInitial {
-            let total_initial_lp_amount: Uint128 = self
-                .pool
-                .assets
-                .iter()
-                .map(|a| a.balance.amount.clone())
-                .sum();
-
-            issue_amount = total_initial_lp_amount;
+        if self.pool.status != PoolStatus::PoolStatusActive {
+            // throw error
         } else {
             let weight = (asset.weight as f64) / 100.0;
 
@@ -175,6 +168,7 @@ impl InterchainMarketMaker {
                 .mul(Uint128::from(factor as u64))
                 .div(Uint128::from(1e18 as u64));
 
+            // Check if we need this
             let estimated_amount = self.pool.supply.amount + issue_amount.clone();
 
             let estimated_lp_price =
@@ -200,7 +194,7 @@ impl InterchainMarketMaker {
 
             let issue_amount;
 
-            if self.pool.status == PoolStatus::PoolStatusInitial {
+            if self.pool.status == PoolStatus::PoolStatusInitialized {
                 let mut total_initial_lp_amount = Uint128::zero();
                 for asset in self.pool.clone().assets {
                     total_initial_lp_amount = total_initial_lp_amount.add(asset.balance.amount);

@@ -48,6 +48,9 @@ pub enum ContractError {
     #[error("Got a submessage reply with unknown id: {id}")]
     UnknownReplyId { id: u64 },
 
+    #[error("Pool is not ready for swap!")]
+    NotReadyForSwap,
+
     #[error("Only supports channel with ibc version ics100-1, got {version}")]
     InvalidIbcVersion { version: String },
 

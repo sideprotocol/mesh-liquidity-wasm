@@ -14,7 +14,7 @@ use crate::market::{InterchainMarketMaker, PoolStatus, PoolSide};
 use crate::msg::{
     ExecuteMsg, InstantiateMsg,
     MsgMultiAssetWithdrawRequest, MsgSingleAssetDepositRequest, MsgSingleAssetWithdrawRequest,
-    MsgSwapRequest, SwapMsgType, MsgMakePoolRequest, MsgTakePoolRequest,
+    MsgSwapRequest, SwapMsgType, MsgMakePoolRequest, MsgTakePoolRequest, MsgMakeMultiAssetDepositRequest,
 };
 use crate::state::POOLS;
 use crate::types::{IBCSwapPacketData, StateChange, SwapMessageType};
@@ -50,8 +50,8 @@ pub fn execute(
         ExecuteMsg::MakePool(msg) => make_pool(deps, env, info, msg),
         ExecuteMsg::TakePool(msg) => take_pool(deps, env, info, msg),
         ExecuteMsg::SingleAssetDeposit(msg) => single_asset_deposit(deps, env, info, msg),
-        ExecuteMsg::MakeMultiAssetDeposit(msg) => multi_asset_deposit(deps, env, info, msg),
-        ExecuteMsg::TakeMultiAssetDeposit(msg) => multi_asset_deposit(deps, env, info, msg),
+        ExecuteMsg::MakeMultiAssetDeposit(msg) => make_multi_asset_deposit(deps, env, info, msg),
+        ExecuteMsg::TakeMultiAssetDeposit(msg) => take_multi_asset_deposit(deps, env, info, msg),
         ExecuteMsg::MultiAssetWithdraw(msg) => multi_asset_withdraw(deps, env, info, msg),
         ExecuteMsg::Swap(msg) => swap(deps, env, info, msg),
     }
@@ -136,7 +136,6 @@ fn take_pool(
     let token = interchain_pool.find_asset_by_side(PoolSide::SOURCE).unwrap();
     // check if given tokens are received here
     let mut ok = false;
-    // First token in this chain only first token needs to be verified
     for asset in info.funds {
         if asset.denom == token.balance.denom && asset.amount == token.balance.amount {
             ok = true;
@@ -174,7 +173,7 @@ fn take_pool(
 pub fn single_asset_deposit(
     deps: DepsMut,
     env: Env,
-    _info: MessageInfo,
+    info: MessageInfo,
     msg: MsgSingleAssetDepositRequest,
 ) -> Result<Response, ContractError> {
     if let Err(err) = msg.validate_basic() {
@@ -184,8 +183,25 @@ pub fn single_asset_deposit(
         ))));
     }
 
+    // check if given tokens are received here
+    let mut ok = false;
+    for asset in info.funds {
+        if asset.denom == msg.token.denom && asset.amount == msg.token.amount {
+            ok = true;
+        }
+    }
+    if !ok {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Funds mismatch: Funds mismatched to with message and sent values: Take Pool"
+        ))));
+    }
+
     let pool_id = msg.pool_id.clone();
     let pool = POOLS.load(deps.storage, &pool_id)?;
+
+    if pool.status != PoolStatus::PoolStatusActive {
+        return Err(ContractError::NotReadyForSwap);
+    }
 
     // Create the interchain market maker (amm).
     let amm = InterchainMarketMaker {
@@ -214,7 +230,7 @@ pub fn single_asset_deposit(
 
     // Send the IBC swap packet.
     let ibc_msg = IbcMsg::SendPacket {
-        channel_id: pool.encounter_party_channel.clone(),
+        channel_id: pool.counter_party_channel.clone(),
         data: to_binary(&packet_data)?,
         timeout: IbcTimeout::from(
             env.block
@@ -229,11 +245,11 @@ pub fn single_asset_deposit(
     Ok(res)
 }
 
-fn multi_asset_deposit(
+fn make_multi_asset_deposit(
     deps: DepsMut,
     env: Env,
     _info: MessageInfo,
-    msg: MsgMultiAssetDepositRequest,
+    msg: MsgMakeMultiAssetDepositRequest,
 ) -> Result<Response, ContractError> {
     // Retrieve the interchain liquidity pool from storage
     let pool = POOLS.load(deps.storage, &msg.pool_id)?;
