@@ -32,9 +32,6 @@ pub struct MsgMakePoolRequest {
     pub swap_fee: u32,
     pub timeout_height: u64,
     pub timeout_timestamp: u64
-    // pub tokens: Vec<Coin>,
-    // pub decimals: Vec<u32>,
-    // pub weights: Vec<u32>,
 }
 
 impl MsgMakePoolRequest {

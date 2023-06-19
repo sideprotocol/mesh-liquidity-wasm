@@ -207,7 +207,7 @@ pub fn single_asset_deposit(
     let amm = InterchainMarketMaker {
         pool_id: pool_id.clone(),
         pool: pool.clone(),
-        fee_rate: MAX_FEE_RATE,
+        fee_rate: pool.swap_fee,
     };
 
     // Deposit single asset to the AMM.
@@ -218,7 +218,7 @@ pub fn single_asset_deposit(
     let msg_data = to_binary(&msg).unwrap();
     // Construct the IBC swap packet.
     let packet_data = IBCSwapPacketData {
-        r#type: SwapMessageType::SingleDeposit,
+        r#type: SwapMessageType::SingleAssetDeposit,
         data: msg_data, // Use proper serialization for the `data` field.
         state_change: Some(StateChange {
             in_tokens: None,

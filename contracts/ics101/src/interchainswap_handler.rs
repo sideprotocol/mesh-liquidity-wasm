@@ -3,12 +3,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     error::ContractError,
-    types::{IBCSwapPacketData, SwapMessageType, StateChange},
+    types::{InterchainSwapPacketData, InterchainMessageType, StateChange},
     state::{Status, POOLS},
     utils::{
         send_tokens, decode_create_pool_msg, get_pool_id_with_tokens,
-    }, msg::{MsgCreatePoolRequest, MsgSingleAssetDepositRequest, MsgMultiAssetDepositRequest, MsgSingleAssetWithdrawRequest, MsgMultiAssetWithdrawRequest, MsgSwapRequest}
-    ,market::{InterchainLiquidityPool, PoolStatus::{PoolStatusInitial, PoolStatusReady}, PoolAsset},
+    }, msg::{MsgMakePoolRequest, MsgTakePoolRequest, MsgSingleAssetDepositRequest,
+     MsgMultiAssetWithdrawRequest, MsgSwapRequest,
+    MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest}
+    ,market::{InterchainLiquidityPool, PoolStatus::{PoolStatusInitialized, PoolStatusActive},
+    InterchainMarketMaker},
 };
 use cosmwasm_std::{
     attr, from_binary, to_binary, Addr, Binary, DepsMut, Env, IbcBasicResponse, IbcPacket,
@@ -39,11 +42,11 @@ pub(crate) fn do_ibc_packet_receive(
     env: Env,
     packet: &IbcPacket,
 ) -> Result<IbcReceiveResponse, ContractError> {
-    let packet_data: IBCSwapPacketData = from_binary(&packet.data)?;
+    let packet_data: InterchainSwapPacketData = from_binary(&packet.data)?;
 
     match packet_data.r#type {
         // TODO: Add test for each operation
-        SwapMessageType::Unspecified => {
+        InterchainMessageType::Unspecified => {
             let res = IbcReceiveResponse::new()
                 .set_ack(ack_success())
                 .add_attribute("action", "receive")
@@ -51,51 +54,46 @@ pub(crate) fn do_ibc_packet_receive(
             Ok(res)
         }
         // Save pool data
-        SwapMessageType::MakePool => {
-            let msg: MsgCreatePoolRequest = decode_create_pool_msg(&packet_data.data.clone());
+        InterchainMessageType::MakePool => {
+            let msg: MsgMakePoolRequest = decode_create_pool_msg(&packet_data.data.clone());
             on_received_make_pool(deps, env, packet, msg)
         }
-        SwapMessageType::TakePool => {
-            let msg: MsgCreatePoolRequest = decode_create_pool_msg(&packet_data.data.clone());
+        InterchainMessageType::TakePool => {
+            let msg: MsgTakePoolRequest = from_binary(&packet_data.data.clone())?;
             on_received_take_pool(deps, env, packet, msg)
         }
-        //
-        SwapMessageType::SingleDeposit => {
+        InterchainMessageType::SingleAssetDeposit => {
             let msg: MsgSingleAssetDepositRequest = from_binary(&packet_data.data.clone())?;
             on_received_single_deposit(deps, env, packet, msg, packet_data.state_change.unwrap())
         }
-        SwapMessageType::MakeMultiDeposit => {
-            let msg: MsgMultiAssetDepositRequest = from_binary(&packet_data.data.clone())?;
+        InterchainMessageType::MakeMultiDeposit => {
+            let msg: MsgMakeMultiAssetDepositRequest = from_binary(&packet_data.data.clone())?;
             on_received_make_multi_deposit(deps, env, packet, msg, packet_data.state_change.unwrap())
         }
-        SwapMessageType::TakeMultiDeposit => {
-            let msg: MsgMultiAssetDepositRequest = from_binary(&packet_data.data.clone())?;
+        InterchainMessageType::TakeMultiDeposit => {
+            let msg: MsgTakeMultiAssetDepositRequest = from_binary(&packet_data.data.clone())?;
             on_received_take_multi_deposit(deps, env, packet, msg, packet_data.state_change.unwrap())
         }
-        // SwapMessageType::SingleWithdraw => {
-        //     let msg: MsgSingleAssetWithdrawRequest = from_binary(&packet_data.data.clone())?;
-        //     on_received_single_withdraw(deps, env, packet, msg, packet_data.state_change.unwrap())
-        // }
-        SwapMessageType::MultiWithdraw => {
+        InterchainMessageType::MultiWithdraw => {
             let msg: MsgMultiAssetWithdrawRequest = from_binary(&packet_data.data.clone())?;
             on_received_multi_withdraw(deps, env, packet, msg)
         }
-        SwapMessageType::LeftSwap => {
+        InterchainMessageType::LeftSwap => {
             let msg: MsgSwapRequest = from_binary(&packet_data.data.clone())?;
             on_received_swap(deps, env, packet, msg)
         }
-        SwapMessageType::RightSwap => {
+        InterchainMessageType::RightSwap => {
             let msg: MsgSwapRequest = from_binary(&packet_data.data.clone())?;
             on_received_swap(deps, env, packet, msg)
         }
     }
 }
 
-pub(crate) fn on_received_create_pool(
+pub(crate) fn on_received_make_pool(
     deps: DepsMut,
     _env: Env,
     packet: &IbcPacket,
-    msg: MsgCreatePoolRequest,
+    msg: MsgMakePoolRequest,
 ) -> Result<IbcReceiveResponse, ContractError> {
     // get pool asset from tokens and weight
     if let Err(err) = msg.validate_basic() {
@@ -105,30 +103,41 @@ pub(crate) fn on_received_create_pool(
         ))));
     }
 
-    // construct assets
-    if msg.tokens.len() != msg.weights.len() || msg.weights.len() != msg.decimals.len() {
-        return Err(ContractError::InvalidAssetInput);
-    }
-    let mut construct_assets = vec![];
-    for i in 0..msg.weights.len() {
-        construct_assets.push(PoolAsset {
-            // TODO: check if this token has supply in this chain using cosmwasm
-            side: crate::market::PoolSide::REMOTE,
-            balance: msg.tokens[i],
-            weight: msg.weights[i],
-            decimal: msg.decimals[i],
-        })
+    // TODO: CHECK FOR SIZE
+    let tokens = [];
+    tokens[0] = msg.liquidity[0].balance;
+    tokens[1] = msg.liquidity[1].balance;
+
+    let pool_id = get_pool_id_with_tokens(&tokens);
+
+    // load pool throw error if found
+    let interchain_pool_temp = POOLS.may_load(deps.storage, &pool_id)?;
+    if let Some(pool) = interchain_pool_temp {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Pool already exists"
+        ))));
     }
 
-    let pool_id = get_pool_id_with_tokens(&msg.tokens);
     let supply: Coin = Coin {amount: Uint128::from(0u64), denom: pool_id};
     let interchain_pool: InterchainLiquidityPool = InterchainLiquidityPool {
         pool_id: pool_id,
-        creator: msg.sender,
-        assets: construct_assets, supply: supply, pool_price: 0.0, status: PoolStatusInitial,
-        encounter_party_port: msg.source_port,
-        encounter_party_channel: msg.source_channel
+        source_creator: msg.creator,
+        destination_creator: msg.counterparty_creator,
+        assets: msg.liquidity,
+        supply: supply,
+        pool_price: 0.0,
+        status: PoolStatusInitialized,
+        counter_party_port: msg.source_port,
+        counter_party_channel: msg.source_channel,
+        swap_fee: msg.swap_fee
     };
+
+    let amm = InterchainMarketMaker {
+        pool_id: pool_id.clone(),
+        pool: interchain_pool.clone(),
+        fee_rate: interchain_pool.swap_fee,
+    };
+	interchain_pool.pool_price = amm.lp_price();
 
     POOLS.save(deps.storage, &pool_id, &interchain_pool)?;
 
@@ -136,7 +145,37 @@ pub(crate) fn on_received_create_pool(
         .set_ack(ack_success())
         .add_attribute("action", "receive")
         .add_attribute("success", "true")
-        .add_attribute("sucess", "create_pool_receive");
+        .add_attribute("sucess", "make_pool_receive");
+
+    Ok(res)
+}
+
+pub(crate) fn on_received_take_pool(
+    deps: DepsMut,
+    _env: Env,
+    packet: &IbcPacket,
+    msg: MsgTakePoolRequest,
+) -> Result<IbcReceiveResponse, ContractError> {
+    // load pool throw error if found
+    let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id)?;
+    let mut interchain_pool;
+    if let Some(pool) = interchain_pool_temp {
+        interchain_pool = pool;
+    } else {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Pool not found"
+        ))));
+    }
+
+    interchain_pool.status = PoolStatusActive;
+
+    POOLS.save(deps.storage, &msg.pool_id, &interchain_pool)?;
+
+    let res = IbcReceiveResponse::new()
+        .set_ack(ack_success())
+        .add_attribute("action", "receive")
+        .add_attribute("success", "true")
+        .add_attribute("sucess", "take_pool_receive");
 
     Ok(res)
 }
@@ -155,23 +194,23 @@ pub(crate) fn on_received_single_deposit(
         ))));
     }
 
-    let mut interchain_pool = POOLS.load(deps.storage, &msg.pool_id)?;
-
-    // Check status and update states accordingly
-    if interchain_pool.status == PoolStatusReady {
-        // increase lp token mint amount
-        interchain_pool.add_supply(state_change.pool_tokens.unwrap()[0]);
-
-        // update pool tokens.
-        if let Err(err) =interchain_pool.add_asset(msg.token) {
-            return Err(ContractError::Std(StdError::generic_err(format!(
-                "Failed to add asset: {}",
-                err
-            ))));
-        }
+    let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id)?;
+    let mut interchain_pool;
+    if let Some(pool) = interchain_pool_temp {
+        interchain_pool = pool;
     } else {
-        // switch pool status to 'READY'
-        interchain_pool.status = PoolStatusReady
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Pool not found"
+        ))));
+    }
+    // increase lp token mint amount
+    interchain_pool.add_supply(state_change.pool_tokens.unwrap()[0]);
+    // update pool tokens.
+    if let Err(err) = interchain_pool.add_asset(msg.token) {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Failed to add asset: {}",
+            err
+        ))));
     }
 
     // save pool.
@@ -187,11 +226,11 @@ pub(crate) fn on_received_single_deposit(
     Ok(res)
 }
 
-pub(crate) fn on_received_multi_deposit(
+pub(crate) fn on_received_make_multi_deposit(
     deps: DepsMut,
     _env: Env,
     packet: &IbcPacket,
-    msg: MsgMultiAssetDepositRequest,
+    msg: MsgMakeMultiAssetDepositRequest,
     state_change: StateChange
 ) -> Result<IbcReceiveResponse, ContractError> {
     // if let Err(err) = msg.validate_basic() {
@@ -308,38 +347,8 @@ pub(crate) fn on_received_multi_deposit(
     .set_ack(ack_success())
     .add_attribute("action", "receive")
     .add_attribute("success", "true")
-    .add_attribute("sucess", "single_asset_deposit");
+    .add_attribute("sucess", "make_multi_asset_deposit");
     //.add_attribute("pool_token", state_change.pool_tokens);
-
-    Ok(res)
-}
-
-pub(crate) fn on_received_single_withdraw(
-    deps: DepsMut,
-    _env: Env,
-    packet: &IbcPacket,
-    msg: MsgSingleAssetWithdrawRequest,
-    state_change: StateChange
-) -> Result<IbcReceiveResponse, ContractError> {
-    let mut interchain_pool = POOLS.load(deps.storage, &msg.pool_id)?;
-	// Update pool status by subtracting the supplied pool coin and output token
-	for poolAsset in state_change.out_tokens.unwrap() {
-		interchain_pool.subtract_asset(poolAsset);
-	}
-
-	for poolToken in state_change.pool_tokens.unwrap() {
-		interchain_pool.subtract_supply(poolToken);
-	}
-
-    // save pool.
-    POOLS.save(deps.storage, &msg.pool_id, &interchain_pool)?;
-
-    let res = IbcReceiveResponse::new()
-    .set_ack(ack_success())
-    .add_attribute("action", "receive")
-    .add_attribute("success", "true")
-    .add_attribute("sucess", "single_asset_withraw");
-    //.add_attribute("out_token", state_change.out);
 
     Ok(res)
 }
@@ -350,7 +359,7 @@ pub(crate) fn on_packet_success(
     deps: DepsMut,
     packet: IbcPacket,
 ) -> Result<IbcBasicResponse, ContractError> {
-    let packet_data: AtomicSwapPacketData = from_binary(&packet.data)?;
+    let packet_data: InterchainSwapPacketData = from_binary(&packet.data)?;
 
     // similar event messages like ibctransfer module
     let attributes = vec![attr("action", "acknowledge"), attr("success", "true")];
@@ -358,90 +367,18 @@ pub(crate) fn on_packet_success(
     match packet_data.r#type {
         // This is the step 4 (Acknowledge Make Packet) of the atomic swap: https://github.com/liangping/ibc/blob/atomic-swap/spec/app/ics-100-atomic-swap/ibcswap.png
         // This logic is executed when Taker chain acknowledge the make swap packet.
-        SwapMessageType::Unspecified => Ok(IbcBasicResponse::new()),
-        SwapMessageType::MakeSwap => {
+        InterchainMessageType::Unspecified => Ok(IbcBasicResponse::new()),
+        InterchainMessageType::MakePool => {
             // let msg: MakeSwapMsg = from_binary(&packet_data.data.clone())?;
-            let msg: MakeSwapMsg = decode_make_swap_msg(&packet_data.data.clone());
-            let path = order_path(
-                msg.source_channel.clone(),
-                msg.source_port.clone(),
-                packet.dest.channel_id.clone(),
-                packet.dest.port_id.clone(),
-                packet.sequence,
-            )?;
-            let order_id = generate_order_id(&path, msg.clone())?;
-            // let swap_order = SWAP_ORDERS.load(deps.storage, &order_id)?;
-
-            let new_order = AtomicSwapOrder {
-                id: order_id.clone(),
-                maker: msg.clone(),
-                status: Status::Sync,
-                path: path.clone(),
-                taker: None,
-                cancel_timestamp: None,
-                complete_timestamp: None,
-            };
-
-            SWAP_ORDERS.save(deps.storage, &order_id, &new_order)?;
+            let msg: MsgMakePoolRequest = decode_create_pool_msg(&packet_data.data.clone());
+            
             Ok(IbcBasicResponse::new().add_attributes(attributes))
         }
-        // This is the step 9 (Transfer Take Token & Close order): https://github.com/cosmos/ibc/tree/main/spec/app/ics-100-atomic-swap
-        // The step is executed on the Taker chain.
-        SwapMessageType::TakeSwap => {
-            let msg: TakeSwapMsg = decode_take_swap_msg(&packet_data.data.clone());
-
-            let order_id = msg.order_id;
-            let swap_order = SWAP_ORDERS.load(deps.storage, &order_id)?;
-
-            let maker_receiving_address = deps
-                .api
-                .addr_validate(&swap_order.maker.maker_receiving_address)?;
-
-            let submsg = send_tokens(&maker_receiving_address, msg.sell_token)?;
-
-            let new_order = AtomicSwapOrder {
-                id: order_id.clone(),
-                maker: swap_order.maker.clone(),
-                status: Status::Complete,
-                path: swap_order.path.clone(),
-                taker: swap_order.taker.clone(),
-                cancel_timestamp: swap_order.cancel_timestamp.clone(),
-                complete_timestamp: Some(Timestamp::from_seconds(msg.create_timestamp as u64)),
-            };
-
-            SWAP_ORDERS.save(deps.storage, &order_id, &new_order)?;
-            Ok(IbcBasicResponse::new()
-                .add_submessages(submsg)
-                .add_attributes(attributes))
-        }
-        // This is the step 14 (Cancel & refund) of the atomic swap: https://github.com/cosmos/ibc/tree/main/spec/app/ics-100-atomic-swap
-        // It is executed on the Maker chain.
-        SwapMessageType::CancelSwap => {
-            let msg: CancelSwapMsg = from_binary(&packet_data.data.clone())?;
-            let order_id = msg.order_id;
-            let swap_order = SWAP_ORDERS.load(deps.storage, &order_id)?;
-
-            let maker_address = deps.api.addr_validate(&swap_order.maker.maker_address)?;
-            let maker_msg = swap_order.maker.clone();
-
-            let submsg = send_tokens(&maker_address, maker_msg.sell_token)?;
-
-            let new_order = AtomicSwapOrder {
-                id: order_id.clone(),
-                maker: swap_order.maker.clone(),
-                status: Status::Cancel,
-                path: swap_order.path.clone(),
-                taker: swap_order.taker.clone(),
-                cancel_timestamp: Some(Timestamp::from_seconds(
-                    msg.create_timestamp.parse().unwrap(),
-                )),
-                complete_timestamp: None,
-            };
-
-            SWAP_ORDERS.save(deps.storage, &order_id, &new_order)?;
-            Ok(IbcBasicResponse::new()
-                .add_submessages(submsg)
-                .add_attributes(attributes))
+        InterchainMessageType::TakePool => {
+            // let msg: MakeSwapMsg = from_binary(&packet_data.data.clone())?;
+            let msg: MsgMakePoolRequest = decode_create_pool_msg(&packet_data.data.clone());
+            
+            Ok(IbcBasicResponse::new().add_attributes(attributes))
         }
     }
 }
@@ -451,7 +388,7 @@ pub(crate) fn on_packet_failure(
     packet: IbcPacket,
     err: String,
 ) -> Result<IbcBasicResponse, ContractError> {
-    let packet_data: AtomicSwapPacketData = from_binary(&packet.data)?;
+    let packet_data: InterchainSwapPacketData = from_binary(&packet.data)?;
     let submsg = refund_packet_token(deps, packet_data)?;
 
     let res = IbcBasicResponse::new()
@@ -465,50 +402,50 @@ pub(crate) fn on_packet_failure(
 
 pub(crate) fn refund_packet_token(
     deps: DepsMut,
-    packet: AtomicSwapPacketData,
+    packet: InterchainSwapPacketData,
 ) -> Result<Vec<SubMsg>, ContractError> {
     match packet.r#type {
         // This is the step 3.2 (Refund) of the atomic swap: https://github.com/liangping/ibc/blob/atomic-swap/spec/app/ics-100-atomic-swap/ibcswap.png
         // This logic will be executed when Relayer sends make swap packet to the taker chain, but the request timeout
         // and locked tokens form the first step (see the picture on the link above) MUST be returned to the account of
         // the maker on the maker chain.
-        SwapMessageType::Unspecified => Ok(vec![]),
-        SwapMessageType::MakeSwap => {
+        InterchainMessageType::Unspecified => Ok(vec![]),
+        InterchainMessageType::MakePool => {
             // let msg: MakeSwapMsg = from_binary(&packet.data.clone())?;
-            let msg: MakeSwapMsg = decode_make_swap_msg(&packet.data.clone());
+            let msg: MsgMakePoolRequest = decode_create_pool_msg(&packet.data.clone());
             // let order_id: String = generate_order_id(packet.clone())?;
             // let swap_order: AtomicSwapOrder = SWAP_ORDERS.load(deps.storage, &order_id)?;
-            let maker_address: Addr = deps.api.addr_validate(&msg.maker_address)?;
-            let submsg = send_tokens(&maker_address, msg.sell_token)?;
+            // let maker_address: Addr = deps.api.addr_validate(&msg.maker_address)?;
+            // let submsg = send_tokens(&maker_address, msg.sell_token)?;
 
             Ok(submsg)
         }
         // This is the step 7.2 (Unlock order and refund) of the atomic swap: https://github.com/cosmos/ibc/tree/main/spec/app/ics-100-atomic-swap
         // This step is executed on the Taker chain when Take Swap request timeout.
-        SwapMessageType::TakeSwap => {
+        InterchainMessageType::TakePool => {
             // let msg: TakeSwapMsg = from_binary(&packet.data.clone())?;
-            let msg: TakeSwapMsg = decode_take_swap_msg(&packet.data.clone());
-            let order_id: String = msg.order_id.clone();
-            let swap_order: AtomicSwapOrder = SWAP_ORDERS.load(deps.storage, &order_id)?;
-            let taker_address: Addr = deps.api.addr_validate(&msg.taker_address)?;
+            // let msg: TakeSwapMsg = decode_take_swap_msg(&packet.data.clone());
+            // let order_id: String = msg.order_id.clone();
+            // let swap_order: AtomicSwapOrder = SWAP_ORDERS.load(deps.storage, &order_id)?;
+            // let taker_address: Addr = deps.api.addr_validate(&msg.taker_address)?;
 
-            let submsg = send_tokens(&taker_address, msg.sell_token)?;
+            // let submsg = send_tokens(&taker_address, msg.sell_token)?;
 
-            let new_order: AtomicSwapOrder = AtomicSwapOrder {
-                id: order_id.clone(),
-                maker: swap_order.maker.clone(),
-                status: Status::Initial,
-                taker: None,
-                cancel_timestamp: None,
-                complete_timestamp: None,
-                path: swap_order.path.clone(),
-            };
+            // let new_order: AtomicSwapOrder = AtomicSwapOrder {
+            //     id: order_id.clone(),
+            //     maker: swap_order.maker.clone(),
+            //     status: Status::Initial,
+            //     taker: None,
+            //     cancel_timestamp: None,
+            //     complete_timestamp: None,
+            //     path: swap_order.path.clone(),
+            // };
 
-            SWAP_ORDERS.save(deps.storage, &order_id, &new_order)?;
+            // SWAP_ORDERS.save(deps.storage, &order_id, &new_order)?;
 
             Ok(submsg)
         }
         // do nothing, only send tokens back when cancel msg is acknowledged.
-        SwapMessageType::CancelSwap => Ok(vec![]),
+        InterchainMessageType::SingleAssetDeposit => Ok(vec![]),
     }
 }

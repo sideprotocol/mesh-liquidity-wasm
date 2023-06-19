@@ -14,9 +14,9 @@ pub struct StateChange {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct IBCSwapPacketData {
+pub struct InterchainSwapPacketData {
     #[serde(rename = "Type")]
-    pub r#type: SwapMessageType,
+    pub r#type: InterchainMessageType,
     #[serde(rename = "Data")]
     pub data: Binary,
     #[serde(rename = "StateChange")]
@@ -24,15 +24,15 @@ pub struct IBCSwapPacketData {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub enum SwapMessageType {
+pub enum InterchainMessageType {
     #[serde(rename = "TYPE_UNSPECIFIED")]
     Unspecified = 0,
     #[serde(rename = "TYPE_MAKE_POOL")]
     MakePool = 1,
     #[serde(rename = "TYPE_TAKE_POOL")]
     TakePool = 2,
-    #[serde(rename = "TYPE_SINGLE_DEPOSIT")]
-    SingleDeposit = 3,
+    #[serde(rename = "TYPE_SINGLE_ASSET_DEPOSIT")]
+    SingleAssetDeposit = 3,
     #[serde(rename = "TYPE_MAKE_MULTI_DEPOSIT")]
     MakeMultiDeposit = 4,
     #[serde(rename = "TYPE_TAKE_MULTI_DEPOSIT")]
