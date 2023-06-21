@@ -106,6 +106,12 @@ pub fn get_coins_from_deposits(deposits: Vec<DepositAsset>) -> Vec<Coin> {
     return tokens;
 }
 
+// pub fn get_order_from_multi_orders(order_id: String, orders: Vec<MultiAssetDepositOrder>) -> MultiAssetDepositOrder {
+//     for order in orders {
+//         if order.
+//     }
+// }
+
 pub(crate) fn send_tokens(to: &Addr, amount: Coin) -> StdResult<Vec<SubMsg>> {
     // if amount.is_empty() {
     //     Ok(vec![])

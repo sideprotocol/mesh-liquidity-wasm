@@ -14,7 +14,7 @@ use crate::market::{InterchainMarketMaker, PoolStatus, PoolSide};
 use crate::msg::{
     ExecuteMsg, InstantiateMsg,
     MsgMultiAssetWithdrawRequest, MsgSingleAssetDepositRequest, MsgSingleAssetWithdrawRequest,
-    MsgSwapRequest, SwapMsgType, MsgMakePoolRequest, MsgTakePoolRequest, MsgMakeMultiAssetDepositRequest,
+    MsgSwapRequest, SwapMsgType, MsgMakePoolRequest, MsgTakePoolRequest, MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest,
 };
 use crate::state::{POOLS, MULTI_ASSET_DEPOSIT_ORDERS};
 use crate::types::{InterchainSwapPacketData, StateChange, InterchainMessageType, MultiAssetDepositOrder, OrderStatus, MULTI_DEPOSIT_PENDING_LIMIT};
@@ -344,6 +344,68 @@ fn make_multi_asset_deposit(
     // save order in source chain
     multi_asset_orders.push(multi_asset_order);
 
+    // Construct the IBC packet
+    let packet_data = InterchainSwapPacketData {
+        r#type: InterchainMessageType::MakeMultiDeposit,
+        data: to_binary(&msg)?,
+        state_change: Some(StateChange {
+            pool_tokens: Some(pool_tokens),
+            in_tokens: None,
+            out_tokens: None,
+        }),
+    };
+
+    let ibc_msg = IbcMsg::SendPacket {
+        channel_id: interchain_pool.clone().counter_party_channel,
+        data: to_binary(&packet_data)?,
+        timeout: IbcTimeout::from(
+            env.block
+                .time
+                .plus_seconds(DEFAULT_TIMEOUT_TIMESTAMP_OFFSET),
+        ),
+    };
+
+    let res = Response::default()
+        .add_message(ibc_msg)
+        .add_attribute("action", "make_multi_asset_deposit");
+    Ok(res)
+}
+
+fn take_multi_asset_deposit(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    msg: MsgTakeMultiAssetDepositRequest,
+) -> Result<Response, ContractError> {
+    // load pool throw error if not found
+    let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id)?;
+    let interchain_pool;
+    if let Some(pool) = interchain_pool_temp {
+        interchain_pool = pool
+    } else {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Pool doesn't exist {}", msg.pool_id
+        ))));
+    }
+    // get order
+    
+
+    // TODO: Add chain id to order and add check
+    // TODO: Make sure the pool side, i think it will be destination .. Handle erorr
+    let token = interchain_pool.find_asset_by_side(PoolSide::DESTINATION).unwrap();
+    // check if given tokens are received here
+    let mut ok = false;
+    // First token in this chain only first token needs to be verified
+    for asset in info.funds {
+        if asset.denom == token.balance.denom && asset.amount == token.balance.amount {
+            ok = true;
+        }
+    }
+    if !ok {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Funds mismatch: Funds mismatched to with message and sent values: Make Pool"
+        ))));
+    }
     // Construct the IBC packet
     let packet_data = InterchainSwapPacketData {
         r#type: InterchainMessageType::MakeMultiDeposit,
