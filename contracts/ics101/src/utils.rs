@@ -4,7 +4,7 @@ use cosmwasm_std::{
 };
 use sha2::{Digest, Sha256};
 
-use crate::{interchainswap_handler::InterchainSwapPacketAcknowledgement, ContractError, msg::MsgMakePoolRequest};
+use crate::{interchainswap_handler::InterchainSwapPacketAcknowledgement, ContractError, msg::{MsgMakePoolRequest, DepositAsset}, types::MultiAssetDepositOrder, state::MULTI_ASSET_DEPOSIT_ORDERS};
 use hex;
 
 pub fn get_pool_id_with_tokens(tokens: &[Coin]) -> String {
@@ -97,6 +97,13 @@ pub(crate) fn enforce_order_and_version(
         return Err(ContractError::OnlyOrderedChannel {});
     }
     Ok(())
+}
+
+pub fn get_coins_from_deposits(deposits: Vec<DepositAsset>) -> Vec<Coin> {
+    let mut tokens = vec![];
+    tokens.push(deposits[0].balance);
+    tokens.push(deposits[1].balance);
+    return tokens;
 }
 
 pub(crate) fn send_tokens(to: &Addr, amount: Coin) -> StdResult<Vec<SubMsg>> {

@@ -98,4 +98,7 @@ pub enum ContractError {
 
     #[error("Invalid assets input length")]
     InvalidAssetInput,
+
+    #[error("Error previous order is not completed")]
+    ErrPreviousOrderNotCompleted,
 }

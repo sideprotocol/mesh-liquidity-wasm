@@ -16,9 +16,9 @@ use crate::msg::{
     MsgMultiAssetWithdrawRequest, MsgSingleAssetDepositRequest, MsgSingleAssetWithdrawRequest,
     MsgSwapRequest, SwapMsgType, MsgMakePoolRequest, MsgTakePoolRequest, MsgMakeMultiAssetDepositRequest,
 };
-use crate::state::POOLS;
-use crate::types::{IBCSwapPacketData, StateChange, SwapMessageType};
-use crate::utils::{check_slippage, get_pool_id_with_tokens};
+use crate::state::{POOLS, MULTI_ASSET_DEPOSIT_ORDERS};
+use crate::types::{InterchainSwapPacketData, StateChange, InterchainMessageType, MultiAssetDepositOrder, OrderStatus, MULTI_DEPOSIT_PENDING_LIMIT};
+use crate::utils::{check_slippage, get_pool_id_with_tokens, get_coins_from_deposits};
 
 // Version info, for migration info
 const CONTRACT_NAME: &str = "ics101-interchainswap";
@@ -93,8 +93,8 @@ fn make_pool(
     }
 
     let pool_data = to_binary(&msg).unwrap();
-    let ibc_packet_data = IBCSwapPacketData {
-        r#type: SwapMessageType::MakePool,
+    let ibc_packet_data = InterchainSwapPacketData {
+        r#type: InterchainMessageType::MakePool,
         data: pool_data.clone(),
         state_change: None,
     };
@@ -148,8 +148,8 @@ fn take_pool(
     }
 
     let pool_data = to_binary(&msg).unwrap();
-    let ibc_packet_data = IBCSwapPacketData {
-        r#type: SwapMessageType::TakePool,
+    let ibc_packet_data = InterchainSwapPacketData {
+        r#type: InterchainMessageType::TakePool,
         data: pool_data.clone(),
         state_change: None,
     };
@@ -217,8 +217,8 @@ pub fn single_asset_deposit(
 
     let msg_data = to_binary(&msg).unwrap();
     // Construct the IBC swap packet.
-    let packet_data = IBCSwapPacketData {
-        r#type: SwapMessageType::SingleAssetDeposit,
+    let packet_data = InterchainSwapPacketData {
+        r#type: InterchainMessageType::SingleAssetDeposit,
         data: msg_data, // Use proper serialization for the `data` field.
         state_change: Some(StateChange {
             in_tokens: None,
@@ -226,7 +226,6 @@ pub fn single_asset_deposit(
             pool_tokens: Some(vec![pool_token]),
         }),
     };
-    // let packet = packet_data.into_packet();
 
     // Send the IBC swap packet.
     let ibc_msg = IbcMsg::SendPacket {
@@ -248,61 +247,106 @@ pub fn single_asset_deposit(
 fn make_multi_asset_deposit(
     deps: DepsMut,
     env: Env,
-    _info: MessageInfo,
+    info: MessageInfo,
     msg: MsgMakeMultiAssetDepositRequest,
 ) -> Result<Response, ContractError> {
-    // Retrieve the interchain liquidity pool from storage
-    let pool = POOLS.load(deps.storage, &msg.pool_id)?;
+   // load pool throw error if not found
+   let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id)?;
+   let interchain_pool;
+   if let Some(pool) = interchain_pool_temp {
+       interchain_pool = pool
+   } else {
+       return Err(ContractError::Std(StdError::generic_err(format!(
+           "Pool doesn't exist {}", msg.pool_id
+       ))));
+   }
 
-    // Check the pool status
-    if pool.status == PoolStatus::PoolStatusInitial {
-        // Check the initial deposit conditions
-        for asset in vec![
-            msg.local_deposit.token.clone(),
-            msg.remote_deposit.token.clone(),
-        ] {
-            let ordered_amount = pool.clone().find_asset_by_denom(&asset.denom)?;
-            if ordered_amount.balance.amount != asset.amount {
-                return Err(ContractError::InvalidAmount {});
-            }
+   let tokens: [Coin; 2] = Default::default();
+   tokens[0] = msg.deposits[0].balance;
+   tokens[1] = msg.deposits[1].balance;
+
+    // check if given tokens are received here
+    let mut ok = false;
+    // First token in this chain only first token needs to be verified
+    for asset in info.funds {
+        if asset.denom == tokens[0].denom && asset.amount == tokens[0].amount {
+            ok = true;
         }
-    } else {
-        // Check the ratio of local amount and remote amount
-        let ratio_of_tokens_in = Uint128::from(msg.local_deposit.token.amount)
-            .mul(Uint128::from(1e18 as u64))
-            .div(Uint128::from(msg.remote_deposit.token.amount));
-        let local_asset_in_pool = pool
-            .clone()
-            .find_asset_by_denom(&msg.local_deposit.token.denom)?;
-        let remote_asset_amount_in_pool = pool
-            .clone()
-            .find_asset_by_denom(&msg.remote_deposit.token.denom)?;
-        let ratio_of_assets_in_pool = Uint128::from(local_asset_in_pool.balance.amount)
-            .mul(Uint128::from(1e18 as u64))
-            .div(Uint128::from(remote_asset_amount_in_pool.balance.amount));
-
-        check_slippage(ratio_of_tokens_in, ratio_of_assets_in_pool, 10)
-            .map_err(|err| StdError::generic_err(format!("Invalid Slippage: {}", err)))?;
+    }
+    if !ok {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Funds mismatch: Funds mismatched to with message and sent values: Make Pool"
+        ))));
     }
 
+    // Check the pool status
+    if interchain_pool.status != PoolStatus::PoolStatusActive {
+        return Err(ContractError::NotReadyForSwap);
+    }
+
+    // TODO: Handle unwrap
+    let source_asset = interchain_pool.find_asset_by_side(PoolSide::SOURCE).unwrap();
+    let destination_asset = interchain_pool.find_asset_by_side(PoolSide::DESTINATION).unwrap();
+
+    // Check the ratio of local amount and remote amount
+    let current_ratio = Uint128::from(source_asset.balance.amount)
+        .mul(Uint128::from(1e18 as u64))
+        .div(Uint128::from(destination_asset.balance.amount));
+    let input_ratio = Uint128::from(msg.deposits[0].balance.amount)
+        .mul(Uint128::from(1e18 as u64))
+        .div(Uint128::from(msg.deposits[1].balance.amount));
+
+    check_slippage(current_ratio, input_ratio, 10)
+        .map_err(|err| StdError::generic_err(format!("Invalid Slippage: {}", err)))?;
+
     // Create the interchain market maker
-    let fee = MAX_FEE_RATE;
-    // let amm = InterchainMarketMaker::new(pool.clone(), fee);
     let amm = InterchainMarketMaker {
-        pool_id: pool.clone().pool_id,
-        pool: pool.clone(),
-        fee_rate: fee,
+        pool_id: interchain_pool.clone().pool_id,
+        pool: interchain_pool.clone(),
+        fee_rate: interchain_pool.swap_fee,
     };
 
     // Deposit the assets into the interchain market maker
     let pool_tokens = amm.deposit_multi_asset(&vec![
-        msg.local_deposit.token.clone(),
-        msg.remote_deposit.token.clone(),
+        msg.deposits[0].balance.clone(),
+        msg.deposits[1].balance.clone(),
     ])?;
 
+    let mut multi_asset_order = MultiAssetDepositOrder {
+        pool_id: msg.pool_id,
+        source_maker: msg.deposits[0].sender,
+        destination_taker: msg.deposits[1].sender,
+        deposits: get_coins_from_deposits(msg.deposits),
+        pool_tokens: pool_tokens,
+        status: OrderStatus::Pending,
+        created_at: env.block.height
+    };
+
+    // load orders
+    let mut multi_asset_orders: Vec<MultiAssetDepositOrder> = MULTI_ASSET_DEPOSIT_ORDERS.load(deps.storage, msg.pool_id)?;
+    let found = false;
+    if multi_asset_orders.len() > 0 {
+        found = true;
+        // we already checked for vector length
+        multi_asset_order = multi_asset_orders.last().unwrap().clone();
+    }
+
+    let pending_height = env.block.height - multi_asset_order.created_at;
+    if found && multi_asset_order.status == OrderStatus::Pending && pending_height < MULTI_DEPOSIT_PENDING_LIMIT {
+        return Err(ContractError::ErrPreviousOrderNotCompleted);
+    }
+
+	// protect malicious deposit action. we will not refund token as a penalty.
+    if found && pending_height > MULTI_DEPOSIT_PENDING_LIMIT {
+        multi_asset_orders.pop();
+    }
+
+    // save order in source chain
+    multi_asset_orders.push(multi_asset_order);
+
     // Construct the IBC packet
-    let packet_data = IBCSwapPacketData {
-        r#type: SwapMessageType::MultiDeposit,
+    let packet_data = InterchainSwapPacketData {
+        r#type: InterchainMessageType::MakeMultiDeposit,
         data: to_binary(&msg)?,
         state_change: Some(StateChange {
             pool_tokens: Some(pool_tokens),
@@ -312,7 +356,7 @@ fn make_multi_asset_deposit(
     };
 
     let ibc_msg = IbcMsg::SendPacket {
-        channel_id: pool.clone().encounter_party_channel,
+        channel_id: interchain_pool.clone().counter_party_channel,
         data: to_binary(&packet_data)?,
         timeout: IbcTimeout::from(
             env.block

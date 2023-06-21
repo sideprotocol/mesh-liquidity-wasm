@@ -103,8 +103,7 @@ pub(crate) fn on_received_make_pool(
         ))));
     }
 
-    // TODO: CHECK FOR SIZE
-    let tokens = [];
+    let tokens: [Coin; 2] = Default::default();
     tokens[0] = msg.liquidity[0].balance;
     tokens[1] = msg.liquidity[1].balance;
 
@@ -371,7 +370,9 @@ pub(crate) fn on_packet_success(
         InterchainMessageType::MakePool => {
             // let msg: MakeSwapMsg = from_binary(&packet_data.data.clone())?;
             let msg: MsgMakePoolRequest = decode_create_pool_msg(&packet_data.data.clone());
-            
+            // create and save interchain pool
+            // mint lp tokens 
+            // calculate pool price
             Ok(IbcBasicResponse::new().add_attributes(attributes))
         }
         InterchainMessageType::TakePool => {

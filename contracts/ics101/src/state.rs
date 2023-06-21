@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use cosmwasm_std::IbcEndpoint;
 use cw_storage_plus::Map;
 
-use crate::market::InterchainLiquidityPool;
+use crate::{market::InterchainLiquidityPool, types::MultiAssetDepositOrder};
 
 pub const CHANNEL_INFO: Map<&str, ChannelInfo> = Map::new("channel_info");
 
@@ -19,6 +19,9 @@ pub struct ChannelInfo {
 }
 
 pub const POOLS: Map<&str, InterchainLiquidityPool> = Map::new("pools");
+
+// MAp fron pool id to vec<oders>
+pub const MULTI_ASSET_DEPOSIT_ORDERS: Map<String, Vec<MultiAssetDepositOrder>> = Map::new("multi_asset_deposit_orders");
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]

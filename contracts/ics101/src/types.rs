@@ -44,3 +44,24 @@ pub enum InterchainMessageType {
     #[serde(rename = "TYPE_RIGHT_SWAP")]
     RightSwap = 8,
 }
+
+pub const MULTI_DEPOSIT_PENDING_LIMIT: u64 = 10;
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum OrderStatus {
+    Pending = 0,
+    Complete = 1,
+}
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MultiAssetDepositOrder {
+    pub pool_id: String,
+    //chain_id: String,
+    pub source_maker: String,
+    pub destination_taker: String,
+    pub deposits: Vec<Coin>,
+    pub pool_tokens: Vec<Coin>,
+    pub status: OrderStatus,
+    pub created_at: u64
+}
