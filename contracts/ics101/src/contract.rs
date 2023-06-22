@@ -16,7 +16,7 @@ use crate::msg::{
     MsgMultiAssetWithdrawRequest, MsgSingleAssetDepositRequest, MsgSingleAssetWithdrawRequest,
     MsgSwapRequest, SwapMsgType, MsgMakePoolRequest, MsgTakePoolRequest, MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest,
 };
-use crate::state::{POOLS, MULTI_ASSET_DEPOSIT_ORDERS};
+use crate::state::{POOLS, MULTI_ASSET_DEPOSIT_ORDERS, CONFIG};
 use crate::types::{InterchainSwapPacketData, StateChange, InterchainMessageType, MultiAssetDepositOrder, OrderStatus, MULTI_DEPOSIT_PENDING_LIMIT};
 use crate::utils::{check_slippage, get_pool_id_with_tokens, get_coins_from_deposits};
 
@@ -312,7 +312,11 @@ fn make_multi_asset_deposit(
         msg.deposits[1].balance.clone(),
     ])?;
 
+    let mut config = CONFIG.load(deps.storage)?;
+    config.counter = config.counter + 1;
+
     let mut multi_asset_order = MultiAssetDepositOrder {
+        order_id: config.counter,
         pool_id: msg.pool_id,
         source_maker: msg.deposits[0].sender,
         destination_taker: msg.deposits[1].sender,
@@ -327,6 +331,7 @@ fn make_multi_asset_deposit(
     let found = false;
     if multi_asset_orders.len() > 0 {
         found = true;
+        config.counter = config.counter - 1;
         // we already checked for vector length
         multi_asset_order = multi_asset_orders.last().unwrap().clone();
     }
@@ -343,6 +348,8 @@ fn make_multi_asset_deposit(
 
     // save order in source chain
     multi_asset_orders.push(multi_asset_order);
+    MULTI_ASSET_DEPOSIT_ORDERS.save(deps.storage, msg.pool_id, &multi_asset_orders)?;
+    CONFIG.save(deps.storage, &config)?;
 
     // Construct the IBC packet
     let packet_data = InterchainSwapPacketData {
@@ -388,7 +395,24 @@ fn take_multi_asset_deposit(
         ))));
     }
     // get order
-    
+    // load orders
+    let mut multi_asset_orders: Vec<MultiAssetDepositOrder> = MULTI_ASSET_DEPOSIT_ORDERS.load(deps.storage, msg.pool_id)?;
+    let found = false;
+    let mut order;
+    for  multi_order in multi_asset_orders {
+        if multi_order.order_id == msg.order_id {
+            found = true;
+            order = multi_order
+        }
+    }
+
+    if !found {
+        return Err(ContractError::ErrOrderNotFound);
+    }
+
+    if order.destination_taker != info.sender {
+        return Err(ContractError::ErrFailedMultiAssetDeposit);
+    }
 
     // TODO: Add chain id to order and add check
     // TODO: Make sure the pool side, i think it will be destination .. Handle erorr
@@ -408,10 +432,10 @@ fn take_multi_asset_deposit(
     }
     // Construct the IBC packet
     let packet_data = InterchainSwapPacketData {
-        r#type: InterchainMessageType::MakeMultiDeposit,
+        r#type: InterchainMessageType::TakeMultiDeposit,
         data: to_binary(&msg)?,
         state_change: Some(StateChange {
-            pool_tokens: Some(pool_tokens),
+            pool_tokens: None,
             in_tokens: None,
             out_tokens: None,
         }),
@@ -429,7 +453,7 @@ fn take_multi_asset_deposit(
 
     let res = Response::default()
         .add_message(ibc_msg)
-        .add_attribute("action", "multi_asset_deposit");
+        .add_attribute("action", "take_multi_asset_deposit");
     Ok(res)
 }
 

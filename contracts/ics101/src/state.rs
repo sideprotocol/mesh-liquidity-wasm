@@ -2,7 +2,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use cosmwasm_std::IbcEndpoint;
-use cw_storage_plus::Map;
+use cw_storage_plus::{Map, Item};
 
 use crate::{market::InterchainLiquidityPool, types::MultiAssetDepositOrder};
 
@@ -18,9 +18,21 @@ pub struct ChannelInfo {
     pub connection_id: String,
 }
 
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct Config {
+    // Counter to keep track of multiassetdeposit orders
+    pub counter: u64,
+}
+
+// Each pool has it's pool token (cw20)
+// Map (asset1-asset2) -> pool token address
+pub const POOL_TOKENS_LIST: Map<&str, String> = Map::new("pool_tokens_list");
+
+pub const CONFIG: Item<Config> = Item::new("config");
+
 pub const POOLS: Map<&str, InterchainLiquidityPool> = Map::new("pools");
 
-// MAp fron pool id to vec<oders>
+// Map from pool id to vec<oders>
 pub const MULTI_ASSET_DEPOSIT_ORDERS: Map<String, Vec<MultiAssetDepositOrder>> = Map::new("multi_asset_deposit_orders");
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]

@@ -101,4 +101,10 @@ pub enum ContractError {
 
     #[error("Error previous order is not completed")]
     ErrPreviousOrderNotCompleted,
+
+    #[error("Order not found")]
+    ErrOrderNotFound,
+
+    #[error("Error failed multi asset deposit")]
+    ErrFailedMultiAssetDeposit
 }

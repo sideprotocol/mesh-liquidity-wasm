@@ -56,6 +56,7 @@ pub enum OrderStatus {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MultiAssetDepositOrder {
+    pub order_id: u64,
     pub pool_id: String,
     //chain_id: String,
     pub source_maker: String,
