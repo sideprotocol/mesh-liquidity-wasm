@@ -3,10 +3,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     error::ContractError,
-    types::{InterchainSwapPacketData, InterchainMessageType, StateChange},
-    state::{Status, POOLS},
+    types::{InterchainSwapPacketData, InterchainMessageType, StateChange, MultiAssetDepositOrder, OrderStatus},
+    state::{Status, POOLS, CONFIG, MULTI_ASSET_DEPOSIT_ORDERS, POOL_TOKENS_LIST},
     utils::{
-        send_tokens, decode_create_pool_msg, get_pool_id_with_tokens,
+        decode_create_pool_msg, get_pool_id_with_tokens, get_coins_from_deposits, mint_tokens_cw20,
     }, msg::{MsgMakePoolRequest, MsgTakePoolRequest, MsgSingleAssetDepositRequest,
      MsgMultiAssetWithdrawRequest, MsgSwapRequest,
     MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest}
@@ -227,120 +227,40 @@ pub(crate) fn on_received_single_deposit(
 
 pub(crate) fn on_received_make_multi_deposit(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     packet: &IbcPacket,
     msg: MsgMakeMultiAssetDepositRequest,
     state_change: StateChange
 ) -> Result<IbcReceiveResponse, ContractError> {
-    // if let Err(err) = msg.validate_basic() {
-    //     return Err(ContractError::Std(StdError::generic_err(format!(
-    //         "Failed to validate message: {}",
-    //         err
-    //     ))));
-    // }
-
-    // TODO: How to get tokens on remote chain, these are denom balance in chain ?
-
-    // Validate the message
-	// if err := msg.ValidateBasic(); err != nil {
-	// 	return nil, err
-	// }
-
-	// // Verify the sender's address
-	// senderAcc := k.authKeeper.GetAccount(ctx, sdk.MustAccAddressFromBech32(msg.RemoteDeposit.Sender))
-	// senderPrefix, _, err := bech32.Decode(senderAcc.GetAddress().String())
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// if sdk.GetConfig().GetBech32AccountAddrPrefix() != senderPrefix {
-	// 	return nil, errorsmod.Wrapf(types.ErrFailedDoubleDeposit, "first address has to be this chain address (%s)", err)
-	// }
-
-	// // Retrieve the liquidity pool
-	// pool, found := k.GetInterchainLiquidityPool(ctx, msg.PoolId)
-	// if !found {
-	// 	return nil, errorsmod.Wrapf(types.ErrFailedDoubleDeposit, "%s", types.ErrNotFoundPool)
-	// }
-
-	// // Lock assets from senders to escrow account
-	// escrowAccount := types.GetEscrowAddress(pool.EncounterPartyPort, pool.EncounterPartyChannel)
-
-	// // Create a deposit message
-	// sendMsg := banktypes.MsgSend{
-	// 	FromAddress: senderAcc.GetAddress().String(),
-	// 	ToAddress:   escrowAccount.String(),
-	// 	Amount:      sdk.NewCoins(*msg.RemoteDeposit.Token),
-	// }
-
-	// // Recover original signed Tx.
-	// deposit := types.RemoteDeposit{
-	// 	Sequence: senderAcc.GetSequence(),
-	// 	Sender:   msg.RemoteDeposit.Sender,
-	// 	Token:    msg.RemoteDeposit.Token,
-	// }
-	// rawDepositTx, err := types.ModuleCdc.Marshal(&deposit)
-
-	// if err != nil {
-	// 	return nil, err
-	// }
-
-	// pubKey := senderAcc.GetPubKey()
-	// isValid := pubKey.VerifySignature(rawDepositTx, msg.RemoteDeposit.Signature)
-
-	// if !isValid {
-	// 	return nil, errorsmod.Wrapf(types.ErrFailedDoubleDeposit, ":%s", types.ErrInvalidSignature)
-	// }
-
-	// _, err = k.executeDepositTx(ctx, &sendMsg)
-	// if err != nil {
-	// 	return nil, err
-	// }
-
-	// // Increase LP token mint amount
-	// for _, token := range stateChange.PoolTokens {
-	// 	pool.AddPoolSupply(*token)
-	// }
-
-	// // Update pool tokens or switch pool status to 'READY'
-	// if pool.Status == types.PoolStatus_POOL_STATUS_READY {
-	// 	pool.AddAsset(*msg.LocalDeposit.Token)
-	// 	pool.AddAsset(*msg.RemoteDeposit.Token)
-	// } else {
-	// 	pool.Status = types.PoolStatus_POOL_STATUS_READY
-	// }
-
-	// // Mint voucher tokens for the sender
-	// err = k.MintTokens(ctx, senderAcc.GetAddress(), *stateChange.PoolTokens[1])
-	// if err != nil {
-	// 	return nil, errorsmod.Wrapf(types.ErrFailedDoubleDeposit, ":%s", err)
-	// }
-	// // Save pool
-	// k.SetInterchainLiquidityPool(ctx, pool)
-	// return &types.MsgMultiAssetDepositResponse{
-	// 	PoolTokens: stateChange.PoolTokens,
-	//}, nil
-
-    let mut interchain_pool = POOLS.load(deps.storage, &msg.pool_id)?;
-
-    // Check status and update states accordingly
-    if (interchain_pool.status == PoolStatusReady) {
-        // increase lp token mint amount
-        interchain_pool.add_supply(state_change.pool_tokens.unwrap()[0]);
-
-        // update pool tokens.
-        if let Err(err) =interchain_pool.add_asset(msg.token) {
-            return Err(ContractError::Std(StdError::generic_err(format!(
-                "Failed to add asset: {}",
-                err
-            ))));
-        }
+	// load pool throw error if found
+    let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id)?;
+    let mut interchain_pool;
+    if let Some(pool) = interchain_pool_temp {
+        interchain_pool = pool;
     } else {
-        // switch pool status to 'READY'
-        interchain_pool.status = PoolStatusReady
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Pool not found"
+        ))));
     }
 
-    // save pool.
-    POOLS.save(deps.storage, &msg.pool_id, &interchain_pool)?;
+    let mut config = CONFIG.load(deps.storage)?;
+    config.counter = config.counter + 1;
+
+    let mut multi_asset_orders: Vec<MultiAssetDepositOrder> = MULTI_ASSET_DEPOSIT_ORDERS.load(deps.storage, msg.pool_id)?;
+    let mut multi_asset_order = MultiAssetDepositOrder {
+        order_id: config.counter,
+        pool_id: msg.pool_id,
+        source_maker: msg.deposits[0].sender,
+        destination_taker: msg.deposits[1].sender,
+        deposits: get_coins_from_deposits(msg.deposits),
+       // pool_tokens: pool_tokens,
+        status: OrderStatus::Pending,
+        created_at: env.block.height
+    };
+
+    multi_asset_orders.push(multi_asset_order);
+    MULTI_ASSET_DEPOSIT_ORDERS.save(deps.storage, msg.pool_id, &multi_asset_orders)?;
+    CONFIG.save(deps.storage, &config)?;
 
     let res = IbcReceiveResponse::new()
     .set_ack(ack_success())
@@ -351,6 +271,86 @@ pub(crate) fn on_received_make_multi_deposit(
 
     Ok(res)
 }
+
+pub(crate) fn on_received_take_multi_deposit(
+    deps: DepsMut,
+    env: Env,
+    packet: &IbcPacket,
+    msg: MsgTakeMultiAssetDepositRequest,
+    state_change: StateChange
+) -> Result<IbcReceiveResponse, ContractError> {
+	// load pool throw error if found
+    let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id)?;
+    let mut interchain_pool;
+    if let Some(pool) = interchain_pool_temp {
+        interchain_pool = pool;
+    } else {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Pool not found"
+        ))));
+    }
+
+    // find order
+    let mut multi_asset_orders: Vec<MultiAssetDepositOrder> = MULTI_ASSET_DEPOSIT_ORDERS.load(deps.storage, msg.pool_id)?;
+    let mut found = false;
+    let mut order;
+    for  multi_order in multi_asset_orders {
+        if multi_order.order_id == msg.order_id {
+            found = true;
+            order = multi_order
+        }
+    }
+
+    if !found {
+        return Err(ContractError::ErrOrderNotFound);
+    }
+
+    order.status = OrderStatus::Complete;
+
+    let mut total_pool_tokens = Uint128::from(0u64);
+    // Add tokens to pool supply
+    for pool_token in state_change.pool_tokens.unwrap() {
+        interchain_pool.add_supply(pool_token);
+        total_pool_tokens += pool_token.amount;
+    }
+
+    // Add assets to pool
+    for asset in order.deposits {
+        interchain_pool.add_asset(asset);
+    }
+
+    let mut sub_message;
+    // Mint tokens (cw20) to the sender
+    if let Some(lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id)? {
+        sub_message = mint_tokens_cw20(order.source_maker, lp_token, total_pool_tokens)?;
+    } else {
+        // throw error token not found, initialization is done in make_pool and
+        // take_pool
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "LP Token is not initialized"
+        ))));
+    }
+
+    let mut config = CONFIG.load(deps.storage)?;
+    config.counter = config.counter + 1;
+
+    let mut multi_asset_orders: Vec<MultiAssetDepositOrder> = MULTI_ASSET_DEPOSIT_ORDERS.load(deps.storage, msg.pool_id)?;
+
+    MULTI_ASSET_DEPOSIT_ORDERS.save(deps.storage, msg.pool_id, &multi_asset_orders)?;
+    CONFIG.save(deps.storage, &config)?;
+    POOLS.save(deps.storage, &msg.pool_id, &interchain_pool)?;
+
+    let res = IbcReceiveResponse::new()
+    .set_ack(ack_success())
+    .add_submessages(sub_message)
+    .add_attribute("action", "receive")
+    .add_attribute("success", "true")
+    .add_attribute("sucess", "take_multi_asset_deposit");
+    //.add_attribute("pool_token", state_change.pool_tokens);
+
+    Ok(res)
+}
+
 
 // update the balance stored on this (channel, denom) index
 // acknowledgement

@@ -62,7 +62,7 @@ pub struct MultiAssetDepositOrder {
     pub source_maker: String,
     pub destination_taker: String,
     pub deposits: Vec<Coin>,
-    pub pool_tokens: Vec<Coin>,
+    //pub pool_tokens: Vec<Coin>,
     pub status: OrderStatus,
     pub created_at: u64
 }

@@ -36,6 +36,7 @@ pub fn instantiate(
 ) -> StdResult<Response> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     // No setup
+    // TODO: add counter and token id to state
     Ok(Response::default())
 }
 
@@ -321,7 +322,7 @@ fn make_multi_asset_deposit(
         source_maker: msg.deposits[0].sender,
         destination_taker: msg.deposits[1].sender,
         deposits: get_coins_from_deposits(msg.deposits),
-        pool_tokens: pool_tokens,
+        //pool_tokens: pool_tokens,
         status: OrderStatus::Pending,
         created_at: env.block.height
     };
@@ -454,46 +455,6 @@ fn take_multi_asset_deposit(
     let res = Response::default()
         .add_message(ibc_msg)
         .add_attribute("action", "take_multi_asset_deposit");
-    Ok(res)
-}
-
-fn singe_asset_withdraw(
-    deps: DepsMut,
-    env: Env,
-    _info: MessageInfo,
-    msg: MsgSingleAssetWithdrawRequest,
-) -> Result<Response, ContractError> {
-    // Get liquidity pool
-    let pool = POOLS.load(deps.storage, &msg.pool_coin.denom)?;
-
-    let fee = MAX_FEE_RATE;
-    let amm = InterchainMarketMaker::new(&pool, fee);
-
-    let out = amm.single_withdraw(msg.pool_coin.clone(), &msg.denom_out)?;
-
-    let packet = IBCSwapPacketData {
-        r#type: SwapMessageType::SingleWithdraw,
-        data: to_binary(&msg)?,
-        state_change: Some(StateChange {
-            pool_tokens: Some(vec![msg.pool_coin.clone()]),
-            in_tokens: None,
-            out_tokens: Some(vec![out]),
-        }),
-    };
-
-    let ibc_msg = IbcMsg::SendPacket {
-        channel_id: pool.encounter_party_channel,
-        data: to_binary(&packet)?,
-        timeout: IbcTimeout::from(
-            env.block
-                .time
-                .plus_seconds(DEFAULT_TIMEOUT_TIMESTAMP_OFFSET),
-        ),
-    };
-
-    let res = Response::default()
-        .add_message(ibc_msg)
-        .add_attribute("action", "singe_asset_withdraw");
     Ok(res)
 }
 

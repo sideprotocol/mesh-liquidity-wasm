@@ -1,10 +1,11 @@
 use cosmwasm_std::{
     from_binary, Addr, BankMsg, Coin, Decimal, IbcAcknowledgement, IbcChannel, IbcOrder, StdResult,
-    SubMsg, Uint128, Binary, StdError,
+    SubMsg, Uint128, Binary, StdError, WasmMsg, to_binary,
 };
+use cw20::Cw20ExecuteMsg;
 use sha2::{Digest, Sha256};
 
-use crate::{interchainswap_handler::InterchainSwapPacketAcknowledgement, ContractError, msg::{MsgMakePoolRequest, DepositAsset}, types::MultiAssetDepositOrder, state::MULTI_ASSET_DEPOSIT_ORDERS};
+use crate::{interchainswap_handler::InterchainSwapPacketAcknowledgement, ContractError, msg::{MsgMakePoolRequest, DepositAsset}};
 use hex;
 
 pub fn get_pool_id_with_tokens(tokens: &[Coin]) -> String {
@@ -106,43 +107,25 @@ pub fn get_coins_from_deposits(deposits: Vec<DepositAsset>) -> Vec<Coin> {
     return tokens;
 }
 
-// pub fn get_order_from_multi_orders(order_id: String, orders: Vec<MultiAssetDepositOrder>) -> MultiAssetDepositOrder {
-//     for order in orders {
-//         if order.
-//     }
-// }
-
-pub(crate) fn send_tokens(to: &Addr, amount: Coin) -> StdResult<Vec<SubMsg>> {
-    // if amount.is_empty() {
-    //     Ok(vec![])
-    // } else {
-    //     match amount {
-    //         Balance::Native(coins) => {
-    //             let msg = BankMsg::Send {
-    //                 to_address: to.into(),
-    //                 amount: coins.into_vec(),
-    //             };
-    //             Ok(vec![SubMsg::new(msg)])
-    //         }
-    //         Balance::Cw20(coin) => {
-    //             let msg = Cw20ExecuteMsg::Transfer {
-    //                 recipient: to.into(),
-    //                 amount: coin.amount,
-    //             };
-    //             let exec = WasmMsg::Execute {
-    //                 contract_addr: coin.address.into(),
-    //                 msg: to_binary(&msg)?,
-    //                 funds: vec![],
-    //             };
-    //             Ok(vec![SubMsg::new(exec)])
-    //         }
-    //     }
-    // }
+pub(crate) fn send_tokens_coin(to: &Addr, amount: Coin) -> StdResult<Vec<SubMsg>> {
     let msg = BankMsg::Send {
         to_address: to.into(),
         amount: vec![amount],
     };
     Ok(vec![SubMsg::new(msg)])
+}
+
+pub fn mint_tokens_cw20(recipient: String, lp_token: String, amount: Uint128) -> StdResult<Vec<SubMsg>> {
+    let msg = Cw20ExecuteMsg::Mint {
+        recipient: recipient.into(),
+        amount: amount,
+    };
+    let exec = WasmMsg::Execute {
+        contract_addr: lp_token.into(),
+        msg: to_binary(&msg)?,
+        funds: vec![],
+    };
+    Ok(vec![SubMsg::new(exec)])
 }
 
 pub(crate) fn decode_create_pool_msg(data: &Binary) -> MsgMakePoolRequest {

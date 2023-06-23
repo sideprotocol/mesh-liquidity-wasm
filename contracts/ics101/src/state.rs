@@ -22,10 +22,12 @@ pub struct ChannelInfo {
 pub struct Config {
     // Counter to keep track of multiassetdeposit orders
     pub counter: u64,
+    // Token code id  (Cw20)
+    pub token_code_id: u64
 }
 
 // Each pool has it's pool token (cw20)
-// Map (asset1-asset2) -> pool token address
+// Map pool-id -> pool token address
 pub const POOL_TOKENS_LIST: Map<&str, String> = Map::new("pool_tokens_list");
 
 pub const CONFIG: Item<Config> = Item::new("config");
