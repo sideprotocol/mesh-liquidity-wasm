@@ -7,7 +7,7 @@ use cosmwasm_std::{Coin, Decimal, StdError, StdResult, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::utils::{decimal_to_f64, uint128_to_f64};
+use crate::{utils::{decimal_to_f64, uint128_to_f64}};
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub enum PoolSide {
@@ -147,10 +147,11 @@ impl InterchainMarketMaker {
             .find(|a| a.balance.denom == token.denom)
             .ok_or_else(|| StdError::generic_err("Asset not found"))?;
 
-        let issue_amount: Uint128;
+        let mut issue_amount: Uint128 = Uint128::from(0u64);
 
         if self.pool.status != PoolStatus::PoolStatusActive {
-            // throw error
+            // TODO: throw error
+            // return Err(ContractError::NotReadyForSwap);
         } else {
             let weight = (asset.weight as f64) / 100.0;
 
