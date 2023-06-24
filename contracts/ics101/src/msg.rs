@@ -174,13 +174,17 @@ pub enum SwapMsgType {
 pub struct MsgSwapRequest {
     pub swap_type: SwapMsgType,
     pub sender: String,
+    #[serde(rename = "poolId")]
+    pub pool_id: String,
     #[serde(rename = "tokenIn")]
     pub token_in: Coin,
     #[serde(rename = "tokenOut")]
     pub token_out: Coin,
     pub slippage: u64,
     pub recipient: String,
+    #[serde(rename = "timeoutHeight")]
     pub timeout_height: u64,
+    #[serde(rename = "timeoutTimestamp")]
     pub timeout_timestamp: u64
 }
 

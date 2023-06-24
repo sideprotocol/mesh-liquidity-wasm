@@ -395,6 +395,7 @@ fn take_multi_asset_deposit(
             "Pool doesn't exist {}", msg.pool_id
         ))));
     }
+
     // get order
     // load orders
     let mut multi_asset_orders: Vec<MultiAssetDepositOrder> = MULTI_ASSET_DEPOSIT_ORDERS.load(deps.storage, msg.pool_id)?;
@@ -458,6 +459,8 @@ fn take_multi_asset_deposit(
     Ok(res)
 }
 
+// TODO: Call from receive function only
+// Pass pool id asset i.e cw20
 fn multi_asset_withdraw(
     deps: DepsMut,
     env: Env,
@@ -465,42 +468,43 @@ fn multi_asset_withdraw(
     msg: MsgMultiAssetWithdrawRequest,
 ) -> Result<Response, ContractError> {
     // Get liquidity pool
-    let pool = POOLS.load(deps.storage, &msg.local_withdraw.pool_coin.denom)?;
-
-    // Check pool status
-    if pool.status != PoolStatus::PoolStatusReady {
-        return Err(ContractError::FailedWithdraw {
-            err: format!("pool not ready for swap"),
-        });
+    // load pool throw error if not found
+    let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id)?;
+    let interchain_pool;
+    if let Some(pool) = interchain_pool_temp {
+        interchain_pool = pool
+    } else {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Pool doesn't exist {}", msg.pool_id
+        ))));
     }
 
-    let fee = MAX_FEE_RATE;
-    let amm = InterchainMarketMaker::new(&pool, fee);
+    // Create the interchain market maker
+    let amm = InterchainMarketMaker {
+        pool_id: interchain_pool.clone().pool_id,
+        pool: interchain_pool.clone(),
+        fee_rate: interchain_pool.swap_fee,
+    };
 
-    let local_out = amm.multi_asset_withdraw(
-        msg.local_withdraw.pool_coin.clone(),
-        &msg.local_withdraw.denom_out,
-    )?;
-    let remote_out = amm.multi_asset_withdraw(
-        msg.remote_withdraw.pool_coin.clone(),
-        &msg.remote_withdraw.denom_out,
-    )?;
+    let source_denom = interchain_pool.find_asset_by_side(PoolSide::SOURCE);
+    let source_out = amm.multi_asset_withdraw(redeem, denom_out);
+    let destination_denom = interchain_pool.find_asset_by_side(PoolSide::DESTINATION);
+    let destination_out = amm.multi_asset_withdraw(redeem, denom_out);
 
-    let packet = IBCSwapPacketData {
-        r#type: SwapMessageType::MultiWithdraw,
+    let packet = InterchainSwapPacketData {
+        r#type: InterchainMessageType::MultiWithdraw,
         data: to_binary(&msg)?,
         state_change: Some(StateChange {
             pool_tokens: Some(vec![
-                msg.local_withdraw.pool_coin.clone(),
-                msg.remote_withdraw.pool_coin.clone(),
+               msg.pool_token
             ]),
             in_tokens: None,
-            out_tokens: Some(vec![local_out, remote_out]),
+            out_tokens: Some(vec![source_out, destination_out]),
         }),
     };
 
     let ibc_msg = IbcMsg::SendPacket {
-        channel_id: pool.encounter_party_channel,
+        channel_id: interchain_pool.counter_party_channel,
         data: to_binary(&packet)?,
         timeout: IbcTimeout::from(
             env.block
@@ -511,25 +515,54 @@ fn multi_asset_withdraw(
 
     let res = Response::default()
         .add_message(ibc_msg)
-        .add_attribute("action", "multi_asset_deposit");
+        .add_attribute("action", "multi_asset_withdraw");
     Ok(res)
 }
 
 fn swap(
     deps: DepsMut,
     env: Env,
-    _info: MessageInfo,
+    info: MessageInfo,
     msg: MsgSwapRequest,
 ) -> Result<Response, ContractError> {
-    let pool_id = get_pool_id_with_tokens(&[msg.token_in.clone(), msg.token_out.clone()]);
-    let pool = POOLS.load(deps.storage, &pool_id)?;
-
-    // Check pool status
-    if pool.status != PoolStatus::PoolStatusReady {
-        return Err(ContractError::FailedSwap {
-            err: format!("pool not ready for swap"),
-        });
+    // Get liquidity pool
+    // load pool throw error if not found
+    let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id)?;
+    let interchain_pool;
+    if let Some(pool) = interchain_pool_temp {
+        interchain_pool = pool
+    } else {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Pool doesn't exist {}", msg.pool_id
+        ))));
     }
+
+    // Check the pool status
+    if interchain_pool.status != PoolStatus::PoolStatusActive {
+        return Err(ContractError::NotReadyForSwap);
+    }
+
+    // check if given tokens are received here
+    let mut ok = false;
+    // First token in this chain only first token needs to be verified
+    for asset in info.funds {
+        if asset.denom == msg.token_in.denom && asset.amount == msg.token_in.amount {
+            ok = true;
+        }
+    }
+    if !ok {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Funds mismatch: Funds mismatched to with message and sent values: Make Pool"
+        ))));
+    }
+
+    // Create the interchain market maker
+    let amm = InterchainMarketMaker {
+        pool_id: interchain_pool.clone().pool_id,
+        pool: interchain_pool.clone(),
+        fee_rate: interchain_pool.swap_fee,
+    };
+
 
     // Construct the IBC data packet
     let swap_data = to_binary(&msg)?;
