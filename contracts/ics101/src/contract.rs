@@ -75,7 +75,7 @@ fn make_pool(
         ))));
     }
 
-    let mut tokens = [];
+    let mut tokens: [Coin; 2] = Default::default();
     tokens[0] = msg.liquidity[0].balance.clone();
     tokens[1] = msg.liquidity[1].balance.clone();
 
