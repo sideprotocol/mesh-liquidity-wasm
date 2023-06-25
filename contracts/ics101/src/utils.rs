@@ -1,11 +1,11 @@
 use cosmwasm_std::{
     from_binary, Addr, BankMsg, Coin, Decimal, IbcAcknowledgement, IbcChannel, IbcOrder, StdResult,
-    SubMsg, Uint128, Binary, StdError, WasmMsg, to_binary,
+    SubMsg, Uint128, WasmMsg, to_binary,
 };
 use cw20::Cw20ExecuteMsg;
 use sha2::{Digest, Sha256};
 
-use crate::{interchainswap_handler::InterchainSwapPacketAcknowledgement, ContractError, msg::{MsgMakePoolRequest, DepositAsset}};
+use crate::{interchainswap_handler::InterchainSwapPacketAcknowledgement, ContractError, msg::{DepositAsset}};
 use hex;
 
 pub fn get_pool_id_with_tokens(tokens: &[Coin]) -> String {
@@ -102,8 +102,8 @@ pub(crate) fn enforce_order_and_version(
 
 pub fn get_coins_from_deposits(deposits: Vec<DepositAsset>) -> Vec<Coin> {
     let mut tokens = vec![];
-    tokens.push(deposits[0].balance);
-    tokens.push(deposits[1].balance);
+    tokens.push(deposits[0].balance.clone());
+    tokens.push(deposits[1].balance.clone());
     return tokens;
 }
 
@@ -128,27 +128,27 @@ pub fn mint_tokens_cw20(recipient: String, lp_token: String, amount: Uint128) ->
     Ok(vec![SubMsg::new(exec)])
 }
 
-pub(crate) fn decode_create_pool_msg(data: &Binary) -> MsgMakePoolRequest {
-    let msg_res: Result<MsgMakePoolRequest, StdError> = from_binary(data);
-    let msg: MsgMakePoolRequest;
+// pub(crate) fn decode_create_pool_msg(data: &Binary) -> MsgMakePoolRequest {
+//     let msg_res: Result<MsgMakePoolRequest, StdError> = from_binary(data);
+//     let msg: MsgMakePoolRequest;
 
-    match msg_res {
-        Ok(value) => {
-            msg = value.clone();
-        }
-        Err(_err) => {
-            // TODO:handle error
-            // Why do we need MSgOUtput ? does it not unwrap string
-            let msg_output: MsgMakePoolRequest = from_binary(data).unwrap();
-            // msg = MsgMakePoolRequest {
-            //     source_port: msg_output.source_port.clone(),
-            //     source_channel: msg_output.source_channel.clone(),
-            //     sender: msg_output.sender,
-            //     tokens: msg_output.tokens,
-            //     decimals: msg_output.decimals,
-            //     weights: msg_output.weights,
-            // }
-        }
-    }
-    msg
-}
+//     match msg_res {
+//         Ok(value) => {
+//             msg = value.clone();
+//         }
+//         Err(_err) => {
+//             // TODO:handle error
+//             // Why do we need MSgOUtput ? does it not unwrap string
+//             // let msg_output: MsgMakePoolRequest = from_binary(data).unwrap();
+//             // msg = MsgMakePoolRequest {
+//             //     source_port: msg_output.source_port.clone(),
+//             //     source_channel: msg_output.source_channel.clone(),
+//             //     sender: msg_output.sender,
+//             //     tokens: msg_output.tokens,
+//             //     decimals: msg_output.decimals,
+//             //     weights: msg_output.weights,
+//             // }
+//         }
+//     }
+//     msg
+// }

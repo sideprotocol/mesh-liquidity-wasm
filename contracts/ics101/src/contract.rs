@@ -24,7 +24,7 @@ use crate::utils::{check_slippage, get_coins_from_deposits};
 const CONTRACT_NAME: &str = "ics101-interchainswap";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const DEFAULT_TIMEOUT_TIMESTAMP_OFFSET: u64 = 600;
-const MAX_FEE_RATE: u32 = 300;
+//const MAX_FEE_RATE: u32 = 300;
 const MAXIMUM_SLIPPAGE: u64 = 10000;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -398,9 +398,17 @@ fn take_multi_asset_deposit(
 
     // get order
     // load orders
-    let mut multi_asset_orders: Vec<MultiAssetDepositOrder> = MULTI_ASSET_DEPOSIT_ORDERS.load(deps.storage, msg.pool_id.clone())?;
+    let multi_asset_orders: Vec<MultiAssetDepositOrder> = MULTI_ASSET_DEPOSIT_ORDERS.load(deps.storage, msg.pool_id.clone())?;
     let mut found = false;
-    let mut order;
+    let mut order = MultiAssetDepositOrder {
+        order_id: 0,
+        pool_id: "Mock".to_string(),
+        source_maker: "Mock".to_string(),
+        destination_taker: "Mock".to_string(),
+        deposits: vec![],
+        status: OrderStatus::Pending,
+        created_at: env.block.height
+    };
     for  multi_order in multi_asset_orders {
         if multi_order.order_id == msg.order_id {
             found = true;
@@ -489,11 +497,11 @@ fn multi_asset_withdraw(
     // TODO: Handle unwrap
     let source_denom = interchain_pool.find_asset_by_side(PoolSide::SOURCE).unwrap();
     let source_out = amm.multi_asset_withdraw(Coin {
-		denom: interchain_pool.pool_id, amount: msg.pool_token.amount.div(Uint128::from(2u64)),
+		denom: interchain_pool.pool_id.clone(), amount: msg.pool_token.amount.div(Uint128::from(2u64)),
 	}, &source_denom.balance.denom).unwrap();
     let destination_denom = interchain_pool.find_asset_by_side(PoolSide::DESTINATION).unwrap();
     let destination_out = amm.multi_asset_withdraw(Coin {
-		denom: interchain_pool.pool_id, amount: msg.pool_token.amount.div(Uint128::from(2u64)),
+		denom: interchain_pool.pool_id.clone(), amount: msg.pool_token.amount.div(Uint128::from(2u64)),
 	}, &destination_denom.balance.denom).unwrap();
 
     let packet = InterchainSwapPacketData {

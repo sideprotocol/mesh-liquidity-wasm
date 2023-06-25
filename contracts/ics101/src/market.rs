@@ -46,50 +46,66 @@ pub struct InterchainLiquidityPool {
 }
 
 impl InterchainLiquidityPool {
-    pub fn find_asset_by_denom(self, denom: &str) -> StdResult<PoolAsset> {
-        for asset in self.assets {
+    pub fn find_asset_by_denom(&self, denom: &str) -> StdResult<PoolAsset> {
+        for asset in &self.assets {
             if asset.balance.denom == denom {
-                return Ok(asset);
+                return Ok(asset.clone());
             }
         }
         Err(StdError::generic_err("Denom not found in pool"))
     }
 
-    pub fn find_asset_by_side(self, side: PoolSide) -> StdResult<PoolAsset> {
-        for asset in self.assets {
+    pub fn find_asset_by_side(&self, side: PoolSide) -> StdResult<PoolAsset> {
+        for asset in &self.assets {
             if asset.side == side {
-                return Ok(asset)
+                return Ok(asset.clone())
             }
         }
         Err(StdError::generic_err("Asset side not found in pool"))
     }
 
-    pub fn add_asset(mut self, token: Coin) -> StdResult<Coin> {
-        for mut asset in self.assets {
+    pub fn add_asset(&mut self, token: Coin) -> StdResult<Coin> {
+        let mut indx = 0;
+        let mut found = false;
+        for (idx, asset) in self.assets.iter().enumerate() {
             if asset.balance.denom == token.denom {
-                asset.balance.amount += token.amount;
+                indx = idx;
+                found = true;
             }
         }
-        Err(StdError::generic_err("Denom not found in pool"))
+
+        if !found {
+            return Err(StdError::generic_err("Denom not found in pool"));
+        }
+        self.assets[indx].balance.amount += token.amount;
+        Ok(token)
     }
 
-    pub fn add_supply(mut self, token: Coin) -> StdResult<Coin> {
+    pub fn add_supply(&mut self, token: Coin) -> StdResult<Coin> {
         if self.supply.denom == token.denom {
             self.supply.amount += token.amount
         }
         Err(StdError::generic_err("Denom not found"))
     }
 
-    pub fn subtract_asset(mut self, token: Coin) -> StdResult<Coin> {
-        for mut asset in self.assets {
+    pub fn subtract_asset(&mut self, token: Coin) -> StdResult<Coin> {
+        let mut indx = 0;
+        let mut found = false;
+        for (idx, asset) in self.assets.iter().enumerate() {
             if asset.balance.denom == token.denom {
-                asset.balance.amount -= token.amount;
+                indx = idx;
+                found = true;
             }
         }
-        Err(StdError::generic_err("Denom not found in pool"))
+
+        if !found {
+            return Err(StdError::generic_err("Denom not found in pool"));
+        }
+        self.assets[indx].balance.amount -= token.amount;
+        Ok(token)
     }
 
-    pub fn subtract_supply(mut self, token: Coin) -> StdResult<Coin> {
+    pub fn subtract_supply(&mut self, token: Coin) -> StdResult<Coin> {
         if self.supply.denom == token.denom {
             self.supply.amount -= token.amount
         }
