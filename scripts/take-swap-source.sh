@@ -1,5 +1,5 @@
-HOME1="~/.wasmd1"
-HOME2="~/.wasmd2"
+HOME1="/Users/ghostprince/.wasmd1"
+HOME2="/Users/ghostprince/.wasmd2"
 CONTRACT1="wasm1tqwwyth34550lg2437m05mjnjp8w7h5ka7m70jtzpxn4uh2ktsmqt0n86u"
 CONTRACT2="wasm1pvrwmjuusn9wh34j7y520g8gumuy9xtl3gvprlljfdpwju3x7ucsfg5rpz"
 CHAINID1="source-chain"
