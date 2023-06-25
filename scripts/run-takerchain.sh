@@ -1,6 +1,6 @@
 CHAIN_ID2="target-chain"
 TXFLAG2="--chain-id $CHAIN_ID2 --gas-prices 0.025stake --gas auto --gas-adjustment 1.3"
-HOME2="/Users/ghostprince/.wasmd2"
+HOME2="~/.wasmd2"
 KEY_TEST="--keyring-backend test"
 wasmd init my-node --chain-id $CHAIN_ID2 --home $HOME2
 wasmd keys add main2 --keyring-backend test --home $HOME2

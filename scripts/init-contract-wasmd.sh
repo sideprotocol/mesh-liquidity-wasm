@@ -1,8 +1,8 @@
 INIT='{}'
 CHAIN_ID1="source-chain"
-HOME1="/Users/ghostprince/.wasmd1"
+HOME1="~/.wasmd1"
 CHAIN_ID2="target-chain"
-HOME2="/Users/ghostprince/.wasmd2"
+HOME2="~/.wasmd2"
 KEY1="main1"
 KEY2="main2"
 CODE1="7"
