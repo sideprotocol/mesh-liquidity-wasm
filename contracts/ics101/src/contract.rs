@@ -342,7 +342,6 @@ fn make_multi_asset_deposit(
     ])?;
 
     let mut config = CONFIG.load(deps.storage)?;
-    config.counter = config.counter + 1;
 
     let mut multi_asset_order = MultiAssetDepositOrder {
         order_id: config.counter,
@@ -356,13 +355,15 @@ fn make_multi_asset_deposit(
     };
 
     // load orders
-    let mut multi_asset_orders: Vec<MultiAssetDepositOrder> = MULTI_ASSET_DEPOSIT_ORDERS.load(deps.storage, msg.pool_id.clone())?;
+    let mut key = msg.pool_id.clone() + "-" + &config.counter.clone().to_string();
+    let multi_asset_order_temp = MULTI_ASSET_DEPOSIT_ORDERS.may_load(deps.storage, key.clone())?;
+
     let mut found = false;
-    if multi_asset_orders.len() > 0 {
+    if let Some(order) = multi_asset_order_temp {
         found = true;
-        config.counter = config.counter - 1;
-        // we already checked for vector length
-        multi_asset_order = multi_asset_orders.last().unwrap().clone();
+        multi_asset_order = order;
+    } else {
+        config.counter = config.counter + 1;
     }
 
     let pending_height = env.block.height - multi_asset_order.created_at;
@@ -372,12 +373,13 @@ fn make_multi_asset_deposit(
 
 	// protect malicious deposit action. we will not refund token as a penalty.
     if found && pending_height > MULTI_DEPOSIT_PENDING_LIMIT {
-        multi_asset_orders.pop();
+        MULTI_ASSET_DEPOSIT_ORDERS.remove(deps.storage, key);
+        //multi_asset_orders.pop();
     }
 
     // save order in source chain
-    multi_asset_orders.push(multi_asset_order);
-    MULTI_ASSET_DEPOSIT_ORDERS.save(deps.storage, msg.pool_id.clone(), &multi_asset_orders)?;
+    key = msg.pool_id.clone() + "-" + &config.counter.clone().to_string();
+    MULTI_ASSET_DEPOSIT_ORDERS.save(deps.storage, key, &multi_asset_order)?;
     CONFIG.save(deps.storage, &config)?;
 
     // Construct the IBC packet
@@ -423,32 +425,18 @@ fn take_multi_asset_deposit(
             "Pool doesn't exist {}", msg.pool_id
         ))));
     }
-
     // get order
     // load orders
-    let multi_asset_orders: Vec<MultiAssetDepositOrder> = MULTI_ASSET_DEPOSIT_ORDERS.load(deps.storage, msg.pool_id.clone())?;
-    let mut found = false;
-    let mut order = MultiAssetDepositOrder {
-        order_id: 0,
-        pool_id: "Mock".to_string(),
-        source_maker: "Mock".to_string(),
-        destination_taker: "Mock".to_string(),
-        deposits: vec![],
-        status: OrderStatus::Pending,
-        created_at: env.block.height
-    };
-    for  multi_order in multi_asset_orders {
-        if multi_order.order_id == msg.order_id {
-            found = true;
-            order = multi_order
-        }
-    }
-
-    if !found {
+    let key = msg.pool_id.clone() + "-" + &msg.order_id.clone().to_string();
+    let multi_asset_order_temp = MULTI_ASSET_DEPOSIT_ORDERS.may_load(deps.storage, key)?;
+    let multi_asset_order;
+    if let Some(order) = multi_asset_order_temp {
+        multi_asset_order = order;
+    } else {
         return Err(ContractError::ErrOrderNotFound);
     }
 
-    if order.destination_taker != info.sender {
+    if multi_asset_order.destination_taker != info.sender {
         return Err(ContractError::ErrFailedMultiAssetDeposit);
     }
 

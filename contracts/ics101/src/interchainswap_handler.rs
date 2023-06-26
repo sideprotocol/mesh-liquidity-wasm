@@ -246,7 +246,7 @@ pub(crate) fn on_received_make_multi_deposit(
     let mut config = CONFIG.load(deps.storage)?;
     config.counter = config.counter + 1;
 
-    let mut multi_asset_orders: Vec<MultiAssetDepositOrder> = MULTI_ASSET_DEPOSIT_ORDERS.load(deps.storage, msg.pool_id.clone())?;
+    let key = msg.pool_id.clone() + "-" + &config.counter.clone().to_string();
     let multi_asset_order = MultiAssetDepositOrder {
         order_id: config.counter,
         pool_id: msg.pool_id.clone(),
@@ -258,8 +258,7 @@ pub(crate) fn on_received_make_multi_deposit(
         created_at: env.block.height
     };
 
-    multi_asset_orders.push(multi_asset_order);
-    MULTI_ASSET_DEPOSIT_ORDERS.save(deps.storage, msg.pool_id, &multi_asset_orders)?;
+    MULTI_ASSET_DEPOSIT_ORDERS.save(deps.storage, key, &multi_asset_order)?;
     CONFIG.save(deps.storage, &config)?;
 
     let res = IbcReceiveResponse::new()
@@ -274,7 +273,7 @@ pub(crate) fn on_received_make_multi_deposit(
 
 pub(crate) fn on_received_take_multi_deposit(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     _packet: &IbcPacket,
     msg: MsgTakeMultiAssetDepositRequest,
     state_change: StateChange
@@ -291,26 +290,15 @@ pub(crate) fn on_received_take_multi_deposit(
     }
 
     // find order
-    let multi_asset_orders: Vec<MultiAssetDepositOrder> = MULTI_ASSET_DEPOSIT_ORDERS.load(deps.storage, msg.pool_id.clone())?;
-    let mut found = false;
-    let mut order = MultiAssetDepositOrder {
-        order_id: 0,
-        pool_id: "Mock".to_string(),
-        source_maker: "Mock".to_string(),
-        destination_taker: "Mock".to_string(),
-        deposits: vec![],
-        status: OrderStatus::Pending,
-        created_at: env.block.height
-    };
-    for  multi_order in multi_asset_orders {
-        if multi_order.order_id == msg.order_id {
-            found = true;
-            order = multi_order;
-            order.status = OrderStatus::Complete;
-        }
-    }
-
-    if !found {
+    // get order
+    // load orders
+    let key = msg.pool_id.clone() + "-" + &msg.order_id.clone().to_string();
+    let multi_asset_order_temp = MULTI_ASSET_DEPOSIT_ORDERS.may_load(deps.storage, key.clone())?;
+    let mut multi_asset_order;
+    if let Some(order) = multi_asset_order_temp {
+        multi_asset_order = order;
+        multi_asset_order.status = OrderStatus::Complete;
+    } else {
         return Err(ContractError::ErrOrderNotFound);
     }
 
@@ -322,14 +310,14 @@ pub(crate) fn on_received_take_multi_deposit(
     }
 
     // Add assets to pool
-    for asset in order.deposits {
+    for asset in multi_asset_order.deposits.clone() {
         interchain_pool.add_asset(asset).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;
     }
 
     let sub_message;
     // Mint tokens (cw20) to the sender
     if let Some(lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id.clone())? {
-        sub_message = mint_tokens_cw20(order.source_maker, lp_token, total_pool_tokens)?;
+        sub_message = mint_tokens_cw20(multi_asset_order.source_maker.clone(), lp_token, total_pool_tokens)?;
     } else {
         // throw error token not found, initialization is done in make_pool and
         // take_pool
@@ -338,13 +326,7 @@ pub(crate) fn on_received_take_multi_deposit(
         ))));
     }
 
-    let mut config = CONFIG.load(deps.storage)?;
-    config.counter = config.counter + 1;
-
-    let multi_asset_orders: Vec<MultiAssetDepositOrder> = MULTI_ASSET_DEPOSIT_ORDERS.load(deps.storage, msg.pool_id.clone())?;
-
-    MULTI_ASSET_DEPOSIT_ORDERS.save(deps.storage, msg.pool_id.clone(), &multi_asset_orders)?;
-    CONFIG.save(deps.storage, &config)?;
+    MULTI_ASSET_DEPOSIT_ORDERS.save(deps.storage, key, &multi_asset_order)?;
     POOLS.save(deps.storage, &msg.pool_id.clone(), &interchain_pool)?;
 
     let res = IbcReceiveResponse::new()
@@ -367,9 +349,8 @@ pub(crate) fn on_received_multi_withdraw(
 ) -> Result<IbcReceiveResponse, ContractError> {
 	// load pool throw error if found
     let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id)?;
-    let mut interchain_pool;
-    if let Some(pool) = interchain_pool_temp {
-        interchain_pool = pool;
+    if let Some(_pool) = interchain_pool_temp {
+        // do nothing
     } else {
         return Err(ContractError::Std(StdError::generic_err(format!(
             "Pool not found"

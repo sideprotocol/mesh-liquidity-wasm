@@ -34,8 +34,8 @@ pub const CONFIG: Item<Config> = Item::new("config");
 
 pub const POOLS: Map<&str, InterchainLiquidityPool> = Map::new("pools");
 
-// Map from pool id to vec<oders>
-pub const MULTI_ASSET_DEPOSIT_ORDERS: Map<String, Vec<MultiAssetDepositOrder>> = Map::new("multi_asset_deposit_orders");
+// Map from key (pool_id + "-" + order_id) to value multi asset orders
+pub const MULTI_ASSET_DEPOSIT_ORDERS: Map<String, MultiAssetDepositOrder> = Map::new("multi_asset_deposit_orders");
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
