@@ -10,7 +10,7 @@ use cosmwasm_std::{
 use cw2::set_contract_version;
 
 use crate::error::ContractError;
-use crate::market::{InterchainMarketMaker, PoolStatus, PoolSide};
+use crate::market::{InterchainMarketMaker, PoolStatus, PoolSide, InterchainLiquidityPool};
 use crate::msg::{
     ExecuteMsg, InstantiateMsg,
     MsgMultiAssetWithdrawRequest, MsgSingleAssetDepositRequest,
@@ -103,6 +103,21 @@ fn make_pool(
         ))));
     }
 
+    let supply: Coin = Coin {amount: Uint128::from(0u64), denom: pool_id.clone()};
+    let interchain_pool: InterchainLiquidityPool = InterchainLiquidityPool {
+        pool_id: pool_id.clone(),
+        source_creator: msg.creator.clone(),
+        destination_creator: msg.counterparty_creator.clone(),
+        assets: msg.liquidity.clone(),
+        supply: supply,
+        pool_price: 0.0,
+        status: PoolStatus::PoolStatusInitialized,
+        counter_party_port: msg.source_port.clone(),
+        counter_party_channel: msg.source_channel.clone(),
+        swap_fee: msg.swap_fee
+    };
+    POOLS.save(deps.storage, &pool_id, &interchain_pool)?;
+
     let pool_data = to_binary(&msg).unwrap();
     let ibc_packet_data = InterchainSwapPacketData {
         r#type: InterchainMessageType::MakePool,
@@ -142,6 +157,11 @@ fn take_pool(
             "Pool doesn't exist {}", msg.pool_id
         ))));
     }
+
+    if interchain_pool.status != PoolStatus::PoolStatusInitialized {
+        return Err(ContractError::Expired);
+    }
+
     // check balance and funds sent handle error
     // TODO: Handle unwrap
     let token = interchain_pool.find_asset_by_side(PoolSide::SOURCE).unwrap();

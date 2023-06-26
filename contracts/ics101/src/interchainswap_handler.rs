@@ -204,7 +204,7 @@ pub(crate) fn on_received_single_deposit(
     }
     let pool_tokens = &state_change.pool_tokens.unwrap().clone()[0];
     // increase lp token mint amount
-    interchain_pool.add_supply(pool_tokens.clone());
+    interchain_pool.add_supply(pool_tokens.clone()).map_err(|err| StdError::generic_err(format!("Failed to add supply: {}", err)))?;
     // update pool tokens.
     if let Err(err) = interchain_pool.add_asset(msg.token) {
         return Err(ContractError::Std(StdError::generic_err(format!(
@@ -317,13 +317,13 @@ pub(crate) fn on_received_take_multi_deposit(
     let mut total_pool_tokens = Uint128::from(0u64);
     // Add tokens to pool supply
     for pool_token in state_change.pool_tokens.unwrap() {
-        interchain_pool.add_supply(pool_token.clone());
+        interchain_pool.add_supply(pool_token.clone()).map_err(|err| StdError::generic_err(format!("Failed to add supply: {}", err)))?;
         total_pool_tokens += pool_token.amount;
     }
 
     // Add assets to pool
     for asset in order.deposits {
-        interchain_pool.add_asset(asset);
+        interchain_pool.add_asset(asset).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;
     }
 
     let sub_message;
@@ -459,10 +459,10 @@ pub(crate) fn on_received_swap(
     let token_out = state_change.out_tokens.unwrap();
 
     // send tokens
-    let mut sub_messages = send_tokens_coin(&Addr::unchecked(msg.recipient), token_out[0].clone())?;
+    let sub_messages = send_tokens_coin(&Addr::unchecked(msg.recipient), token_out[0].clone())?;
    
     // Update pool status by subtracting output token and adding input token
-    interchain_pool.add_asset(msg.token_in);
+    interchain_pool.add_asset(msg.token_in).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;
 
     POOLS.save(deps.storage, &msg.pool_id, &interchain_pool)?;
 
