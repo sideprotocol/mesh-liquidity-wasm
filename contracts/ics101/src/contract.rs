@@ -18,7 +18,7 @@ use crate::msg::{
 };
 use crate::state::{POOLS, MULTI_ASSET_DEPOSIT_ORDERS, CONFIG};
 use crate::types::{InterchainSwapPacketData, StateChange, InterchainMessageType, MultiAssetDepositOrder, OrderStatus, MULTI_DEPOSIT_PENDING_LIMIT};
-use crate::utils::{check_slippage, get_coins_from_deposits};
+use crate::utils::{check_slippage, get_coins_from_deposits, get_pool_id_with_tokens};
 
 // Version info, for migration info
 const CONTRACT_NAME: &str = "ics101-interchainswap";
@@ -59,7 +59,7 @@ pub fn execute(
 }
 
 fn make_pool(
-    _deps: DepsMut,
+    deps: DepsMut,
     env: Env,
     info: MessageInfo,
     msg: MsgMakePoolRequest,
@@ -79,11 +79,21 @@ fn make_pool(
     tokens[0] = msg.liquidity[0].balance.clone();
     tokens[1] = msg.liquidity[1].balance.clone();
 
+    let pool_id = get_pool_id_with_tokens(&tokens);
+    // load pool throw error if not found
+    let interchain_pool_temp = POOLS.may_load(deps.storage,&pool_id)?;
+    if let Some(_pool) = interchain_pool_temp {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Pool already exists"
+        ))));
+    }
+
     // check if given tokens are received here
     let mut ok = false;
     // First token in this chain only first token needs to be verified
     for asset in info.funds {
-        if asset.denom == tokens[0].denom && asset.amount == tokens[0].amount {
+        if (asset.denom == tokens[0].denom && asset.amount == tokens[0].amount) ||
+            (asset.denom == tokens[1].denom && asset.amount == tokens[1].amount) {
             ok = true;
         }
     }
@@ -270,7 +280,8 @@ fn make_multi_asset_deposit(
     let mut ok = false;
     // First token in this chain only first token needs to be verified
     for asset in info.funds {
-        if asset.denom == tokens[0].denom && asset.amount == tokens[0].amount {
+        if asset.denom == tokens[0].denom && asset.amount == tokens[0].amount ||
+        (asset.denom == tokens[1].denom && asset.amount == tokens[1].amount) {
             ok = true;
         }
     }
@@ -289,16 +300,13 @@ fn make_multi_asset_deposit(
     let source_asset = interchain_pool.find_asset_by_side(PoolSide::SOURCE).unwrap();
     let destination_asset = interchain_pool.find_asset_by_side(PoolSide::DESTINATION).unwrap();
 
-    // Check the ratio of local amount and remote amount
-    let current_ratio = Uint128::from(source_asset.balance.amount)
-        .mul(Uint128::from(1e18 as u64))
-        .div(Uint128::from(destination_asset.balance.amount));
-    let input_ratio = Uint128::from(msg.deposits[0].balance.amount)
-        .mul(Uint128::from(1e18 as u64))
-        .div(Uint128::from(msg.deposits[1].balance.amount));
-
-    check_slippage(current_ratio, input_ratio, 10)
-        .map_err(|err| StdError::generic_err(format!("Invalid Slippage: {}", err)))?;
+    check_slippage(
+        Uint128::from(source_asset.balance.amount), 
+        Uint128::from(destination_asset.balance.amount),
+        Uint128::from(msg.deposits[0].balance.amount),
+        Uint128::from(msg.deposits[1].balance.amount),
+        10
+        ).map_err(|err| StdError::generic_err(format!("Invalid Slippage: {}", err)))?;
 
     // Create the interchain market maker
     let amm = InterchainMarketMaker {

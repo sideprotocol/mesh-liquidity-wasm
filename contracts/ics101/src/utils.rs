@@ -1,3 +1,5 @@
+use std::{ops::{Mul, Div}};
+
 use cosmwasm_std::{
     from_binary, Addr, BankMsg, Coin, Decimal, IbcAcknowledgement, IbcChannel, IbcOrder, StdResult,
     SubMsg, Uint128, WasmMsg, to_binary,
@@ -7,6 +9,9 @@ use sha2::{Digest, Sha256};
 
 use crate::{interchainswap_handler::InterchainSwapPacketAcknowledgement, ContractError, msg::{DepositAsset}};
 use hex;
+
+pub const MULTIPLIER: u64 = 1e18 as u64;
+pub const MAXIMUM_SLIPPAGE: u64 = 10000;
 
 pub fn get_pool_id_with_tokens(tokens: &[Coin]) -> String {
     let mut denoms: Vec<String> = tokens.iter().map(|token| token.denom.clone()).collect();
@@ -36,11 +41,21 @@ pub fn decimal_to_f64(value: Decimal) -> f64 {
 }
 
 pub fn check_slippage(
-    expect: Uint128,
-    result: Uint128,
+    source_amount: Uint128,
+    destination_amount: Uint128,
+    source_balance: Uint128,
+    destination_balance: Uint128,
     desire_slippage: u64,
 ) -> Result<(), ContractError> {
-    if desire_slippage > 10000 {
+    // Check the ratio of local amount and remote amount
+    let expect = source_amount
+        .mul(Uint128::from(MULTIPLIER))
+        .div(destination_amount);
+    let result = source_balance
+        .mul(Uint128::from(MULTIPLIER))
+        .div(Uint128::from(destination_balance));
+
+    if desire_slippage > MAXIMUM_SLIPPAGE {
         return Err(ContractError::InvalidSlippage {});
     }
 
