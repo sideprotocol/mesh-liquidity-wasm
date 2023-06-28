@@ -136,7 +136,7 @@ pub(crate) fn on_received_make_pool(
         pool: interchain_pool.clone(),
         fee_rate: interchain_pool.swap_fee,
     };
-	interchain_pool.pool_price = amm.lp_price();
+	//interchain_pool.pool_price = amm.lp_price();
 
     POOLS.save(deps.storage, &pool_id, &interchain_pool)?;
 

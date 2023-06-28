@@ -4,6 +4,7 @@ use crate::utils::adjust_precision;
 
 // Referenced from Balancer Weighted pool implementation by  Osmosis here - https://github.com/osmosis-labs/osmosis/blob/47a2366c5eeee474de9e1cb4777fab0ccfbb9592/x/gamm/pool-models/balancer/amm.go#L94
 // solveConstantFunctionInvariant solves the constant function of an AMM
+// https://github.com/dexter-zone/dexter_core/tree/main/contracts/pools/weighted_pool
 // that determines the relationship between the differences of two sides
 // of assets inside the pool.
 // --------------------------
@@ -92,11 +93,11 @@ fn fee_ratio(normalized_weight: Decimal, swap_fee: Decimal) -> Decimal {
     return Decimal::one() - ((Decimal::one() - normalized_weight) * swap_fee);
 }
 
-/// ## Description
-/// Calculates the weight of an asset as % of the total weight share. Returns a decimal.
-/// ## Params
-/// * **weight** is the weight of the asset.
-/// * **total_weight** is the total weight of all assets.
-pub fn get_normalized_weight(weight: Uint128, total_weight: Uint128) -> Decimal {
-    Decimal::from_ratio(weight, total_weight)
-}
+// ## Description
+// Calculates the weight of an asset as % of the total weight share. Returns a decimal.
+// ## Params
+// * **weight** is the weight of the asset.
+// * **total_weight** is the total weight of all assets.
+// pub fn get_normalized_weight(weight: Uint128, total_weight: Uint128) -> Decimal {
+//     Decimal::from_ratio(weight, total_weight)
+// }

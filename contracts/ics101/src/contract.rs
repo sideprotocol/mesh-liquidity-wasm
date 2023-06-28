@@ -344,7 +344,7 @@ fn make_multi_asset_deposit(
 
     // Deposit the assets into the interchain market maker
     // TODO: refund rem_assets
-    let (shares, added_assets, rem_assets) = amm.deposit_multi_asset(&vec![
+    let (_shares, added_assets, _rem_assets) = amm.deposit_multi_asset(&vec![
         msg.deposits[0].balance.clone(),
         msg.deposits[1].balance.clone(),
     ])?;
@@ -518,15 +518,24 @@ fn multi_asset_withdraw(
         fee_rate: interchain_pool.swap_fee,
     };
 
+    let refund_assets = amm.multi_asset_withdraw(msg.pool_token.clone())
+    .map_err(|err| StdError::generic_err(format!("Failed to withdraw multi asset: {}", err)))?;
+
     // TODO: Handle unwrap
     let source_denom = interchain_pool.find_asset_by_side(PoolSide::SOURCE).unwrap();
-    let source_out = amm.multi_asset_withdraw(Coin {
-		denom: interchain_pool.pool_id.clone(), amount: msg.pool_token.amount.div(Uint128::from(2u64)),
-	}, &source_denom.balance.denom).unwrap();
     let destination_denom = interchain_pool.find_asset_by_side(PoolSide::DESTINATION).unwrap();
-    let destination_out = amm.multi_asset_withdraw(Coin {
-		denom: interchain_pool.pool_id.clone(), amount: msg.pool_token.amount.div(Uint128::from(2u64)),
-	}, &destination_denom.balance.denom).unwrap();
+
+    let mut source_out = Coin { denom: "mock".to_string(), amount: Uint128::zero()};
+    let mut destination_out = Coin { denom: "mock".to_string(), amount: Uint128::zero()};
+
+    for asset in refund_assets {
+        if &asset.denom == &source_denom.balance.denom {
+            source_out = asset.clone();
+        }
+        if &asset.denom == &destination_denom.balance.denom {
+            destination_out = asset;
+        }
+    }
 
     let packet = InterchainSwapPacketData {
         r#type: InterchainMessageType::MultiWithdraw,
@@ -608,11 +617,11 @@ fn swap(
     match msg.swap_type {
         SwapMsgType::Left => {
             msg_type = Some(InterchainMessageType::LeftSwap);
-            token_out = Some(amm.left_swap(msg.token_in.clone(), &msg.token_out.denom)?);
+            token_out = Some(amm.compute_swap(msg.token_in.clone(), &msg.token_out.denom)?);
         }
         SwapMsgType::Right => {
             msg_type = Some(InterchainMessageType::RightSwap);
-            token_out = Some(amm.right_swap(msg.token_in.clone(), msg.token_out.clone())?);
+            token_out = Some(amm.compute_offer_amount(msg.token_in.clone(), msg.token_out.clone())?);
         }
     }
 

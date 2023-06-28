@@ -2,7 +2,7 @@ use std::{ops::{Mul, Div}};
 
 use cosmwasm_std::{
     from_binary, Addr, BankMsg, Coin, IbcAcknowledgement, IbcChannel, IbcOrder, StdResult,
-    SubMsg, Uint128, WasmMsg, to_binary,
+    SubMsg, Uint128, WasmMsg, to_binary, Decimal, Decimal256, StdError,
 };
 use cw20::Cw20ExecuteMsg;
 use sha2::{Digest, Sha256};
@@ -49,6 +49,17 @@ pub fn adjust_precision(
         std::cmp::Ordering::Greater => value.checked_div(Uint128::new(
             10_u128.pow((current_precision - new_precision) as u32),
         ))?,
+    })
+}
+
+/// ## Description
+/// Converts [`Decimal`] to [`Decimal256`].
+pub fn decimal2decimal256(dec_value: Decimal) -> StdResult<Decimal256> {
+    Decimal256::from_atomics(dec_value.atomics(), dec_value.decimal_places()).map_err(|_| {
+        StdError::generic_err(format!(
+            "Failed to convert Decimal {} to Decimal256",
+            dec_value
+        ))
     })
 }
 

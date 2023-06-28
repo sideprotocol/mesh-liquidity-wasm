@@ -16,6 +16,7 @@ fn sub_sign(a: Decimal, b: Decimal) -> (Decimal, bool) {
 // Pow computes base^(exp)
 // However since the exponent is not an integer, we must do an approximation algorithm.
 // This implementation is inspired from Osmosis - https://github.com/osmosis-labs/osmosis/blob/1e80a2a220911cbd776f68e8fa5655870a5f5d98/osmomath/math.go#L53
+// https://github.com/dexter-zone/dexter_core/tree/main/contracts/pools/weighted_pool
 pub fn calculate_pow(
     base: Decimal,
     exp: Decimal,
