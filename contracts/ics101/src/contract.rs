@@ -110,7 +110,6 @@ fn make_pool(
         destination_creator: msg.counterparty_creator.clone(),
         assets: msg.liquidity.clone(),
         supply: supply,
-        pool_price: 0.0,
         status: PoolStatus::PoolStatusInitialized,
         counter_party_port: msg.source_port.clone(),
         counter_party_channel: msg.source_channel.clone(),

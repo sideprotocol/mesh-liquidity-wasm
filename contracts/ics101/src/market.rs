@@ -44,7 +44,6 @@ pub struct InterchainLiquidityPool {
     pub swap_fee: u32,
     pub supply: Coin,
     pub status: PoolStatus,
-    pub pool_price: f64,
     pub counter_party_port: String,
     pub counter_party_channel: String,
 }
