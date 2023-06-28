@@ -230,6 +230,13 @@ pub fn single_asset_deposit(
     let pool_id = msg.pool_id.clone();
     let pool = POOLS.load(deps.storage, &pool_id)?;
 
+    // If the pool is empty, then return a `Failure` response
+    if pool.supply.amount.is_zero() {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Single asset cannot be provided to empty pool"
+        ))));
+    }
+
     if pool.status != PoolStatus::PoolStatusActive {
         return Err(ContractError::NotReadyForSwap);
     }
@@ -336,7 +343,8 @@ fn make_multi_asset_deposit(
     };
 
     // Deposit the assets into the interchain market maker
-    let pool_tokens = amm.deposit_multi_asset(&vec![
+    // TODO: refund rem_assets
+    let (shares, added_assets, rem_assets) = amm.deposit_multi_asset(&vec![
         msg.deposits[0].balance.clone(),
         msg.deposits[1].balance.clone(),
     ])?;
@@ -387,7 +395,7 @@ fn make_multi_asset_deposit(
         r#type: InterchainMessageType::MakeMultiDeposit,
         data: to_binary(&msg.clone())?,
         state_change: Some(StateChange {
-            pool_tokens: Some(pool_tokens),
+            pool_tokens: Some(added_assets),
             in_tokens: None,
             out_tokens: None,
         }),
