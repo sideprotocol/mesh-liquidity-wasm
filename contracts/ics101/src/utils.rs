@@ -1,13 +1,13 @@
 use std::{ops::{Mul, Div}};
 
 use cosmwasm_std::{
-    from_binary, Addr, BankMsg, Coin, Decimal, IbcAcknowledgement, IbcChannel, IbcOrder, StdResult,
-    SubMsg, Uint128, WasmMsg, to_binary,
+    from_binary, Addr, BankMsg, Coin, IbcAcknowledgement, IbcChannel, IbcOrder, StdResult,
+    SubMsg, Uint128, WasmMsg, to_binary, Decimal, Decimal256, StdError,
 };
 use cw20::Cw20ExecuteMsg;
 use sha2::{Digest, Sha256};
 
-use crate::{interchainswap_handler::InterchainSwapPacketAcknowledgement, ContractError, msg::{DepositAsset}};
+use crate::{interchainswap_handler::InterchainSwapPacketAcknowledgement, ContractError, msg::{DepositAsset}, market::PoolAsset};
 use hex;
 
 pub const MULTIPLIER: u64 = 1e18 as u64;
@@ -30,14 +30,48 @@ pub fn get_pool_id_with_tokens(tokens: &[Coin]) -> String {
     pool_id
 }
 
-pub fn uint128_to_f64(value: Uint128) -> f64 {
-    let value_str = value.to_string();
-    value_str.parse::<f64>().unwrap_or(0.0)
+/// ## Description
+/// Return a value using a newly specified precision.
+/// ## Params
+/// * **value** is an object of type [`Uint128`]. This is the value that will have its precision adjusted.
+/// * **current_precision** is an object of type [`u8`]. This is the `value`'s current precision
+/// * **new_precision** is an object of type [`u8`]. This is the new precision to use when returning the `value`.
+pub fn adjust_precision(
+    value: Uint128,
+    current_precision: u8,
+    new_precision: u8,
+) -> StdResult<Uint128> {
+    Ok(match current_precision.cmp(&new_precision) {
+        std::cmp::Ordering::Equal => value,
+        std::cmp::Ordering::Less => value.checked_mul(Uint128::new(
+            10_u128.pow((new_precision - current_precision) as u32),
+        ))?,
+        std::cmp::Ordering::Greater => value.checked_div(Uint128::new(
+            10_u128.pow((current_precision - new_precision) as u32),
+        ))?,
+    })
 }
 
-pub fn decimal_to_f64(value: Decimal) -> f64 {
-    let value_str = value.to_string();
-    value_str.parse::<f64>().unwrap_or(0.0)
+/// ## Description
+/// Converts [`Decimal`] to [`Decimal256`].
+pub fn decimal2decimal256(dec_value: Decimal) -> StdResult<Decimal256> {
+    Decimal256::from_atomics(dec_value.atomics(), dec_value.decimal_places()).map_err(|_| {
+        StdError::generic_err(format!(
+            "Failed to convert Decimal {} to Decimal256",
+            dec_value
+        ))
+    })
+}
+
+pub fn get_precision(assets: Vec<PoolAsset>, token: Coin) -> u32 {
+    for asset in assets {
+        if asset.balance.denom == token.denom {
+            return asset.decimal
+        }
+    }
+    // we already check if asset is present in pool asset vector
+    // this code is unreachable
+    return 1;
 }
 
 pub fn check_slippage(
@@ -143,27 +177,3 @@ pub fn mint_tokens_cw20(recipient: String, lp_token: String, amount: Uint128) ->
     Ok(vec![SubMsg::new(exec)])
 }
 
-// pub(crate) fn decode_create_pool_msg(data: &Binary) -> MsgMakePoolRequest {
-//     let msg_res: Result<MsgMakePoolRequest, StdError> = from_binary(data);
-//     let msg: MsgMakePoolRequest;
-
-//     match msg_res {
-//         Ok(value) => {
-//             msg = value.clone();
-//         }
-//         Err(_err) => {
-//             // TODO:handle error
-//             // Why do we need MSgOUtput ? does it not unwrap string
-//             // let msg_output: MsgMakePoolRequest = from_binary(data).unwrap();
-//             // msg = MsgMakePoolRequest {
-//             //     source_port: msg_output.source_port.clone(),
-//             //     source_channel: msg_output.source_channel.clone(),
-//             //     sender: msg_output.sender,
-//             //     tokens: msg_output.tokens,
-//             //     decimals: msg_output.decimals,
-//             //     weights: msg_output.weights,
-//             // }
-//         }
-//     }
-//     msg
-// }

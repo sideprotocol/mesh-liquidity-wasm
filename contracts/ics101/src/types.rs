@@ -1,7 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{Binary, Coin};
+use cosmwasm_std::{Binary, Coin, Decimal};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct StateChange {
@@ -65,4 +65,14 @@ pub struct MultiAssetDepositOrder {
     //pub pool_tokens: Vec<Coin>,
     pub status: OrderStatus,
     pub created_at: u64
+}
+
+/// ## Description - This struct describes a asset (native or CW20) and its normalized weight
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct WeightedAsset {
+    /// Information about an asset stored in a [`Asset`] struct
+    pub asset: Coin,
+    /// The weight of the asset
+    pub weight: Decimal,
 }

@@ -110,7 +110,6 @@ fn make_pool(
         destination_creator: msg.counterparty_creator.clone(),
         assets: msg.liquidity.clone(),
         supply: supply,
-        pool_price: 0.0,
         status: PoolStatus::PoolStatusInitialized,
         counter_party_port: msg.source_port.clone(),
         counter_party_channel: msg.source_channel.clone(),
@@ -230,6 +229,13 @@ pub fn single_asset_deposit(
     let pool_id = msg.pool_id.clone();
     let pool = POOLS.load(deps.storage, &pool_id)?;
 
+    // If the pool is empty, then return a `Failure` response
+    if pool.supply.amount.is_zero() {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Single asset cannot be provided to empty pool"
+        ))));
+    }
+
     if pool.status != PoolStatus::PoolStatusActive {
         return Err(ContractError::NotReadyForSwap);
     }
@@ -336,7 +342,8 @@ fn make_multi_asset_deposit(
     };
 
     // Deposit the assets into the interchain market maker
-    let pool_tokens = amm.deposit_multi_asset(&vec![
+    // TODO: refund rem_assets
+    let (_shares, added_assets, _rem_assets) = amm.deposit_multi_asset(&vec![
         msg.deposits[0].balance.clone(),
         msg.deposits[1].balance.clone(),
     ])?;
@@ -387,7 +394,7 @@ fn make_multi_asset_deposit(
         r#type: InterchainMessageType::MakeMultiDeposit,
         data: to_binary(&msg.clone())?,
         state_change: Some(StateChange {
-            pool_tokens: Some(pool_tokens),
+            pool_tokens: Some(added_assets),
             in_tokens: None,
             out_tokens: None,
         }),
@@ -510,15 +517,24 @@ fn multi_asset_withdraw(
         fee_rate: interchain_pool.swap_fee,
     };
 
+    let refund_assets = amm.multi_asset_withdraw(msg.pool_token.clone())
+    .map_err(|err| StdError::generic_err(format!("Failed to withdraw multi asset: {}", err)))?;
+
     // TODO: Handle unwrap
     let source_denom = interchain_pool.find_asset_by_side(PoolSide::SOURCE).unwrap();
-    let source_out = amm.multi_asset_withdraw(Coin {
-		denom: interchain_pool.pool_id.clone(), amount: msg.pool_token.amount.div(Uint128::from(2u64)),
-	}, &source_denom.balance.denom).unwrap();
     let destination_denom = interchain_pool.find_asset_by_side(PoolSide::DESTINATION).unwrap();
-    let destination_out = amm.multi_asset_withdraw(Coin {
-		denom: interchain_pool.pool_id.clone(), amount: msg.pool_token.amount.div(Uint128::from(2u64)),
-	}, &destination_denom.balance.denom).unwrap();
+
+    let mut source_out = Coin { denom: "mock".to_string(), amount: Uint128::zero()};
+    let mut destination_out = Coin { denom: "mock".to_string(), amount: Uint128::zero()};
+
+    for asset in refund_assets {
+        if &asset.denom == &source_denom.balance.denom {
+            source_out = asset.clone();
+        }
+        if &asset.denom == &destination_denom.balance.denom {
+            destination_out = asset;
+        }
+    }
 
     let packet = InterchainSwapPacketData {
         r#type: InterchainMessageType::MultiWithdraw,
@@ -600,11 +616,11 @@ fn swap(
     match msg.swap_type {
         SwapMsgType::Left => {
             msg_type = Some(InterchainMessageType::LeftSwap);
-            token_out = Some(amm.left_swap(msg.token_in.clone(), &msg.token_out.denom)?);
+            token_out = Some(amm.compute_swap(msg.token_in.clone(), &msg.token_out.denom)?);
         }
         SwapMsgType::Right => {
             msg_type = Some(InterchainMessageType::RightSwap);
-            token_out = Some(amm.right_swap(msg.token_in.clone(), msg.token_out.clone())?);
+            token_out = Some(amm.compute_offer_amount(msg.token_in.clone(), msg.token_out.clone())?);
         }
     }
 

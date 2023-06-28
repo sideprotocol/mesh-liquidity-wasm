@@ -124,7 +124,6 @@ pub(crate) fn on_received_make_pool(
         destination_creator: msg.counterparty_creator,
         assets: msg.liquidity,
         supply: supply,
-        pool_price: 0.0,
         status: PoolStatusInitialized,
         counter_party_port: msg.source_port,
         counter_party_channel: msg.source_channel,
@@ -136,7 +135,7 @@ pub(crate) fn on_received_make_pool(
         pool: interchain_pool.clone(),
         fee_rate: interchain_pool.swap_fee,
     };
-	interchain_pool.pool_price = amm.lp_price();
+	//interchain_pool.pool_price = amm.lp_price();
 
     POOLS.save(deps.storage, &pool_id, &interchain_pool)?;
 
