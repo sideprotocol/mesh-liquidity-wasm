@@ -161,6 +161,8 @@ fn take_pool(
         return Err(ContractError::Expired);
     }
 
+    // TODO: Check order can only be taken by creator
+
     // check balance and funds sent handle error
     // TODO: Handle unwrap
     let token = interchain_pool.find_asset_by_side(PoolSide::SOURCE).unwrap();
