@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 use cosmwasm_std::{Coin, Response, StdError};
 
 use crate::error::ContractError;
-use crate::market::{InterchainLiquidityPool, InterchainMarketMaker, PoolAsset};
+use crate::market::{InterchainLiquidityPool, InterchainMarketMaker, PoolAsset, PoolStatus};
+use crate::types::MultiAssetDepositOrder;
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct InstantiateMsg {}
@@ -196,19 +197,62 @@ pub struct PoolApprove {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub enum QueryMsg {
-    /// Show all open swaps. Return type is ListResponse.
-    List {
+    /// Show all open orders. Return type is ListResponse.
+    OrderList {
         start_after: Option<String>,
         limit: Option<u32>,
     },
-    ListByDesiredTaker {
+    Order {
+        pool_id: String,
+        order_id: String,
+    },
+    /// Query config
+    Config {},
+    /// Query all pool token list
+    PoolTokenList {
         start_after: Option<String>,
         limit: Option<u32>,
-        desired_taker: String,
     },
-    /// Returns the details of the named swap, error if not created.
-    /// Return type: DetailsResponse.
-    Details { id: String },
+    PoolAddressByToken {
+        tokens: Vec<Coin>
+    },
+    InterchainPool {
+        tokens: Vec<Coin>
+    },
+    InterchainPoolList {
+        start_after: Option<String>,
+        limit: Option<u32>,
+    },
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct InterchainPoolResponse {
+    pub pool_id: String,
+    pub source_creator: String,
+    pub destination_creator: String,
+    pub assets: Vec<PoolAsset>,
+    pub swap_fee: u32,
+    pub supply: Coin,
+    pub status: PoolStatus,
+    pub counter_party_port: String,
+    pub counter_party_channel: String,
+}
+
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct InterchainListResponse {
+    pub pools: Vec<InterchainLiquidityPool>,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct OrderListResponse {
+    pub orders: Vec<MultiAssetDepositOrder>,
+}
+
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct PoolListResponse {
+    pub pools: Vec<String>,
 }
 
 // QueryParamsRequest is the request type for the Query/Params RPC method.
@@ -291,6 +335,14 @@ pub struct Params {
     // max_fee_rate set a max value of fee, it's base point, 1/10000
     #[serde(rename = "max_fee_rate")]
     pub max_fee_rate: u32,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct QueryConfigResponse {
+    /// For order save in state
+    pub counter: u64,
+    /// For Instantiating cw20 tokens
+    pub token_code_id: u64
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

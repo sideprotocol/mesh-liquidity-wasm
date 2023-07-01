@@ -4,19 +4,20 @@ use std::ops::{Div, Mul};
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     to_binary, Coin, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Response, StdError, StdResult,
-    Uint128,
+    Uint128, Deps, Binary, Order,
 };
 
 use cw2::set_contract_version;
+use cw_storage_plus::Bound;
 
 use crate::error::ContractError;
 use crate::market::{InterchainMarketMaker, PoolStatus, PoolSide, InterchainLiquidityPool};
 use crate::msg::{
     ExecuteMsg, InstantiateMsg,
     MsgMultiAssetWithdrawRequest, MsgSingleAssetDepositRequest,
-    MsgSwapRequest, SwapMsgType, MsgMakePoolRequest, MsgTakePoolRequest, MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest,
+    MsgSwapRequest, SwapMsgType, MsgMakePoolRequest, MsgTakePoolRequest, MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, QueryMsg, QueryConfigResponse, InterchainPoolResponse, InterchainListResponse, OrderListResponse, PoolListResponse,
 };
-use crate::state::{POOLS, MULTI_ASSET_DEPOSIT_ORDERS, CONFIG};
+use crate::state::{POOLS, MULTI_ASSET_DEPOSIT_ORDERS, CONFIG, POOL_TOKENS_LIST};
 use crate::types::{InterchainSwapPacketData, StateChange, InterchainMessageType, MultiAssetDepositOrder, OrderStatus, MULTI_DEPOSIT_PENDING_LIMIT};
 use crate::utils::{check_slippage, get_coins_from_deposits, get_pool_id_with_tokens};
 
@@ -678,6 +679,151 @@ fn swap(
         .add_attribute("action", "swap");
     Ok(res)
 }
+
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+    match msg {
+        QueryMsg::Config {} => to_binary(&query_config(deps)?),
+        QueryMsg::InterchainPool { tokens } => to_binary(&query_interchain_pool(deps, tokens)?),
+        QueryMsg::InterchainPoolList {  start_after, limit } => 
+            to_binary(&query_interchain_pool_list(deps, start_after, limit)?),
+        QueryMsg::Order { pool_id, order_id } => 
+            to_binary(&query_order(deps, pool_id, order_id)?),
+        QueryMsg::OrderList { start_after, limit } =>
+            to_binary(&query_orders(deps, start_after, limit)?),
+        QueryMsg::PoolAddressByToken { tokens } => to_binary(&query_pool_address(deps, tokens)?),
+        QueryMsg::PoolTokenList { start_after, limit } =>
+            to_binary(&query_pool_list(deps, start_after, limit)?),
+    }
+}
+
+/// Settings for pagination
+const MAX_LIMIT: u32 = 30;
+const DEFAULT_LIMIT: u32 = 10;
+
+fn query_config(
+    deps: Deps,
+) -> StdResult<QueryConfigResponse> {
+    let config = CONFIG.load(deps.storage)?;
+
+    Ok(QueryConfigResponse { counter: config.counter, token_code_id: config.token_code_id })
+}
+
+fn query_interchain_pool(
+    deps: Deps,
+    tokens: Vec<Coin>
+) -> StdResult<InterchainPoolResponse> {
+    let pool_id = get_pool_id_with_tokens(&tokens.to_vec());
+    // load pool throw error if found
+    let interchain_pool_temp = POOLS.may_load(deps.storage, &pool_id)?;
+    let interchain_pool;
+    if let Some(pool) = interchain_pool_temp {
+        interchain_pool = pool;
+    } else {
+        return Err(StdError::generic_err(format!(
+            "Pool not found"
+        )));
+    }
+
+    Ok(InterchainPoolResponse {
+        pool_id: interchain_pool.pool_id,
+        source_creator: interchain_pool.source_creator,
+        destination_creator: interchain_pool.destination_creator,
+        assets: interchain_pool.assets,
+        swap_fee: interchain_pool.swap_fee,
+        supply: interchain_pool.supply,
+        status: interchain_pool.status,
+        counter_party_channel: interchain_pool.counter_party_channel,
+        counter_party_port: interchain_pool.counter_party_port,
+    })
+}
+
+fn query_interchain_pool_list(
+    deps: Deps,
+    start_after: Option<String>,
+    limit: Option<u32>,
+) -> StdResult<InterchainListResponse> {
+    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
+    let start = start_after.map(|s| Bound::exclusive(s.into_bytes()));
+    let list = POOLS
+        .range(deps.storage, start, None, Order::Ascending)
+        .take(limit)
+        .map(|item: Result<(String, InterchainLiquidityPool), cosmwasm_std::StdError>| item.unwrap().1)
+        .collect::<Vec<InterchainLiquidityPool>>();
+
+    Ok(InterchainListResponse { pools: list })
+}
+
+fn query_order(
+    deps: Deps,
+    pool_id: String,
+    order_id: String
+) -> StdResult<MultiAssetDepositOrder> {
+    let key = pool_id + "-" + &order_id;
+    let multi_asset_order_temp = MULTI_ASSET_DEPOSIT_ORDERS.may_load(deps.storage, key)?;
+    let multi_asset_order;
+    if let Some(order) = multi_asset_order_temp {
+        multi_asset_order = order;
+    } else {
+        return Err(StdError::generic_err(format!(
+            "Order not found"
+        )));
+    };
+
+    Ok(multi_asset_order)
+}
+
+fn query_orders(
+    deps: Deps,
+    start_after: Option<String>,
+    limit: Option<u32>,
+) -> StdResult<OrderListResponse> {
+    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
+    let start = start_after.map(|s| Bound::exclusive(s.into_bytes()));
+    let list = MULTI_ASSET_DEPOSIT_ORDERS
+        .range(deps.storage, start, None, Order::Ascending)
+        .take(limit)
+        .map(|item: Result<(String, MultiAssetDepositOrder), cosmwasm_std::StdError>| item.unwrap().1)
+        .collect::<Vec<MultiAssetDepositOrder>>();
+
+    Ok(OrderListResponse { orders: list })
+}
+
+fn query_pool_address(
+    deps: Deps,
+    tokens: Vec<Coin>
+) -> StdResult<String> {
+    let pool_id = get_pool_id_with_tokens(&tokens);
+    let res;
+    if let Some(lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &pool_id.clone())? {
+        res = lp_token
+    } else {
+        // throw error token not found, initialization is done in make_pool and
+        // take_pool
+        return Err(StdError::generic_err(format!(
+            "LP Token is not initialized"
+        )));
+    }
+
+    Ok(res)
+}
+
+fn query_pool_list(
+    deps: Deps,
+    start_after: Option<String>,
+    limit: Option<u32>,
+) -> StdResult<PoolListResponse> {
+    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
+    let start = start_after.map(|s| Bound::exclusive(s.into_bytes()));
+    let list = POOL_TOKENS_LIST
+        .range(deps.storage, start, None, Order::Ascending)
+        .take(limit)
+        .map(|item: Result<(String, String), cosmwasm_std::StdError>| item.unwrap().1)
+        .collect::<Vec<String>>();
+
+    Ok(PoolListResponse { pools: list })
+}
+
 
 #[cfg(test)]
 mod tests {
