@@ -162,11 +162,14 @@ fn take_pool(
         return Err(ContractError::Expired);
     }
 
-    // TODO: Check order can only be taken by creator
+    // order can only be taken by creator
+    if interchain_pool.destination_creator != info.sender {
+        return Err(ContractError::InvalidSender);
+    }
 
     // check balance and funds sent handle error
-    // TODO: Handle unwrap
-    let token = interchain_pool.find_asset_by_side(PoolSide::SOURCE).unwrap();
+    let token = interchain_pool.find_asset_by_side(PoolSide::SOURCE)
+    .map_err(|err| StdError::generic_err(format!("Failed to find asset: {}", err)))?;
     // check if given tokens are received here
     let mut ok = false;
     for asset in info.funds {
@@ -325,9 +328,10 @@ fn make_multi_asset_deposit(
         return Err(ContractError::NotReadyForSwap);
     }
 
-    // TODO: Handle unwrap
-    let source_asset = interchain_pool.find_asset_by_side(PoolSide::SOURCE).unwrap();
-    let destination_asset = interchain_pool.find_asset_by_side(PoolSide::DESTINATION).unwrap();
+    let source_asset = interchain_pool.find_asset_by_side(PoolSide::SOURCE)
+    .map_err(|err| StdError::generic_err(format!("Failed to find asset: {}", err)))?;
+    let destination_asset = interchain_pool.find_asset_by_side(PoolSide::DESTINATION)
+    .map_err(|err| StdError::generic_err(format!("Failed to find asset: {}", err)))?;
 
     check_slippage(
         Uint128::from(source_asset.balance.amount), 
@@ -451,8 +455,8 @@ fn take_multi_asset_deposit(
     }
 
     // TODO: Add chain id to order and add check
-    // TODO: Make sure the pool side, i think it will be destination .. Handle erorr
-    let token = interchain_pool.find_asset_by_side(PoolSide::DESTINATION).unwrap();
+    let token = interchain_pool.find_asset_by_side(PoolSide::DESTINATION)
+    .map_err(|err| StdError::generic_err(format!("Failed to find asset: {}", err)))?;
     // check if given tokens are received here
     let mut ok = false;
     // First token in this chain only first token needs to be verified
@@ -523,9 +527,11 @@ fn multi_asset_withdraw(
     let refund_assets = amm.multi_asset_withdraw(msg.pool_token.clone())
     .map_err(|err| StdError::generic_err(format!("Failed to withdraw multi asset: {}", err)))?;
 
-    // TODO: Handle unwrap
-    let source_denom = interchain_pool.find_asset_by_side(PoolSide::SOURCE).unwrap();
-    let destination_denom = interchain_pool.find_asset_by_side(PoolSide::DESTINATION).unwrap();
+    let source_denom = interchain_pool.find_asset_by_side(PoolSide::SOURCE)
+    .map_err(|err| StdError::generic_err(format!("Failed to find asset: {}", err)))?;
+
+    let destination_denom = interchain_pool.find_asset_by_side(PoolSide::DESTINATION)
+    .map_err(|err| StdError::generic_err(format!("Failed to find asset: {}", err)))?;
 
     let mut source_out = Coin { denom: "mock".to_string(), amount: Uint128::zero()};
     let mut destination_out = Coin { denom: "mock".to_string(), amount: Uint128::zero()};

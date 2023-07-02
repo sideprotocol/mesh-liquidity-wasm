@@ -177,6 +177,18 @@ pub fn mint_tokens_cw20(recipient: String, lp_token: String, amount: Uint128) ->
     Ok(vec![SubMsg::new(exec)])
 }
 
+pub fn burn_tokens_cw20(lp_token: String, amount: Uint128) -> StdResult<SubMsg> {
+    let msg = Cw20ExecuteMsg::Burn {
+        amount: amount,
+    };
+    let exec = WasmMsg::Execute {
+        contract_addr: lp_token.into(),
+        msg: to_binary(&msg)?,
+        funds: vec![],
+    };
+    Ok(SubMsg::new(exec))
+}
+
 pub fn send_tokens_cw20(recipient: String, lp_token: String, amount: Uint128) -> StdResult<Vec<SubMsg>> {
     let msg = Cw20ExecuteMsg::Transfer {
         recipient: recipient.into(),

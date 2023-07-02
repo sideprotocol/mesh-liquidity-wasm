@@ -6,7 +6,7 @@ use crate::{
     types::{InterchainSwapPacketData, InterchainMessageType, StateChange, MultiAssetDepositOrder, OrderStatus},
     state::{POOLS, CONFIG, MULTI_ASSET_DEPOSIT_ORDERS, POOL_TOKENS_LIST},
     utils::{
-        get_pool_id_with_tokens, get_coins_from_deposits, mint_tokens_cw20, send_tokens_coin, send_tokens_cw20,
+        get_pool_id_with_tokens, get_coins_from_deposits, mint_tokens_cw20, send_tokens_coin, send_tokens_cw20, burn_tokens_cw20,
     }, msg::{MsgMakePoolRequest, MsgTakePoolRequest, MsgSingleAssetDepositRequest,
      MsgMultiAssetWithdrawRequest, MsgSwapRequest,
     MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest}
@@ -392,7 +392,6 @@ pub(crate) fn on_received_multi_withdraw(
     }
 
     // Unlock tokens for this chain
-    // TODO: Handle unwrap
     let sub_messages = send_tokens_coin(&Addr::unchecked(msg.counterparty_receiver), state_change.out_tokens.unwrap()[1].clone())?;
 
 	// Save pool
@@ -427,7 +426,6 @@ pub(crate) fn on_received_swap(
         ))));
     }
 
-    // TODO: Handle error
     let token_out = state_change.out_tokens.unwrap();
 
     // send tokens
@@ -437,11 +435,11 @@ pub(crate) fn on_received_swap(
     match msg.swap_type {
         crate::msg::SwapMsgType::Left => {
             interchain_pool.add_asset(msg.token_in).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;
-            interchain_pool.subtract_asset(token_out[0]).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;        
+            interchain_pool.subtract_asset(token_out.get(0).unwrap().clone()).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;        
         }
         crate::msg::SwapMsgType::Right => {
             // token_out here is offer amount that is needed to get msg.token_out
-            interchain_pool.add_asset(token_out[0]).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;
+            interchain_pool.add_asset(token_out.get(0).unwrap().clone()).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;
             interchain_pool.subtract_asset(msg.token_out).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;        
         }
     }
@@ -454,7 +452,6 @@ pub(crate) fn on_received_swap(
     .add_attribute("action", "receive")
     .add_attribute("success", "true")
     .add_attribute("sucess", "swap_asset");
-    //.add_attribute("pool_token", state_change.pool_tokens);
 
     Ok(res)
 }
@@ -565,9 +562,17 @@ pub(crate) fn on_packet_success(
             }
 
             // Unlock tokens for this chain
-            // TODO: Handle unwrap
-            let sub_messages = send_tokens_coin(&Addr::unchecked(msg.counterparty_receiver), state_change.out_tokens.unwrap()[0].clone())?;
-
+            let mut sub_messages = send_tokens_coin(&Addr::unchecked(msg.counterparty_receiver), state_change.out_tokens.unwrap()[0].clone())?;
+            // Burn tokens (cw20) to the sender
+            if let Some(lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id.clone())? {
+                sub_messages.push(burn_tokens_cw20(lp_token, msg.pool_token.amount)?);
+            } else {
+                // throw error token not found, initialization is done in make_pool and
+                // take_pool
+                return Err(ContractError::Std(StdError::generic_err(format!(
+                    "LP Token is not initialized"
+                ))));
+            }
             // TODO: Either burn here or when tokens are received
             // Burn here because we need to return if this fails
             // Save pool
@@ -577,7 +582,7 @@ pub(crate) fn on_packet_success(
         }
         InterchainMessageType::LeftSwap => {
             let msg: MsgSwapRequest = from_binary(&packet_data.data.clone())?;
-            let sub_messages = send_tokens_coin(&Addr::unchecked(msg.recipient), state_change.out_tokens.clone().unwrap()[0])?;
+            let sub_messages = send_tokens_coin(&Addr::unchecked(msg.recipient), state_change.out_tokens.clone().unwrap().get(0).unwrap().clone())?;
 
             Ok(IbcBasicResponse::new().add_attributes(attributes).add_submessages(sub_messages))
         }
@@ -657,7 +662,7 @@ pub(crate) fn refund_packet_token(
         }
         InterchainMessageType::MakeMultiDeposit => {
             let msg: MsgMakeMultiAssetDepositRequest = from_binary(&packet.data.clone())?;
-            let sub_messages = send_tokens_coin(&Addr::unchecked(msg.deposits[0].clone().sender), msg.deposits[0].balance)?;
+            let sub_messages = send_tokens_coin(&Addr::unchecked(msg.deposits[0].clone().sender), msg.deposits.get(0).unwrap().clone().balance)?;
 
             Ok(sub_messages)
         }
@@ -674,7 +679,7 @@ pub(crate) fn refund_packet_token(
                 return Err(ContractError::ErrOrderNotFound);
             }
 
-            let sub_messages = send_tokens_coin(&Addr::unchecked(msg.sender), multi_asset_order.deposits[1])?;
+            let sub_messages = send_tokens_coin(&Addr::unchecked(msg.sender), multi_asset_order.deposits.get(1).unwrap().clone())?;
 
             Ok(sub_messages)
         }
@@ -693,7 +698,7 @@ pub(crate) fn refund_packet_token(
         },
         InterchainMessageType::RightSwap => {
             let msg: MsgSwapRequest = from_binary(&packet.data.clone())?;
-            let sub_messages = send_tokens_coin(&Addr::unchecked(msg.recipient), state_change.out_tokens.clone().unwrap()[0])?;
+            let sub_messages = send_tokens_coin(&Addr::unchecked(msg.recipient), state_change.out_tokens.clone().unwrap().get(0).unwrap().clone())?;
             Ok(sub_messages)
         }
     }
