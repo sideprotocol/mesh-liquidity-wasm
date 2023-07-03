@@ -10,28 +10,13 @@ use crate::{
 use cosmwasm_std::{
     attr, entry_point, DepsMut, Env, IbcBasicResponse, IbcChannel, IbcChannelCloseMsg,
     IbcChannelConnectMsg, IbcChannelOpenMsg, IbcPacketAckMsg, IbcPacketReceiveMsg,
-    IbcPacketTimeoutMsg, IbcReceiveResponse, Reply, Response, SubMsgResult,
+    IbcPacketTimeoutMsg, IbcReceiveResponse,
 };
 
 use crate::state::{ChannelInfo, CHANNEL_INFO};
 
-const RECEIVE_ID: u64 = 1337;
-const ACK_FAILURE_ID: u64 = 0xfa17;
-
-#[cfg_attr(not(feature = "library"), entry_point)]
-pub fn reply(_deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, ContractError> {
-    match reply.id {
-        RECEIVE_ID => match reply.result {
-            SubMsgResult::Ok(_) => Ok(Response::new()),
-            SubMsgResult::Err(err) => Ok(Response::new().set_data(ack_fail(err))),
-        },
-        ACK_FAILURE_ID => match reply.result {
-            SubMsgResult::Ok(_) => Ok(Response::new()),
-            SubMsgResult::Err(err) => Ok(Response::new().set_data(ack_fail(err))),
-        },
-        _ => Err(ContractError::UnknownReplyId { id: reply.id }),
-    }
-}
+pub const RECEIVE_ID: u64 = 1337;
+pub const ACK_FAILURE_ID: u64 = 0xfa17;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 /// enforces ordering and versioning constraints

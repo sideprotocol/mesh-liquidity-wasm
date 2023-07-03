@@ -4,27 +4,32 @@ use std::ops::{Div, Mul};
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     to_binary, Coin, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Response, StdError, StdResult,
-    Uint128,
+    Uint128, Deps, Binary, Order, SubMsg, WasmMsg, ReplyOn, Reply, from_binary, SubMsgResult,
 };
+use protobuf::Message;
 
 use cw2::set_contract_version;
+use cw20::{MinterResponse, Cw20ReceiveMsg};
+use cw_storage_plus::Bound;
 
+use crate::ibc::{RECEIVE_ID, ACK_FAILURE_ID};
+use crate::interchainswap_handler::ack_fail;
+use crate::response::MsgInstantiateContractResponse;
 use crate::error::ContractError;
 use crate::market::{InterchainMarketMaker, PoolStatus, PoolSide, InterchainLiquidityPool};
 use crate::msg::{
     ExecuteMsg, InstantiateMsg,
     MsgMultiAssetWithdrawRequest, MsgSingleAssetDepositRequest,
-    MsgSwapRequest, SwapMsgType, MsgMakePoolRequest, MsgTakePoolRequest, MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest,
+    MsgSwapRequest, SwapMsgType, MsgMakePoolRequest, MsgTakePoolRequest, MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, QueryMsg, QueryConfigResponse, InterchainPoolResponse, InterchainListResponse, OrderListResponse, PoolListResponse, TokenInstantiateMsg, Cw20HookMsg,
 };
-use crate::state::{POOLS, MULTI_ASSET_DEPOSIT_ORDERS, CONFIG};
+use crate::state::{POOLS, MULTI_ASSET_DEPOSIT_ORDERS, CONFIG, POOL_TOKENS_LIST, Config};
 use crate::types::{InterchainSwapPacketData, StateChange, InterchainMessageType, MultiAssetDepositOrder, OrderStatus, MULTI_DEPOSIT_PENDING_LIMIT};
-use crate::utils::{check_slippage, get_coins_from_deposits, get_pool_id_with_tokens};
+use crate::utils::{check_slippage, get_coins_from_deposits, get_pool_id_with_tokens, INSTANTIATE_TOKEN_REPLY_ID};
 
 // Version info, for migration info
 const CONTRACT_NAME: &str = "ics101-interchainswap";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const DEFAULT_TIMEOUT_TIMESTAMP_OFFSET: u64 = 600;
-//const MAX_FEE_RATE: u32 = 300;
 const MAXIMUM_SLIPPAGE: u64 = 10000;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -32,12 +37,63 @@ pub fn instantiate(
     deps: DepsMut,
     _env: Env,
     _info: MessageInfo,
-    _msg: InstantiateMsg,
+    msg: InstantiateMsg,
 ) -> StdResult<Response> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
-    // No setup
-    // TODO: add counter and token id to state
+    
+    let config = Config {
+        counter: 0,
+        token_code_id: msg.token_code_id
+    };
+
+    CONFIG.save(deps.storage, &config)?;
     Ok(Response::default())
+}
+
+/// The entry point to the contract for processing replies from submessages.
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
+    match msg.id {
+        INSTANTIATE_TOKEN_REPLY_ID => {
+            let data = msg.result.clone().unwrap().data.unwrap();
+                let res: MsgInstantiateContractResponse = Message::parse_from_bytes(data.as_slice())
+                    .map_err(|_| {
+                        StdError::parse_err("MsgInstantiateContractResponse", "failed to parse data")
+                    })?;
+
+            let lp_token = deps.api.addr_validate(res.get_contract_address())?;
+
+            // Storing a temporary state using cw_storage_plus::Item and loading it into the reply handler
+            // or check for events
+            // Search for the instantiate event
+            let mesg = msg.result.clone().unwrap();
+            let instantiate_event = mesg.events.iter()
+            .find(|e| {
+                e.attributes
+                    .iter()
+                    .any(|attr| attr.key == "ics101-lp-instantiate")
+            })
+            .ok_or_else(|| StdError::generic_err(format!("unable to find instantiate action")))?;
+
+            // Error is thrown in above line if this event is not found
+            for val in &instantiate_event.attributes {
+                if val.key == "ics101-lp-instantiate" {
+                    POOL_TOKENS_LIST.save(deps.storage, &val.value, &lp_token.to_string())?;
+                }
+            }
+            Ok(Response::new()
+                .add_attribute("liquidity_token_addr", lp_token))
+        },
+        RECEIVE_ID => match msg.result {
+            SubMsgResult::Ok(_) => Ok(Response::new()),
+            SubMsgResult::Err(err) => Ok(Response::new().set_data(ack_fail(err))),
+        },
+        ACK_FAILURE_ID => match msg.result {
+            SubMsgResult::Ok(_) => Ok(Response::new()),
+            SubMsgResult::Err(err) => Ok(Response::new().set_data(ack_fail(err))),
+        },
+        _ => Err(StdError::generic_err(format!("Unknown reply ID: {}", msg.id)).into()),
+    }
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -53,8 +109,42 @@ pub fn execute(
         ExecuteMsg::SingleAssetDeposit(msg) => single_asset_deposit(deps, env, info, msg),
         ExecuteMsg::MakeMultiAssetDeposit(msg) => make_multi_asset_deposit(deps, env, info, msg),
         ExecuteMsg::TakeMultiAssetDeposit(msg) => take_multi_asset_deposit(deps, env, info, msg),
-        ExecuteMsg::MultiAssetWithdraw(msg) => multi_asset_withdraw(deps, env, info, msg),
+        //ExecuteMsg::MultiAssetWithdraw(msg) => multi_asset_withdraw(deps, env, info, msg),
         ExecuteMsg::Swap(msg) => swap(deps, env, info, msg),
+    }
+}
+
+/// Receives a message of type [`Cw20ReceiveMsg`] and processes it depending on the received template.
+///
+/// * **cw20_msg** is the CW20 message that has to be processed.
+pub fn receive_cw20(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    cw20_msg: Cw20ReceiveMsg,
+) -> Result<Response, ContractError> {
+    match from_binary(&cw20_msg.msg) {
+        Ok(Cw20HookMsg::WithdrawLiquidity {
+            pool_id, receiver,
+            counterparty_receiver,
+            timeout_height,
+            timeout_timestamp }) => {
+                let msg: MsgMultiAssetWithdrawRequest = MsgMultiAssetWithdrawRequest {
+                    pool_id: pool_id ,
+                    receiver: receiver,
+                    counterparty_receiver: counterparty_receiver,
+                    pool_token: Coin {denom: info.sender.to_string(), amount: cw20_msg.amount},
+                    timeout_height: timeout_height,
+                    timeout_timestamp: timeout_timestamp 
+                };
+                multi_asset_withdraw(
+                    deps,
+                    env,
+                    info,
+                    msg
+                )
+            }
+        Err(err) => Err(err.into()),
     }
 }
 
@@ -117,6 +207,38 @@ fn make_pool(
     };
     POOLS.save(deps.storage, &pool_id, &interchain_pool)?;
 
+    // Instantiate token
+    let config = CONFIG.load(deps.storage)?;
+    let sub_msg: Vec<SubMsg>;
+    if let Some(_lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &pool_id.clone())? {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Pool token already exist: Make Pool"
+        ))));
+    } else {
+        // Create the LP token contract
+        sub_msg = vec![SubMsg {
+            msg: WasmMsg::Instantiate {
+                code_id: config.token_code_id,
+                msg: to_binary(&TokenInstantiateMsg {
+                    name: pool_id.clone(),
+                    symbol: "sideLP".to_string(),
+                    decimals: 18,
+                    mint: Some(MinterResponse {
+                        minter: env.contract.address.to_string(),
+                        cap: None,
+                    }),
+                })?,
+                funds: vec![],
+                admin: None,
+                label: String::from("Sidechain LP token"),
+            }
+            .into(),
+            id: INSTANTIATE_TOKEN_REPLY_ID,
+            gas_limit: None,
+            reply_on: ReplyOn::Success,
+        }];
+    }
+
     let pool_data = to_binary(&msg).unwrap();
     let ibc_packet_data = InterchainSwapPacketData {
         r#type: InterchainMessageType::MakePool,
@@ -135,6 +257,8 @@ fn make_pool(
     };
 
     let res = Response::default()
+        .add_attribute("ics101-lp-instantiate", pool_id.clone())
+        .add_submessages(sub_msg)
         .add_message(ibc_msg)
         .add_attribute("action", "make_pool");
     Ok(res)
@@ -161,9 +285,14 @@ fn take_pool(
         return Err(ContractError::Expired);
     }
 
+    // order can only be taken by creator
+    if interchain_pool.destination_creator != info.sender {
+        return Err(ContractError::InvalidSender);
+    }
+
     // check balance and funds sent handle error
-    // TODO: Handle unwrap
-    let token = interchain_pool.find_asset_by_side(PoolSide::SOURCE).unwrap();
+    let token = interchain_pool.find_asset_by_side(PoolSide::SOURCE)
+    .map_err(|err| StdError::generic_err(format!("Failed to find asset: {}", err)))?;
     // check if given tokens are received here
     let mut ok = false;
     for asset in info.funds {
@@ -322,9 +451,10 @@ fn make_multi_asset_deposit(
         return Err(ContractError::NotReadyForSwap);
     }
 
-    // TODO: Handle unwrap
-    let source_asset = interchain_pool.find_asset_by_side(PoolSide::SOURCE).unwrap();
-    let destination_asset = interchain_pool.find_asset_by_side(PoolSide::DESTINATION).unwrap();
+    let source_asset = interchain_pool.find_asset_by_side(PoolSide::SOURCE)
+    .map_err(|err| StdError::generic_err(format!("Failed to find asset: {}", err)))?;
+    let destination_asset = interchain_pool.find_asset_by_side(PoolSide::DESTINATION)
+    .map_err(|err| StdError::generic_err(format!("Failed to find asset: {}", err)))?;
 
     check_slippage(
         Uint128::from(source_asset.balance.amount), 
@@ -448,8 +578,8 @@ fn take_multi_asset_deposit(
     }
 
     // TODO: Add chain id to order and add check
-    // TODO: Make sure the pool side, i think it will be destination .. Handle erorr
-    let token = interchain_pool.find_asset_by_side(PoolSide::DESTINATION).unwrap();
+    let token = interchain_pool.find_asset_by_side(PoolSide::DESTINATION)
+    .map_err(|err| StdError::generic_err(format!("Failed to find asset: {}", err)))?;
     // check if given tokens are received here
     let mut ok = false;
     // First token in this chain only first token needs to be verified
@@ -520,9 +650,11 @@ fn multi_asset_withdraw(
     let refund_assets = amm.multi_asset_withdraw(msg.pool_token.clone())
     .map_err(|err| StdError::generic_err(format!("Failed to withdraw multi asset: {}", err)))?;
 
-    // TODO: Handle unwrap
-    let source_denom = interchain_pool.find_asset_by_side(PoolSide::SOURCE).unwrap();
-    let destination_denom = interchain_pool.find_asset_by_side(PoolSide::DESTINATION).unwrap();
+    let source_denom = interchain_pool.find_asset_by_side(PoolSide::SOURCE)
+    .map_err(|err| StdError::generic_err(format!("Failed to find asset: {}", err)))?;
+
+    let destination_denom = interchain_pool.find_asset_by_side(PoolSide::DESTINATION)
+    .map_err(|err| StdError::generic_err(format!("Failed to find asset: {}", err)))?;
 
     let mut source_out = Coin { denom: "mock".to_string(), amount: Uint128::zero()};
     let mut destination_out = Coin { denom: "mock".to_string(), amount: Uint128::zero()};
@@ -677,6 +809,151 @@ fn swap(
     Ok(res)
 }
 
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+    match msg {
+        QueryMsg::Config {} => to_binary(&query_config(deps)?),
+        QueryMsg::InterchainPool { tokens } => to_binary(&query_interchain_pool(deps, tokens)?),
+        QueryMsg::InterchainPoolList {  start_after, limit } => 
+            to_binary(&query_interchain_pool_list(deps, start_after, limit)?),
+        QueryMsg::Order { pool_id, order_id } => 
+            to_binary(&query_order(deps, pool_id, order_id)?),
+        QueryMsg::OrderList { start_after, limit } =>
+            to_binary(&query_orders(deps, start_after, limit)?),
+        QueryMsg::PoolAddressByToken { tokens } => to_binary(&query_pool_address(deps, tokens)?),
+        QueryMsg::PoolTokenList { start_after, limit } =>
+            to_binary(&query_pool_list(deps, start_after, limit)?),
+    }
+}
+
+/// Settings for pagination
+const MAX_LIMIT: u32 = 30;
+const DEFAULT_LIMIT: u32 = 10;
+
+fn query_config(
+    deps: Deps,
+) -> StdResult<QueryConfigResponse> {
+    let config = CONFIG.load(deps.storage)?;
+
+    Ok(QueryConfigResponse { counter: config.counter, token_code_id: config.token_code_id })
+}
+
+fn query_interchain_pool(
+    deps: Deps,
+    tokens: Vec<Coin>
+) -> StdResult<InterchainPoolResponse> {
+    let pool_id = get_pool_id_with_tokens(&tokens.to_vec());
+    // load pool throw error if found
+    let interchain_pool_temp = POOLS.may_load(deps.storage, &pool_id)?;
+    let interchain_pool;
+    if let Some(pool) = interchain_pool_temp {
+        interchain_pool = pool;
+    } else {
+        return Err(StdError::generic_err(format!(
+            "Pool not found"
+        )));
+    }
+
+    Ok(InterchainPoolResponse {
+        pool_id: interchain_pool.pool_id,
+        source_creator: interchain_pool.source_creator,
+        destination_creator: interchain_pool.destination_creator,
+        assets: interchain_pool.assets,
+        swap_fee: interchain_pool.swap_fee,
+        supply: interchain_pool.supply,
+        status: interchain_pool.status,
+        counter_party_channel: interchain_pool.counter_party_channel,
+        counter_party_port: interchain_pool.counter_party_port,
+    })
+}
+
+fn query_interchain_pool_list(
+    deps: Deps,
+    start_after: Option<String>,
+    limit: Option<u32>,
+) -> StdResult<InterchainListResponse> {
+    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
+    let start = start_after.map(|s| Bound::exclusive(s.into_bytes()));
+    let list = POOLS
+        .range(deps.storage, start, None, Order::Ascending)
+        .take(limit)
+        .map(|item: Result<(String, InterchainLiquidityPool), cosmwasm_std::StdError>| item.unwrap().1)
+        .collect::<Vec<InterchainLiquidityPool>>();
+
+    Ok(InterchainListResponse { pools: list })
+}
+
+fn query_order(
+    deps: Deps,
+    pool_id: String,
+    order_id: String
+) -> StdResult<MultiAssetDepositOrder> {
+    let key = pool_id + "-" + &order_id;
+    let multi_asset_order_temp = MULTI_ASSET_DEPOSIT_ORDERS.may_load(deps.storage, key)?;
+    let multi_asset_order;
+    if let Some(order) = multi_asset_order_temp {
+        multi_asset_order = order;
+    } else {
+        return Err(StdError::generic_err(format!(
+            "Order not found"
+        )));
+    };
+
+    Ok(multi_asset_order)
+}
+
+fn query_orders(
+    deps: Deps,
+    start_after: Option<String>,
+    limit: Option<u32>,
+) -> StdResult<OrderListResponse> {
+    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
+    let start = start_after.map(|s| Bound::exclusive(s.into_bytes()));
+    let list = MULTI_ASSET_DEPOSIT_ORDERS
+        .range(deps.storage, start, None, Order::Ascending)
+        .take(limit)
+        .map(|item: Result<(String, MultiAssetDepositOrder), cosmwasm_std::StdError>| item.unwrap().1)
+        .collect::<Vec<MultiAssetDepositOrder>>();
+
+    Ok(OrderListResponse { orders: list })
+}
+
+fn query_pool_address(
+    deps: Deps,
+    tokens: Vec<Coin>
+) -> StdResult<String> {
+    let pool_id = get_pool_id_with_tokens(&tokens);
+    let res;
+    if let Some(lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &pool_id.clone())? {
+        res = lp_token
+    } else {
+        // throw error token not found, initialization is done in make_pool and
+        // take_pool
+        return Err(StdError::generic_err(format!(
+            "LP Token is not initialized"
+        )));
+    }
+
+    Ok(res)
+}
+
+fn query_pool_list(
+    deps: Deps,
+    start_after: Option<String>,
+    limit: Option<u32>,
+) -> StdResult<PoolListResponse> {
+    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
+    let start = start_after.map(|s| Bound::exclusive(s.into_bytes()));
+    let list = POOL_TOKENS_LIST
+        .range(deps.storage, start, None, Order::Ascending)
+        .take(limit)
+        .map(|item: Result<(String, String), cosmwasm_std::StdError>| item.unwrap().1)
+        .collect::<Vec<String>>();
+
+    Ok(PoolListResponse { pools: list })
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -687,7 +964,7 @@ mod tests {
         let mut deps = mock_dependencies();
 
         // Instantiate an empty contract
-        let instantiate_msg = InstantiateMsg {};
+        let instantiate_msg = InstantiateMsg { token_code_id: 1 };
         let info = mock_info("anyone", &[]);
         let res = instantiate(deps.as_mut(), mock_env(), info, instantiate_msg).unwrap();
         assert_eq!(0, res.messages.len());

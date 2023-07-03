@@ -1,13 +1,18 @@
+use cw20::MinterResponse;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{Coin, Response, StdError};
+use cosmwasm_std::{Coin, Response, StdError, StdResult, Uint128};
 
 use crate::error::ContractError;
-use crate::market::{InterchainLiquidityPool, InterchainMarketMaker, PoolAsset};
+use crate::market::{InterchainLiquidityPool, InterchainMarketMaker, PoolAsset, PoolStatus};
+use crate::types::MultiAssetDepositOrder;
+use crate::utils::{is_valid_symbol, is_valid_name};
 
 #[derive(Serialize, Deserialize, JsonSchema)]
-pub struct InstantiateMsg {}
+pub struct InstantiateMsg {
+    pub token_code_id: u64
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub enum ExecuteMsg {
@@ -16,9 +21,19 @@ pub enum ExecuteMsg {
     SingleAssetDeposit(MsgSingleAssetDepositRequest),
     MakeMultiAssetDeposit(MsgMakeMultiAssetDepositRequest),
     TakeMultiAssetDeposit(MsgTakeMultiAssetDepositRequest),
-    //SingleAssetWithdraw(MsgSingleAssetWithdrawRequest),
-    MultiAssetWithdraw(MsgMultiAssetWithdrawRequest),
+    //MultiAssetWithdraw(MsgMultiAssetWithdrawRequest),
     Swap(MsgSwapRequest),
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub enum Cw20HookMsg {
+    WithdrawLiquidity {
+        pool_id: String,
+        receiver: String,
+        counterparty_receiver: String,
+        timeout_height: u64,
+        timeout_timestamp: u64
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -194,21 +209,102 @@ pub struct PoolApprove {
     pub sender: String,
 }
 
+
+/// This structure describes the parameters used for creating a token contract.
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct TokenInstantiateMsg {
+    /// Token name
+    pub name: String,
+    /// Token symbol
+    pub symbol: String,
+    /// The amount of decimals the token has
+    pub decimals: u8,
+    /// Minting controls specified in a [`MinterResponse`] structure
+    pub mint: Option<MinterResponse>,
+}
+
+impl TokenInstantiateMsg {
+    pub fn get_cap(&self) -> Option<Uint128> {
+        self.mint.as_ref().and_then(|v| v.cap)
+    }
+
+    pub fn validate(&self) -> StdResult<()> {
+        // Check name, symbol, decimals
+        if !is_valid_name(&self.name) {
+            return Err(StdError::generic_err(
+                "Name is not in the expected format (3-50 UTF-8 bytes)",
+            ));
+        }
+        if !is_valid_symbol(&self.symbol, None) {
+            return Err(StdError::generic_err(
+                "Ticker symbol is not in expected format [a-zA-Z\\-]{3,12}",
+            ));
+        }
+        if self.decimals > 18 {
+            return Err(StdError::generic_err("Decimals must not exceed 18"));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub enum QueryMsg {
-    /// Show all open swaps. Return type is ListResponse.
-    List {
+    /// Show all open orders. Return type is ListResponse.
+    OrderList {
         start_after: Option<String>,
         limit: Option<u32>,
     },
-    ListByDesiredTaker {
+    Order {
+        pool_id: String,
+        order_id: String,
+    },
+    /// Query config
+    Config {},
+    /// Query all pool token list
+    PoolTokenList {
         start_after: Option<String>,
         limit: Option<u32>,
-        desired_taker: String,
     },
-    /// Returns the details of the named swap, error if not created.
-    /// Return type: DetailsResponse.
-    Details { id: String },
+    PoolAddressByToken {
+        tokens: Vec<Coin>
+    },
+    InterchainPool {
+        tokens: Vec<Coin>
+    },
+    InterchainPoolList {
+        start_after: Option<String>,
+        limit: Option<u32>,
+    },
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct InterchainPoolResponse {
+    pub pool_id: String,
+    pub source_creator: String,
+    pub destination_creator: String,
+    pub assets: Vec<PoolAsset>,
+    pub swap_fee: u32,
+    pub supply: Coin,
+    pub status: PoolStatus,
+    pub counter_party_port: String,
+    pub counter_party_channel: String,
+}
+
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct InterchainListResponse {
+    pub pools: Vec<InterchainLiquidityPool>,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct OrderListResponse {
+    pub orders: Vec<MultiAssetDepositOrder>,
+}
+
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct PoolListResponse {
+    pub pools: Vec<String>,
 }
 
 // QueryParamsRequest is the request type for the Query/Params RPC method.
@@ -291,6 +387,14 @@ pub struct Params {
     // max_fee_rate set a max value of fee, it's base point, 1/10000
     #[serde(rename = "max_fee_rate")]
     pub max_fee_rate: u32,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct QueryConfigResponse {
+    /// For order save in state
+    pub counter: u64,
+    /// For Instantiating cw20 tokens
+    pub token_code_id: u64
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
