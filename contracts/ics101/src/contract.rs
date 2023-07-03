@@ -53,7 +53,7 @@ pub fn instantiate(
 pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
     match msg.id {
         INSTANTIATE_TOKEN_REPLY_ID => {
-            let data = msg.result.unwrap().data.unwrap();
+            let data = msg.result.clone().unwrap().data.unwrap();
                 let res: MsgInstantiateContractResponse = Message::parse_from_bytes(data.as_slice())
                     .map_err(|_| {
                         StdError::parse_err("MsgInstantiateContractResponse", "failed to parse data")
@@ -61,9 +61,24 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractE
 
             let lp_token = deps.api.addr_validate(res.get_contract_address())?;
 
-            // TODO: Save pool
-            //POOL_TOKENS_LIST.save(deps.storage, k, data)?;
+            // Storing a temporary state using cw_storage_plus::Item and loading it into the reply handler
+            // or check for events
+            // Search for the instantiate event
+            let mesg = msg.result.clone().unwrap();
+            let instantiate_event = mesg.events.iter()
+            .find(|e| {
+                e.attributes
+                    .iter()
+                    .any(|attr| attr.key == "ics101-lp-instantiate")
+            })
+            .ok_or_else(|| StdError::generic_err(format!("unable to find instantiate action")))?;
 
+            // Error is thrown in above line if this event is not found
+            for val in &instantiate_event.attributes {
+                if val.key == "ics101-lp-instantiate" {
+                    POOL_TOKENS_LIST.save(deps.storage, &val.value, &lp_token.to_string())?;
+                }
+            }
             Ok(Response::new()
                 .add_attribute("liquidity_token_addr", lp_token))
         }
@@ -148,7 +163,7 @@ fn make_pool(
     };
     POOLS.save(deps.storage, &pool_id, &interchain_pool)?;
 
-    // Intantiate token
+    // Instantiate token
     let config = CONFIG.load(deps.storage)?;
     let sub_msg: Vec<SubMsg>;
     if let Some(_lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &pool_id.clone())? {
@@ -198,6 +213,7 @@ fn make_pool(
     };
 
     let res = Response::default()
+        .add_attribute("ics101-lp-instantiate", pool_id.clone())
         .add_submessages(sub_msg)
         .add_message(ibc_msg)
         .add_attribute("action", "make_pool");

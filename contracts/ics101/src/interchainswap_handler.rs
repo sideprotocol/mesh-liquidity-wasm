@@ -1,3 +1,4 @@
+use cw20::MinterResponse;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -6,15 +7,15 @@ use crate::{
     types::{InterchainSwapPacketData, InterchainMessageType, StateChange, MultiAssetDepositOrder, OrderStatus},
     state::{POOLS, CONFIG, MULTI_ASSET_DEPOSIT_ORDERS, POOL_TOKENS_LIST},
     utils::{
-        get_pool_id_with_tokens, get_coins_from_deposits, mint_tokens_cw20, send_tokens_coin, send_tokens_cw20, burn_tokens_cw20,
+        get_pool_id_with_tokens, get_coins_from_deposits, mint_tokens_cw20, send_tokens_coin, send_tokens_cw20, burn_tokens_cw20, INSTANTIATE_TOKEN_REPLY_ID,
     }, msg::{MsgMakePoolRequest, MsgTakePoolRequest, MsgSingleAssetDepositRequest,
      MsgMultiAssetWithdrawRequest, MsgSwapRequest,
-    MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest}
+    MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, TokenInstantiateMsg}
     ,market::{InterchainLiquidityPool, PoolStatus::{PoolStatusInitialized, PoolStatusActive}, InterchainMarketMaker},
 };
 use cosmwasm_std::{
     attr, from_binary, to_binary, Binary, DepsMut, Env, IbcBasicResponse, IbcPacket,
-    IbcReceiveResponse, SubMsg, Coin, Uint128, StdError, Addr,
+    IbcReceiveResponse, SubMsg, Coin, Uint128, StdError, Addr, WasmMsg, ReplyOn,
 };
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
@@ -90,7 +91,7 @@ pub(crate) fn do_ibc_packet_receive(
 
 pub(crate) fn on_received_make_pool(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     _packet: &IbcPacket,
     msg: MsgMakePoolRequest,
 ) -> Result<IbcReceiveResponse, ContractError> {
@@ -107,6 +108,39 @@ pub(crate) fn on_received_make_pool(
     tokens[1] = msg.liquidity[1].balance.clone();
 
     let pool_id = get_pool_id_with_tokens(&tokens);
+
+    let config = CONFIG.load(deps.storage)?;
+    // Send cw20 instantiate message
+    // TODO: check reply after failure
+    let sub_msg: Vec<SubMsg>;
+    if let Some(_lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &pool_id.clone())? {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Pool token already exist: Make Pool"
+        ))));
+    } else {
+        // Create the LP token contract
+        sub_msg = vec![SubMsg {
+            msg: WasmMsg::Instantiate {
+                code_id: config.token_code_id,
+                msg: to_binary(&TokenInstantiateMsg {
+                    name: pool_id.clone(),
+                    symbol: "sideLP".to_string(),
+                    decimals: 18,
+                    mint: Some(MinterResponse {
+                        minter: env.contract.address.to_string(),
+                        cap: None,
+                    }),
+                })?,
+                funds: vec![],
+                admin: None,
+                label: String::from("Sidechain LP token"),
+            }
+            .into(),
+            id: INSTANTIATE_TOKEN_REPLY_ID,
+            gas_limit: None,
+            reply_on: ReplyOn::Success,
+        }];
+    }
 
     // load pool throw error if found
     let interchain_pool_temp = POOLS.may_load(deps.storage, &pool_id.clone())?;
@@ -132,7 +166,8 @@ pub(crate) fn on_received_make_pool(
     POOLS.save(deps.storage, &pool_id, &interchain_pool)?;
 
     let res = IbcReceiveResponse::new()
-        .set_ack(ack_success())
+        .add_attribute("ics101-lp-instantiate", pool_id.clone())
+        .set_ack(ack_success()).add_submessages(sub_msg)
         .add_attribute("action", "receive")
         .add_attribute("success", "true")
         .add_attribute("sucess", "make_pool_receive");
@@ -271,7 +306,6 @@ pub(crate) fn on_received_make_multi_deposit(
         source_maker: msg.deposits[0].sender.clone(),
         destination_taker: msg.deposits[1].sender.clone(),
         deposits: get_coins_from_deposits(msg.deposits.clone()),
-       // pool_tokens: pool_tokens,
         status: OrderStatus::Pending,
         created_at: env.block.height
     };
@@ -284,7 +318,6 @@ pub(crate) fn on_received_make_multi_deposit(
     .add_attribute("action", "receive")
     .add_attribute("success", "true")
     .add_attribute("sucess", "make_multi_asset_deposit");
-    //.add_attribute("pool_token", state_change.pool_tokens);
 
     Ok(res)
 }
