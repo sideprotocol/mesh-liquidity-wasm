@@ -4,7 +4,7 @@ use std::ops::{Div, Mul};
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     to_binary, Coin, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Response, StdError, StdResult,
-    Uint128, Deps, Binary, Order, SubMsg, WasmMsg, ReplyOn, Reply, from_binary,
+    Uint128, Deps, Binary, Order, SubMsg, WasmMsg, ReplyOn, Reply, from_binary, SubMsgResult,
 };
 use protobuf::Message;
 
@@ -12,6 +12,8 @@ use cw2::set_contract_version;
 use cw20::{MinterResponse, Cw20ReceiveMsg};
 use cw_storage_plus::Bound;
 
+use crate::ibc::{RECEIVE_ID, ACK_FAILURE_ID};
+use crate::interchainswap_handler::ack_fail;
 use crate::response::MsgInstantiateContractResponse;
 use crate::error::ContractError;
 use crate::market::{InterchainMarketMaker, PoolStatus, PoolSide, InterchainLiquidityPool};
@@ -81,7 +83,15 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractE
             }
             Ok(Response::new()
                 .add_attribute("liquidity_token_addr", lp_token))
-        }
+        },
+        RECEIVE_ID => match msg.result {
+            SubMsgResult::Ok(_) => Ok(Response::new()),
+            SubMsgResult::Err(err) => Ok(Response::new().set_data(ack_fail(err))),
+        },
+        ACK_FAILURE_ID => match msg.result {
+            SubMsgResult::Ok(_) => Ok(Response::new()),
+            SubMsgResult::Err(err) => Ok(Response::new().set_data(ack_fail(err))),
+        },
         _ => Err(StdError::generic_err(format!("Unknown reply ID: {}", msg.id)).into()),
     }
 }
