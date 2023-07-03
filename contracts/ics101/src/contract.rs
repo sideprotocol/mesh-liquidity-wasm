@@ -4,28 +4,30 @@ use std::ops::{Div, Mul};
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     to_binary, Coin, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Response, StdError, StdResult,
-    Uint128, Deps, Binary, Order,
+    Uint128, Deps, Binary, Order, SubMsg, WasmMsg, ReplyOn, Reply,
 };
+use protobuf::Message;
 
 use cw2::set_contract_version;
+use cw20::MinterResponse;
 use cw_storage_plus::Bound;
 
+use crate::response::MsgInstantiateContractResponse;
 use crate::error::ContractError;
 use crate::market::{InterchainMarketMaker, PoolStatus, PoolSide, InterchainLiquidityPool};
 use crate::msg::{
     ExecuteMsg, InstantiateMsg,
     MsgMultiAssetWithdrawRequest, MsgSingleAssetDepositRequest,
-    MsgSwapRequest, SwapMsgType, MsgMakePoolRequest, MsgTakePoolRequest, MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, QueryMsg, QueryConfigResponse, InterchainPoolResponse, InterchainListResponse, OrderListResponse, PoolListResponse,
+    MsgSwapRequest, SwapMsgType, MsgMakePoolRequest, MsgTakePoolRequest, MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, QueryMsg, QueryConfigResponse, InterchainPoolResponse, InterchainListResponse, OrderListResponse, PoolListResponse, TokenInstantiateMsg,
 };
-use crate::state::{POOLS, MULTI_ASSET_DEPOSIT_ORDERS, CONFIG, POOL_TOKENS_LIST};
+use crate::state::{POOLS, MULTI_ASSET_DEPOSIT_ORDERS, CONFIG, POOL_TOKENS_LIST, Config};
 use crate::types::{InterchainSwapPacketData, StateChange, InterchainMessageType, MultiAssetDepositOrder, OrderStatus, MULTI_DEPOSIT_PENDING_LIMIT};
-use crate::utils::{check_slippage, get_coins_from_deposits, get_pool_id_with_tokens};
+use crate::utils::{check_slippage, get_coins_from_deposits, get_pool_id_with_tokens, INSTANTIATE_TOKEN_REPLY_ID};
 
 // Version info, for migration info
 const CONTRACT_NAME: &str = "ics101-interchainswap";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const DEFAULT_TIMEOUT_TIMESTAMP_OFFSET: u64 = 600;
-//const MAX_FEE_RATE: u32 = 300;
 const MAXIMUM_SLIPPAGE: u64 = 10000;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -33,12 +35,40 @@ pub fn instantiate(
     deps: DepsMut,
     _env: Env,
     _info: MessageInfo,
-    _msg: InstantiateMsg,
+    msg: InstantiateMsg,
 ) -> StdResult<Response> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
-    // No setup
-    // TODO: add counter and token id to state
+    
+    let config = Config {
+        counter: 0,
+        token_code_id: msg.token_code_id
+    };
+
+    CONFIG.save(deps.storage, &config)?;
     Ok(Response::default())
+}
+
+/// The entry point to the contract for processing replies from submessages.
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
+    match msg.id {
+        INSTANTIATE_TOKEN_REPLY_ID => {
+            let data = msg.result.unwrap().data.unwrap();
+                let res: MsgInstantiateContractResponse = Message::parse_from_bytes(data.as_slice())
+                    .map_err(|_| {
+                        StdError::parse_err("MsgInstantiateContractResponse", "failed to parse data")
+                    })?;
+
+            let lp_token = deps.api.addr_validate(res.get_contract_address())?;
+
+            // TODO: Save pool
+            //POOL_TOKENS_LIST.save(deps.storage, k, data)?;
+
+            Ok(Response::new()
+                .add_attribute("liquidity_token_addr", lp_token))
+        }
+        _ => Err(StdError::generic_err(format!("Unknown reply ID: {}", msg.id)).into()),
+    }
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -118,6 +148,38 @@ fn make_pool(
     };
     POOLS.save(deps.storage, &pool_id, &interchain_pool)?;
 
+    // Intantiate token
+    let config = CONFIG.load(deps.storage)?;
+    let sub_msg: Vec<SubMsg>;
+    if let Some(_lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &pool_id.clone())? {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Pool token already exist: Make Pool"
+        ))));
+    } else {
+        // Create the LP token contract
+        sub_msg = vec![SubMsg {
+            msg: WasmMsg::Instantiate {
+                code_id: config.token_code_id,
+                msg: to_binary(&TokenInstantiateMsg {
+                    name: pool_id.clone(),
+                    symbol: "sideLP".to_string(),
+                    decimals: 18,
+                    mint: Some(MinterResponse {
+                        minter: env.contract.address.to_string(),
+                        cap: None,
+                    }),
+                })?,
+                funds: vec![],
+                admin: None,
+                label: String::from("Sidechain LP token"),
+            }
+            .into(),
+            id: INSTANTIATE_TOKEN_REPLY_ID,
+            gas_limit: None,
+            reply_on: ReplyOn::Success,
+        }];
+    }
+
     let pool_data = to_binary(&msg).unwrap();
     let ibc_packet_data = InterchainSwapPacketData {
         r#type: InterchainMessageType::MakePool,
@@ -136,6 +198,7 @@ fn make_pool(
     };
 
     let res = Response::default()
+        .add_submessages(sub_msg)
         .add_message(ibc_msg)
         .add_attribute("action", "make_pool");
     Ok(res)
@@ -841,7 +904,7 @@ mod tests {
         let mut deps = mock_dependencies();
 
         // Instantiate an empty contract
-        let instantiate_msg = InstantiateMsg {};
+        let instantiate_msg = InstantiateMsg { token_code_id: 1 };
         let info = mock_info("anyone", &[]);
         let res = instantiate(deps.as_mut(), mock_env(), info, instantiate_msg).unwrap();
         assert_eq!(0, res.messages.len());

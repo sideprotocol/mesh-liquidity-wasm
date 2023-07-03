@@ -1,14 +1,18 @@
+use cw20::MinterResponse;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{Coin, Response, StdError};
+use cosmwasm_std::{Coin, Response, StdError, StdResult, Uint128};
 
 use crate::error::ContractError;
 use crate::market::{InterchainLiquidityPool, InterchainMarketMaker, PoolAsset, PoolStatus};
 use crate::types::MultiAssetDepositOrder;
+use crate::utils::{is_valid_symbol, is_valid_name};
 
 #[derive(Serialize, Deserialize, JsonSchema)]
-pub struct InstantiateMsg {}
+pub struct InstantiateMsg {
+    pub token_code_id: u64
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub enum ExecuteMsg {
@@ -193,6 +197,44 @@ pub struct MsgSwapRequest {
 pub struct PoolApprove {
     pub pool_id: String,
     pub sender: String,
+}
+
+
+/// This structure describes the parameters used for creating a token contract.
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct TokenInstantiateMsg {
+    /// Token name
+    pub name: String,
+    /// Token symbol
+    pub symbol: String,
+    /// The amount of decimals the token has
+    pub decimals: u8,
+    /// Minting controls specified in a [`MinterResponse`] structure
+    pub mint: Option<MinterResponse>,
+}
+
+impl TokenInstantiateMsg {
+    pub fn get_cap(&self) -> Option<Uint128> {
+        self.mint.as_ref().and_then(|v| v.cap)
+    }
+
+    pub fn validate(&self) -> StdResult<()> {
+        // Check name, symbol, decimals
+        if !is_valid_name(&self.name) {
+            return Err(StdError::generic_err(
+                "Name is not in the expected format (3-50 UTF-8 bytes)",
+            ));
+        }
+        if !is_valid_symbol(&self.symbol, None) {
+            return Err(StdError::generic_err(
+                "Ticker symbol is not in expected format [a-zA-Z\\-]{3,12}",
+            ));
+        }
+        if self.decimals > 18 {
+            return Err(StdError::generic_err("Decimals must not exceed 18"));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

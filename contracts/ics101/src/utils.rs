@@ -12,6 +12,7 @@ use hex;
 
 pub const MULTIPLIER: u64 = 1e18 as u64;
 pub const MAXIMUM_SLIPPAGE: u64 = 10000;
+pub const INSTANTIATE_TOKEN_REPLY_ID: u64 = 2000;
 
 pub fn get_pool_id_with_tokens(tokens: &[Coin]) -> String {
     let mut denoms: Vec<String> = tokens.iter().map(|token| token.denom.clone()).collect();
@@ -200,5 +201,33 @@ pub fn send_tokens_cw20(recipient: String, lp_token: String, amount: Uint128) ->
         funds: vec![],
     };
     Ok(vec![SubMsg::new(exec)])
+}
+
+/// Checks the validity of the token name
+pub fn is_valid_name(name: &str) -> bool {
+    let bytes = name.as_bytes();
+    if bytes.len() < 3 || bytes.len() > 50 {
+        return false;
+    }
+    true
+}
+
+/// Checks the validity of the token symbol
+pub fn is_valid_symbol(symbol: &str, max_length: Option<usize>) -> bool {
+    let max_length = max_length.unwrap_or(12);
+    let bytes = symbol.as_bytes();
+    if bytes.len() < 3 || bytes.len() > max_length {
+        return false;
+    }
+    for byte in bytes.iter() {
+        if (*byte != 45)
+            && (*byte < 47 || *byte > 57)
+            && (*byte < 65 || *byte > 90)
+            && (*byte < 97 || *byte > 122)
+        {
+            return false;
+        }
+    }
+    true
 }
 
