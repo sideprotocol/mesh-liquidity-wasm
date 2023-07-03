@@ -21,9 +21,19 @@ pub enum ExecuteMsg {
     SingleAssetDeposit(MsgSingleAssetDepositRequest),
     MakeMultiAssetDeposit(MsgMakeMultiAssetDepositRequest),
     TakeMultiAssetDeposit(MsgTakeMultiAssetDepositRequest),
-    //SingleAssetWithdraw(MsgSingleAssetWithdrawRequest),
-    MultiAssetWithdraw(MsgMultiAssetWithdrawRequest),
+    //MultiAssetWithdraw(MsgMultiAssetWithdrawRequest),
     Swap(MsgSwapRequest),
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub enum Cw20HookMsg {
+    WithdrawLiquidity {
+        pool_id: String,
+        receiver: String,
+        counterparty_receiver: String,
+        timeout_height: u64,
+        timeout_timestamp: u64
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]

@@ -4,12 +4,12 @@ use std::ops::{Div, Mul};
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     to_binary, Coin, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Response, StdError, StdResult,
-    Uint128, Deps, Binary, Order, SubMsg, WasmMsg, ReplyOn, Reply,
+    Uint128, Deps, Binary, Order, SubMsg, WasmMsg, ReplyOn, Reply, from_binary,
 };
 use protobuf::Message;
 
 use cw2::set_contract_version;
-use cw20::MinterResponse;
+use cw20::{MinterResponse, Cw20ReceiveMsg};
 use cw_storage_plus::Bound;
 
 use crate::response::MsgInstantiateContractResponse;
@@ -18,7 +18,7 @@ use crate::market::{InterchainMarketMaker, PoolStatus, PoolSide, InterchainLiqui
 use crate::msg::{
     ExecuteMsg, InstantiateMsg,
     MsgMultiAssetWithdrawRequest, MsgSingleAssetDepositRequest,
-    MsgSwapRequest, SwapMsgType, MsgMakePoolRequest, MsgTakePoolRequest, MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, QueryMsg, QueryConfigResponse, InterchainPoolResponse, InterchainListResponse, OrderListResponse, PoolListResponse, TokenInstantiateMsg,
+    MsgSwapRequest, SwapMsgType, MsgMakePoolRequest, MsgTakePoolRequest, MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, QueryMsg, QueryConfigResponse, InterchainPoolResponse, InterchainListResponse, OrderListResponse, PoolListResponse, TokenInstantiateMsg, Cw20HookMsg,
 };
 use crate::state::{POOLS, MULTI_ASSET_DEPOSIT_ORDERS, CONFIG, POOL_TOKENS_LIST, Config};
 use crate::types::{InterchainSwapPacketData, StateChange, InterchainMessageType, MultiAssetDepositOrder, OrderStatus, MULTI_DEPOSIT_PENDING_LIMIT};
@@ -99,8 +99,42 @@ pub fn execute(
         ExecuteMsg::SingleAssetDeposit(msg) => single_asset_deposit(deps, env, info, msg),
         ExecuteMsg::MakeMultiAssetDeposit(msg) => make_multi_asset_deposit(deps, env, info, msg),
         ExecuteMsg::TakeMultiAssetDeposit(msg) => take_multi_asset_deposit(deps, env, info, msg),
-        ExecuteMsg::MultiAssetWithdraw(msg) => multi_asset_withdraw(deps, env, info, msg),
+        //ExecuteMsg::MultiAssetWithdraw(msg) => multi_asset_withdraw(deps, env, info, msg),
         ExecuteMsg::Swap(msg) => swap(deps, env, info, msg),
+    }
+}
+
+/// Receives a message of type [`Cw20ReceiveMsg`] and processes it depending on the received template.
+///
+/// * **cw20_msg** is the CW20 message that has to be processed.
+pub fn receive_cw20(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    cw20_msg: Cw20ReceiveMsg,
+) -> Result<Response, ContractError> {
+    match from_binary(&cw20_msg.msg) {
+        Ok(Cw20HookMsg::WithdrawLiquidity {
+            pool_id, receiver,
+            counterparty_receiver,
+            timeout_height,
+            timeout_timestamp }) => {
+                let msg: MsgMultiAssetWithdrawRequest = MsgMultiAssetWithdrawRequest {
+                    pool_id: pool_id ,
+                    receiver: receiver,
+                    counterparty_receiver: counterparty_receiver,
+                    pool_token: Coin {denom: info.sender.to_string(), amount: cw20_msg.amount},
+                    timeout_height: timeout_height,
+                    timeout_timestamp: timeout_timestamp 
+                };
+                multi_asset_withdraw(
+                    deps,
+                    env,
+                    info,
+                    msg
+                )
+            }
+        Err(err) => Err(err.into()),
     }
 }
 
