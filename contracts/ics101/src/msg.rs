@@ -1,4 +1,4 @@
-use cw20::MinterResponse;
+use cw20::{MinterResponse, Cw20Coin, Logo};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -41,6 +41,7 @@ pub enum Cw20HookMsg {
 pub struct MsgMakePoolRequest {
     pub source_port: String,
     pub source_channel: String,
+    pub counterparty_channel: String,
     pub creator: String,
     pub counterparty_creator: String,
     pub liquidity:  Vec<PoolAsset>,
@@ -209,6 +210,18 @@ pub struct PoolApprove {
     pub sender: String,
 }
 
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct InstantiateMarketingInfo {
+    /// The project name
+    pub project: Option<String>,
+    /// The project description
+    pub description: Option<String>,
+    /// The address of an admin who is able to update marketing info
+    pub marketing: Option<String>,
+    /// The token logo
+    pub logo: Option<Logo>,
+}
+
 
 /// This structure describes the parameters used for creating a token contract.
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -217,10 +230,12 @@ pub struct TokenInstantiateMsg {
     pub name: String,
     /// Token symbol
     pub symbol: String,
+    pub initial_balances: Vec<Cw20Coin>,
     /// The amount of decimals the token has
     pub decimals: u8,
     /// Minting controls specified in a [`MinterResponse`] structure
     pub mint: Option<MinterResponse>,
+    pub marketing: Option<InstantiateMarketingInfo>,
 }
 
 impl TokenInstantiateMsg {

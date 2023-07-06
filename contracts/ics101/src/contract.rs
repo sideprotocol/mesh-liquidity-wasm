@@ -22,7 +22,7 @@ use crate::msg::{
     MsgMultiAssetWithdrawRequest, MsgSingleAssetDepositRequest,
     MsgSwapRequest, SwapMsgType, MsgMakePoolRequest, MsgTakePoolRequest, MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, QueryMsg, QueryConfigResponse, InterchainPoolResponse, InterchainListResponse, OrderListResponse, PoolListResponse, TokenInstantiateMsg, Cw20HookMsg,
 };
-use crate::state::{POOLS, MULTI_ASSET_DEPOSIT_ORDERS, CONFIG, POOL_TOKENS_LIST, Config};
+use crate::state::{POOLS, MULTI_ASSET_DEPOSIT_ORDERS, CONFIG, POOL_TOKENS_LIST, Config, TEMP};
 use crate::types::{InterchainSwapPacketData, StateChange, InterchainMessageType, MultiAssetDepositOrder, OrderStatus, MULTI_DEPOSIT_PENDING_LIMIT};
 use crate::utils::{check_slippage, get_coins_from_deposits, get_pool_id_with_tokens, INSTANTIATE_TOKEN_REPLY_ID};
 
@@ -56,31 +56,35 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractE
     match msg.id {
         INSTANTIATE_TOKEN_REPLY_ID => {
             let data = msg.result.clone().unwrap().data.unwrap();
-                let res: MsgInstantiateContractResponse = Message::parse_from_bytes(data.as_slice())
-                    .map_err(|_| {
-                        StdError::parse_err("MsgInstantiateContractResponse", "failed to parse data")
-                    })?;
+            let res: MsgInstantiateContractResponse = Message::parse_from_bytes(data.as_slice())
+                .map_err(|_| {
+                    StdError::parse_err("MsgInstantiateContractResponse", "failed to parse data")
+                })?;
 
             let lp_token = deps.api.addr_validate(res.get_contract_address())?;
 
             // Storing a temporary state using cw_storage_plus::Item and loading it into the reply handler
             // or check for events
             // Search for the instantiate event
-            let mesg = msg.result.clone().unwrap();
-            let instantiate_event = mesg.events.iter()
-            .find(|e| {
-                e.attributes
-                    .iter()
-                    .any(|attr| attr.key == "ics101-lp-instantiate")
-            })
-            .ok_or_else(|| StdError::generic_err(format!("unable to find instantiate action")))?;
+            // let mesg = msg.result.clone().unwrap();
+            // let instantiate_event = mesg.events.iter()
+            // .find(|e| {
+            //     e.attributes
+            //         .iter()
+            //         .any(|attr| attr.key == "ics101-lp-instantiate")
+            // })
+            // .ok_or_else(|| StdError::generic_err(format!("unable to find instantiate action")))?;
 
-            // Error is thrown in above line if this event is not found
-            for val in &instantiate_event.attributes {
-                if val.key == "ics101-lp-instantiate" {
-                    POOL_TOKENS_LIST.save(deps.storage, &val.value, &lp_token.to_string())?;
-                }
-            }
+            // // Error is thrown in above line if this event is not found
+            // for val in &instantiate_event.attributes {
+            //     if val.key == "ics101-lp-instantiate" {
+            //         POOL_TOKENS_LIST.save(deps.storage, &val.value, &lp_token.to_string())?;
+            //     }
+            // }
+
+            let pool_id = TEMP.load(deps.storage).unwrap();
+            TEMP.remove(deps.storage);
+            POOL_TOKENS_LIST.save(deps.storage, &pool_id, &lp_token.to_string())?;
             Ok(Response::new()
                 .add_attribute("liquidity_token_addr", lp_token))
         },
@@ -170,6 +174,8 @@ fn make_pool(
     tokens[1] = msg.liquidity[1].balance.clone();
 
     let pool_id = get_pool_id_with_tokens(&tokens);
+
+    TEMP.save(deps.storage, &pool_id)?;
     // load pool throw error if not found
     let interchain_pool_temp = POOLS.may_load(deps.storage,&pool_id)?;
     if let Some(_pool) = interchain_pool_temp {
@@ -202,7 +208,7 @@ fn make_pool(
         supply: supply,
         status: PoolStatus::PoolStatusInitialized,
         counter_party_port: msg.source_port.clone(),
-        counter_party_channel: msg.source_channel.clone(),
+        counter_party_channel: msg.counterparty_channel.clone(),
         swap_fee: msg.swap_fee
     };
     POOLS.save(deps.storage, &pool_id, &interchain_pool)?;
@@ -220,9 +226,11 @@ fn make_pool(
             msg: WasmMsg::Instantiate {
                 code_id: config.token_code_id,
                 msg: to_binary(&TokenInstantiateMsg {
-                    name: pool_id.clone(),
+                    name: "sideLP".to_string(),
                     symbol: "sideLP".to_string(),
                     decimals: 18,
+                    initial_balances: vec![],
+                    marketing: None,
                     mint: Some(MinterResponse {
                         minter: env.contract.address.to_string(),
                         cap: None,
@@ -239,7 +247,7 @@ fn make_pool(
         }];
     }
 
-    let pool_data = to_binary(&msg).unwrap();
+    let pool_data = to_binary(&msg)?;
     let ibc_packet_data = InterchainSwapPacketData {
         r#type: InterchainMessageType::MakePool,
         data: pool_data.clone(),
@@ -281,6 +289,41 @@ fn take_pool(
         ))));
     }
 
+    let config = CONFIG.load(deps.storage)?;
+    // Send cw20 instantiate message
+    let sub_msg: Vec<SubMsg>;
+    if let Some(_lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id.clone())? {
+        // do nothing
+        sub_msg = vec![];
+    } else {
+        // Create the LP token contract
+        sub_msg = vec![SubMsg {
+            msg: WasmMsg::Instantiate {
+                code_id: config.token_code_id,
+                msg: to_binary(&TokenInstantiateMsg {
+                    name: "sideLP".to_string(),
+                    symbol: "sideLP".to_string(),
+                    decimals: 18,
+                    initial_balances: vec![],
+                    marketing: None,
+                    mint: Some(MinterResponse {
+                        minter: env.contract.address.to_string(),
+                        cap: None,
+                    }),
+                })?,
+                funds: vec![],
+                admin: None,
+                label: String::from("Sidechain LP token"),
+            }
+            .into(),
+            id: INSTANTIATE_TOKEN_REPLY_ID,
+            gas_limit: None,
+            reply_on: ReplyOn::Success,
+        }];
+    }
+
+    TEMP.save(deps.storage, &msg.pool_id)?;
+
     if interchain_pool.status != PoolStatus::PoolStatusInitialized {
         return Err(ContractError::Expired);
     }
@@ -291,7 +334,7 @@ fn take_pool(
     }
 
     // check balance and funds sent handle error
-    let token = interchain_pool.find_asset_by_side(PoolSide::SOURCE)
+    let token = interchain_pool.find_asset_by_side(PoolSide::DESTINATION)
     .map_err(|err| StdError::generic_err(format!("Failed to find asset: {}", err)))?;
     // check if given tokens are received here
     let mut ok = false;
@@ -324,6 +367,7 @@ fn take_pool(
     };
 
     let res = Response::default()
+        .add_submessages(sub_msg)
         .add_message(ibc_msg)
         .add_attribute("action", "make_pool");
     Ok(res)
@@ -620,7 +664,6 @@ fn take_multi_asset_deposit(
     Ok(res)
 }
 
-// TODO: Call from receive function only
 // Pass pool id asset i.e cw20
 fn multi_asset_withdraw(
     deps: DepsMut,

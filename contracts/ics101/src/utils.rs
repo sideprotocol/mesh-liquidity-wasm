@@ -18,11 +18,6 @@ pub fn get_pool_id_with_tokens(tokens: &[Coin]) -> String {
     let mut denoms: Vec<String> = tokens.iter().map(|token| token.denom.clone()).collect();
     denoms.sort();
 
-    // let mut res_vec: Vec<&[u8]> = vec![];
-    // for denom in &denoms {
-    //     // let denom_data = to_binary(&denom).unwrap();
-    //     res_vec.push(to_binary(&denom).unwrap().as_slice());
-    // }
     let res = denoms.join("");
     let res_bytes = res.as_bytes();
     let hash = Sha256::digest(&res_bytes);
@@ -125,26 +120,26 @@ pub fn try_get_ack_error(ack: &IbcAcknowledgement) -> Option<String> {
     }
 }
 
-pub const ICS100_VERSION: &str = "ics100-1";
-pub const ICS100_ORDERING: IbcOrder = IbcOrder::Unordered;
+pub const ICS101_VERSION: &str = "ics101-1";
+pub const ICS101_ORDERING: IbcOrder = IbcOrder::Unordered;
 
 pub(crate) fn enforce_order_and_version(
     channel: &IbcChannel,
     counterparty_version: Option<&str>,
 ) -> Result<(), ContractError> {
-    if channel.version != ICS100_VERSION {
+    if channel.version != ICS101_VERSION {
         return Err(ContractError::InvalidIbcVersion {
             version: channel.version.clone(),
         });
     }
     if let Some(version) = counterparty_version {
-        if version != ICS100_VERSION {
+        if version != ICS101_VERSION {
             return Err(ContractError::InvalidIbcVersion {
                 version: version.to_string(),
             });
         }
     }
-    if channel.order != ICS100_ORDERING {
+    if channel.order != ICS101_ORDERING {
         return Err(ContractError::OnlyOrderedChannel {});
     }
     Ok(())
