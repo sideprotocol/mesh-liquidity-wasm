@@ -81,6 +81,7 @@ pub struct MsgMakePoolResponse {
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct MsgTakePoolRequest {
+    pub counter_creator: String,
     pub creator: String,
     pub pool_id: String,
     pub timeout_height: u64,
@@ -188,6 +189,7 @@ pub enum SwapMsgType {
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct MsgSwapRequest {
+    #[serde(rename = "swapType")]
     pub swap_type: SwapMsgType,
     pub sender: String,
     #[serde(rename = "poolId")]

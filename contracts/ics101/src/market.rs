@@ -35,6 +35,19 @@ pub struct PoolAsset {
     pub decimal: u32,
 }
 
+// {
+//     "MakePool": {
+//       "sourcePort": "wasm.osmo1usde2wnww8qp5f4gjquyw2nukgz70y3elttfqsvxvs9ur889yn7s8nt68s",
+//       "sourceChannel": "channel-612",
+//       "creator": "osmo10t3g865e53yhhzvwwr5ldg50yq7vdwwf3qsa06",
+//       "counterpartyCreator": "juno1evpfprq0mre5n0zysj6cf74xl6psk96gus7dp5",
+//       "liquidity": [{"side": {"DESTINATION": {} }, "balance": {"denom": "ujunox", "amount": "100"},"weight": 50,"decimal": 6}],
+//       "swapFee": 10000,
+//       "timeoutHeight": 100,
+//       "timeoutTimestamp": 100
+//     }
+//   }
+
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct InterchainLiquidityPool {
     pub pool_id: String,
@@ -194,11 +207,11 @@ impl InterchainMarketMaker {
         let mut asset_shares = vec![];
         // TODO: query lp token from lp token list map
         // let lp_token = "MOCK".to_string();
-        if self.pool.status == PoolStatus::PoolStatusInitialized && !self.pool.supply.amount.is_zero() {
+        if self.pool.status == PoolStatus::PoolStatusInitialized && self.pool.supply.amount.is_zero() {
             // TODO: add query precision from cw20
-            let num_decimals = MULTIPLIER; //query_token_precision(lp_token)?;
-            let decimals = 10u128.pow(num_decimals as u32);
-            let num_shares = Uint128::from(INIT_LP_TOKENS * decimals);
+            // let num_decimals = MULTIPLIER; //query_token_precision(lp_token)?;
+            // let decimals = 10u128.pow(num_decimals as u32);
+            let num_shares = Uint128::from(INIT_LP_TOKENS * MULTIPLIER);
             return Ok((num_shares, tokens.to_vec(), vec![]))
         } else {
             for token in tokens {

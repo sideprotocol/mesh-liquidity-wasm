@@ -1,4 +1,4 @@
-use std::{ops::{Mul, Div}};
+use std::{ops::{Div}};
 
 use cosmwasm_std::{
     from_binary, Addr, BankMsg, Coin, IbcAcknowledgement, IbcChannel, IbcOrder, StdResult,
@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 use crate::{interchainswap_handler::InterchainSwapPacketAcknowledgement, ContractError, msg::{DepositAsset}, market::PoolAsset};
 use hex;
 
-pub const MULTIPLIER: u64 = 1e18 as u64;
+pub const MULTIPLIER: u128 = 1e18 as u128;
 pub const MAXIMUM_SLIPPAGE: u64 = 10000;
 pub const INSTANTIATE_TOKEN_REPLY_ID: u64 = 2000;
 
@@ -79,10 +79,8 @@ pub fn check_slippage(
 ) -> Result<(), ContractError> {
     // Check the ratio of local amount and remote amount
     let expect = source_amount
-        .mul(Uint128::from(MULTIPLIER))
         .div(destination_amount);
     let result = source_balance
-        .mul(Uint128::from(MULTIPLIER))
         .div(Uint128::from(destination_balance));
 
     if desire_slippage > MAXIMUM_SLIPPAGE {

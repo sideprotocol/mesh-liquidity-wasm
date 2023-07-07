@@ -208,7 +208,7 @@ fn make_pool(
         supply: supply,
         status: PoolStatus::PoolStatusInitialized,
         counter_party_port: msg.source_port.clone(),
-        counter_party_channel: msg.counterparty_channel.clone(),
+        counter_party_channel: msg.source_channel.clone(),
         swap_fee: msg.swap_fee
     };
     POOLS.save(deps.storage, &pool_id, &interchain_pool)?;
@@ -426,15 +426,16 @@ pub fn single_asset_deposit(
         .map_err(|err| StdError::generic_err(format!("Failed to deposit single asset: {}", err)))?;
 
     let msg_data = to_binary(&msg).unwrap();
+    let state_change_data = to_binary(&StateChange {
+        in_tokens: None,
+        out_tokens: None,
+        pool_tokens: Some(vec![pool_token])
+    })?;
     // Construct the IBC swap packet.
     let packet_data = InterchainSwapPacketData {
         r#type: InterchainMessageType::SingleAssetDeposit,
         data: msg_data, // Use proper serialization for the `data` field.
-        state_change: Some(StateChange {
-            in_tokens: None,
-            out_tokens: None,
-            pool_tokens: Some(vec![pool_token]),
-        }),
+        state_change: Some(state_change_data),
     };
 
     // Send the IBC swap packet.
@@ -564,14 +565,15 @@ fn make_multi_asset_deposit(
     CONFIG.save(deps.storage, &config)?;
 
     // Construct the IBC packet
+    let state_change_data = to_binary(&StateChange {
+        in_tokens: Some(added_assets),
+        out_tokens: None,
+        pool_tokens: None
+    })?;
     let packet_data = InterchainSwapPacketData {
         r#type: InterchainMessageType::MakeMultiDeposit,
         data: to_binary(&msg.clone())?,
-        state_change: Some(StateChange {
-            pool_tokens: Some(added_assets),
-            in_tokens: None,
-            out_tokens: None,
-        }),
+        state_change: Some(state_change_data),
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -638,14 +640,15 @@ fn take_multi_asset_deposit(
         ))));
     }
     // Construct the IBC packet
+    let state_change_data = to_binary(&StateChange {
+        in_tokens: None,
+        out_tokens: None,
+        pool_tokens: None
+    })?;
     let packet_data = InterchainSwapPacketData {
         r#type: InterchainMessageType::TakeMultiDeposit,
         data: to_binary(&msg.clone())?,
-        state_change: Some(StateChange {
-            pool_tokens: None,
-            in_tokens: None,
-            out_tokens: None,
-        }),
+        state_change: Some(state_change_data),
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -711,16 +714,17 @@ fn multi_asset_withdraw(
         }
     }
 
+    let state_change_data = to_binary(&StateChange {
+        in_tokens: Some(vec![
+            msg.pool_token.clone()
+         ]),
+        out_tokens: None,
+        pool_tokens: Some(vec![source_out, destination_out])
+    })?;
     let packet = InterchainSwapPacketData {
         r#type: InterchainMessageType::MultiWithdraw,
         data: to_binary(&msg)?,
-        state_change: Some(StateChange {
-            pool_tokens: Some(vec![
-               msg.pool_token
-            ]),
-            in_tokens: None,
-            out_tokens: Some(vec![source_out, destination_out]),
-        }),
+        state_change: Some(state_change_data),
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -824,16 +828,17 @@ fn swap(
         });
     }
 
+    let state_change_data = to_binary(&StateChange {
+        in_tokens: None,
+        out_tokens: Some(vec![token_out]),
+        pool_tokens: None
+    })?;
     let packet = InterchainSwapPacketData {
         r#type: msg_type.ok_or(ContractError::FailedSwap {
             err: "msg_type not found".to_string(),
         })?,
         data: swap_data,
-        state_change: Some(StateChange {
-            in_tokens: None,
-            out_tokens: Some(vec![token_out]),
-            pool_tokens: None,
-        }),
+        state_change: Some(state_change_data),
     };
 
     let ibc_msg = IbcMsg::SendPacket {

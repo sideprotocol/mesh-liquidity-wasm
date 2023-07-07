@@ -20,7 +20,7 @@ pub struct InterchainSwapPacketData {
     #[serde(rename = "Data")]
     pub data: Binary,
     #[serde(rename = "StateChange")]
-    pub state_change: Option<StateChange>,
+    pub state_change: Option<Binary>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
