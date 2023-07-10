@@ -9,7 +9,7 @@ use cosmwasm_std::{
 use protobuf::Message;
 
 use cw2::set_contract_version;
-use cw20::{MinterResponse, Cw20ReceiveMsg};
+use cw20::{MinterResponse, Cw20ReceiveMsg, Cw20ExecuteMsg};
 use cw_storage_plus::Bound;
 
 use crate::ibc::{RECEIVE_ID, ACK_FAILURE_ID};
@@ -113,8 +113,9 @@ pub fn execute(
         ExecuteMsg::SingleAssetDeposit(msg) => single_asset_deposit(deps, env, info, msg),
         ExecuteMsg::MakeMultiAssetDeposit(msg) => make_multi_asset_deposit(deps, env, info, msg),
         ExecuteMsg::TakeMultiAssetDeposit(msg) => take_multi_asset_deposit(deps, env, info, msg),
-        //ExecuteMsg::MultiAssetWithdraw(msg) => multi_asset_withdraw(deps, env, info, msg),
+        ExecuteMsg::MultiAssetWithdraw(msg) => multi_asset_withdraw(deps, env, info, msg),
         ExecuteMsg::Swap(msg) => swap(deps, env, info, msg),
+        //ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
     }
 }
 
@@ -133,11 +134,12 @@ pub fn receive_cw20(
             counterparty_receiver,
             timeout_height,
             timeout_timestamp }) => {
+                // TODO: add sender check
                 let msg: MsgMultiAssetWithdrawRequest = MsgMultiAssetWithdrawRequest {
-                    pool_id: pool_id ,
+                    pool_id: pool_id.clone(),
                     receiver: receiver,
                     counterparty_receiver: counterparty_receiver,
-                    pool_token: Coin {denom: info.sender.to_string(), amount: cw20_msg.amount},
+                    pool_token: Coin {denom: pool_id.clone(), amount: cw20_msg.amount},
                     timeout_height: timeout_height,
                     timeout_timestamp: timeout_timestamp 
                 };
@@ -201,7 +203,7 @@ fn make_pool(
 
     let supply: Coin = Coin {amount: Uint128::from(0u64), denom: pool_id.clone()};
     let interchain_pool: InterchainLiquidityPool = InterchainLiquidityPool {
-        pool_id: pool_id.clone(),
+        id: pool_id.clone(),
         source_creator: msg.creator.clone(),
         destination_creator: msg.counterparty_creator.clone(),
         assets: msg.liquidity.clone(),
@@ -209,7 +211,9 @@ fn make_pool(
         status: PoolStatus::PoolStatusInitialized,
         counter_party_port: msg.source_port.clone(),
         counter_party_channel: msg.source_channel.clone(),
-        swap_fee: msg.swap_fee
+        swap_fee: msg.swap_fee,
+        source_chain_id: msg.source_chain_id.clone(),
+        pool_price: 0
     };
     POOLS.save(deps.storage, &pool_id, &interchain_pool)?;
 
@@ -511,7 +515,7 @@ fn make_multi_asset_deposit(
 
     // Create the interchain market maker
     let amm = InterchainMarketMaker {
-        pool_id: interchain_pool.clone().pool_id,
+        pool_id: interchain_pool.clone().id,
         pool: interchain_pool.clone(),
         fee_rate: interchain_pool.swap_fee,
     };
@@ -546,6 +550,7 @@ fn make_multi_asset_deposit(
         multi_asset_order = order;
     } else {
         config.counter = config.counter + 1;
+        multi_asset_order.order_id = config.counter;
     }
 
     let pending_height = env.block.height - multi_asset_order.created_at;
@@ -630,13 +635,14 @@ fn take_multi_asset_deposit(
     let mut ok = false;
     // First token in this chain only first token needs to be verified
     for asset in info.funds {
-        if asset.denom == token.balance.denom && asset.amount == token.balance.amount {
+        if asset.denom == token.balance.denom && multi_asset_order.deposits[1].amount == asset.amount 
+        && asset.denom == multi_asset_order.deposits[1].denom {
             ok = true;
         }
     }
     if !ok {
         return Err(ContractError::Std(StdError::generic_err(format!(
-            "Funds mismatch: Funds mismatched to with message and sent values: Make Pool"
+            "Funds mismatch: Funds mismatched to with message and sent values: Take Multi Asset"
         ))));
     }
     // Construct the IBC packet
@@ -671,7 +677,7 @@ fn take_multi_asset_deposit(
 fn multi_asset_withdraw(
     deps: DepsMut,
     env: Env,
-    _info: MessageInfo,
+    info: MessageInfo,
     msg: MsgMultiAssetWithdrawRequest,
 ) -> Result<Response, ContractError> {
     // Get liquidity pool
@@ -686,9 +692,31 @@ fn multi_asset_withdraw(
         ))));
     }
 
+    let sub_messages: Vec<SubMsg>;
+    if let Some(lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id.clone())? {
+         // Transfer tokens from user account to contract
+        let msg = Cw20ExecuteMsg::TransferFrom { 
+            owner: info.sender.to_string().clone(), 
+            recipient: env.contract.address.to_string().clone(),
+            amount: msg.pool_token.amount
+        };
+        let exec = WasmMsg::Execute {
+            contract_addr: lp_token.into(),
+            msg: to_binary(&msg)?,
+            funds: vec![],
+        };
+        sub_messages = vec![SubMsg::new(exec)];
+    } else {
+        // throw error token not found, initialization is done in make_pool and
+        // take_pool
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "LP Token is not initialized"
+        ))));
+    }
+
     // Create the interchain market maker
     let amm = InterchainMarketMaker {
-        pool_id: interchain_pool.clone().pool_id,
+        pool_id: interchain_pool.clone().id,
         pool: interchain_pool.clone(),
         fee_rate: interchain_pool.swap_fee,
     };
@@ -718,8 +746,10 @@ fn multi_asset_withdraw(
         in_tokens: Some(vec![
             msg.pool_token.clone()
          ]),
-        out_tokens: None,
-        pool_tokens: Some(vec![source_out, destination_out])
+        out_tokens: Some(vec![source_out, destination_out]),
+        pool_tokens: Some(vec![
+            msg.pool_token.clone()
+        ])
     })?;
     let packet = InterchainSwapPacketData {
         r#type: InterchainMessageType::MultiWithdraw,
@@ -738,6 +768,7 @@ fn multi_asset_withdraw(
     };
 
     let res = Response::default()
+        .add_submessages(sub_messages)
         .add_message(ibc_msg)
         .add_attribute("action", "multi_asset_withdraw");
     Ok(res)
@@ -782,35 +813,35 @@ fn swap(
 
     // Create the interchain market maker
     let amm = InterchainMarketMaker {
-        pool_id: interchain_pool.clone().pool_id,
+        pool_id: interchain_pool.clone().id,
         pool: interchain_pool.clone(),
         fee_rate: interchain_pool.swap_fee,
     };
 
     // Construct the IBC data packet
     let swap_data = to_binary(&msg)?;
-    let token_out: Option<Coin>;
-    let msg_type: Option<InterchainMessageType>;
+    let token_out: Coin;
+    let msg_type: InterchainMessageType;
 
     match msg.swap_type {
         SwapMsgType::Left => {
-            msg_type = Some(InterchainMessageType::LeftSwap);
-            token_out = Some(amm.compute_swap(msg.token_in.clone(), &msg.token_out.denom)?);
+            msg_type = InterchainMessageType::LeftSwap;
+            token_out = amm.compute_swap(msg.token_in.clone(), &msg.token_out.denom)?;
         }
         SwapMsgType::Right => {
-            msg_type = Some(InterchainMessageType::RightSwap);
-            token_out = Some(amm.compute_offer_amount(msg.token_in.clone(), msg.token_out.clone())?);
+            msg_type = InterchainMessageType::RightSwap;
+            token_out = amm.compute_offer_amount(msg.token_in.clone(), msg.token_out.clone())?;
         }
     }
 
-    let token_out = match token_out {
-        Some(token) => token,
-        None => {
-            return Err(ContractError::FailedSwap {
-                err: "token_out not found".to_string(),
-            })
-        }
-    };
+    // let token_out = match token_out {
+    //     Some(token) => token,
+    //     None => {
+    //         return Err(ContractError::FailedSwap {
+    //             err: "token_out not found".to_string(),
+    //         })
+    //     }
+    // };
 
     // Slippage checking
     let factor = MAXIMUM_SLIPPAGE - msg.slippage;
@@ -834,9 +865,7 @@ fn swap(
         pool_tokens: None
     })?;
     let packet = InterchainSwapPacketData {
-        r#type: msg_type.ok_or(ContractError::FailedSwap {
-            err: "msg_type not found".to_string(),
-        })?,
+        r#type: msg_type,
         data: swap_data,
         state_change: Some(state_change_data),
     };
@@ -903,7 +932,7 @@ fn query_interchain_pool(
     }
 
     Ok(InterchainPoolResponse {
-        pool_id: interchain_pool.pool_id,
+        pool_id: interchain_pool.id,
         source_creator: interchain_pool.source_creator,
         destination_creator: interchain_pool.destination_creator,
         assets: interchain_pool.assets,

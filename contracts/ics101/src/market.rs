@@ -35,30 +35,19 @@ pub struct PoolAsset {
     pub decimal: u32,
 }
 
-// {
-//     "MakePool": {
-//       "sourcePort": "wasm.osmo1usde2wnww8qp5f4gjquyw2nukgz70y3elttfqsvxvs9ur889yn7s8nt68s",
-//       "sourceChannel": "channel-612",
-//       "creator": "osmo10t3g865e53yhhzvwwr5ldg50yq7vdwwf3qsa06",
-//       "counterpartyCreator": "juno1evpfprq0mre5n0zysj6cf74xl6psk96gus7dp5",
-//       "liquidity": [{"side": {"DESTINATION": {} }, "balance": {"denom": "ujunox", "amount": "100"},"weight": 50,"decimal": 6}],
-//       "swapFee": 10000,
-//       "timeoutHeight": 100,
-//       "timeoutTimestamp": 100
-//     }
-//   }
-
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct InterchainLiquidityPool {
-    pub pool_id: String,
-    pub source_creator: String,
-    pub destination_creator: String,
     pub assets: Vec<PoolAsset>,
-    pub swap_fee: u32,
-    pub supply: Coin,
-    pub status: PoolStatus,
-    pub counter_party_port: String,
     pub counter_party_channel: String,
+    pub counter_party_port: String,
+    pub destination_creator: String,
+    pub id: String,
+    pub source_chain_id: String,
+    pub source_creator: String,
+    pub status: PoolStatus,
+    pub supply: Coin,
+    pub swap_fee: u32,
+    pub pool_price: u64
 }
 
 impl InterchainLiquidityPool {
@@ -143,7 +132,7 @@ pub struct InterchainMarketMaker {
 impl InterchainMarketMaker {
     pub fn new(pool_data: &InterchainLiquidityPool, fee_rate: u32) -> Self {
         InterchainMarketMaker {
-            pool_id: pool_data.clone().pool_id,
+            pool_id: pool_data.clone().id,
             pool: pool_data.clone(),
             fee_rate,
         }
@@ -257,6 +246,10 @@ impl InterchainMarketMaker {
                     });
                 }
             }
+        }
+
+        if rem_assets.is_empty() {
+            return Ok((new_shares, tokens.to_vec(), rem_assets));
         }
 
         Ok((new_shares, added_assets, rem_assets))
