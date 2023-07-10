@@ -1,0 +1,18 @@
+juno_testnet:
+  deployInfo:
+    codeId: 2804
+    contractCodeHash: not_required
+    deployTimestamp: Mon Jul 10 2023 23:55:56 GMT+0530 (India Standard Time)
+  instantiateInfo:
+    - instantiateTag: default_instantiate
+      contractAddress: juno1yj0ms47zwpwvul50gdc0jpkfsyxufj3ra3sy27l4ehfksp7cm4yqzqd82s
+      instantiateTimestamp: Mon Jul 10 2023 23:55:57 GMT+0530 (India Standard Time)
+testnet:
+  deployInfo:
+    codeId: 1671
+    contractCodeHash: not_required
+    deployTimestamp: Mon Jul 10 2023 23:56:30 GMT+0530 (India Standard Time)
+  instantiateInfo:
+    - instantiateTag: default_instantiate
+      contractAddress: osmo1mgu8dqrmzd7mewyz4n7sxqhyadkuvqa8ed2knl07d3vtmp4x0v4q85u8c8
+      instantiateTimestamp: Mon Jul 10 2023 23:56:30 GMT+0530 (India Standard Time)
