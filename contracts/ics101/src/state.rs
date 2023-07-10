@@ -32,6 +32,8 @@ pub const POOL_TOKENS_LIST: Map<&str, String> = Map::new("pool_tokens_list");
 
 pub const CONFIG: Item<Config> = Item::new("config");
 
+pub const TEMP: Item<String> = Item::new("temp");
+
 pub const POOLS: Map<&str, InterchainLiquidityPool> = Map::new("pools");
 
 // Map from key (pool_id + "-" + order_id) to value multi asset orders

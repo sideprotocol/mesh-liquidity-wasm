@@ -1,3 +1,8 @@
+[package]
+name = "ics101"
+version = "0.1.0"
+edition = "2021"
+
 [dependencies]
 cosmwasm-std = {version = "1.0.0-beta3", features = ["stargate"]}
 cw-storage-plus = {version = "0.11.1"}
@@ -20,9 +25,3 @@ library = []
 
 [lib]
 crate-type = ["cdylib", "rlib"]
-
-[package]
-edition = "2021"
-license = "Apache-2.0"
-name = "ics101"
-version = "0.1.0"

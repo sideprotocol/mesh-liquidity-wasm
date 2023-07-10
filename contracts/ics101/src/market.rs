@@ -37,15 +37,17 @@ pub struct PoolAsset {
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct InterchainLiquidityPool {
-    pub pool_id: String,
-    pub source_creator: String,
-    pub destination_creator: String,
     pub assets: Vec<PoolAsset>,
-    pub swap_fee: u32,
-    pub supply: Coin,
-    pub status: PoolStatus,
-    pub counter_party_port: String,
     pub counter_party_channel: String,
+    pub counter_party_port: String,
+    pub destination_creator: String,
+    pub id: String,
+    pub source_chain_id: String,
+    pub source_creator: String,
+    pub status: PoolStatus,
+    pub supply: Coin,
+    pub swap_fee: u32,
+    pub pool_price: u64
 }
 
 impl InterchainLiquidityPool {
@@ -130,7 +132,7 @@ pub struct InterchainMarketMaker {
 impl InterchainMarketMaker {
     pub fn new(pool_data: &InterchainLiquidityPool, fee_rate: u32) -> Self {
         InterchainMarketMaker {
-            pool_id: pool_data.clone().pool_id,
+            pool_id: pool_data.clone().id,
             pool: pool_data.clone(),
             fee_rate,
         }
@@ -194,11 +196,11 @@ impl InterchainMarketMaker {
         let mut asset_shares = vec![];
         // TODO: query lp token from lp token list map
         // let lp_token = "MOCK".to_string();
-        if self.pool.status == PoolStatus::PoolStatusInitialized && !self.pool.supply.amount.is_zero() {
+        if self.pool.status == PoolStatus::PoolStatusInitialized && self.pool.supply.amount.is_zero() {
             // TODO: add query precision from cw20
-            let num_decimals = MULTIPLIER; //query_token_precision(lp_token)?;
-            let decimals = 10u128.pow(num_decimals as u32);
-            let num_shares = Uint128::from(INIT_LP_TOKENS * decimals);
+            // let num_decimals = MULTIPLIER; //query_token_precision(lp_token)?;
+            // let decimals = 10u128.pow(num_decimals as u32);
+            let num_shares = Uint128::from(INIT_LP_TOKENS * MULTIPLIER);
             return Ok((num_shares, tokens.to_vec(), vec![]))
         } else {
             for token in tokens {
@@ -244,6 +246,10 @@ impl InterchainMarketMaker {
                     });
                 }
             }
+        }
+
+        if rem_assets.is_empty() {
+            return Ok((new_shares, tokens.to_vec(), rem_assets));
         }
 
         Ok((new_shares, added_assets, rem_assets))
