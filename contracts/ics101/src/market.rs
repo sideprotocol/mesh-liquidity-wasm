@@ -6,7 +6,7 @@ use cosmwasm_std::{Coin, Decimal, StdError, StdResult, Uint128, Decimal256, Uint
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{math::{calc_minted_shares_given_single_asset_in, solve_constant_function_invariant}, types::WeightedAsset, utils::{MULTIPLIER, adjust_precision, decimal2decimal256} };
+use crate::{math::{calc_minted_shares_given_single_asset_in, solve_constant_function_invariant}, types::WeightedAsset, utils::{MULTIPLIER, decimal2decimal256} };
 
 pub const FEE_PRECISION: u16 = 10000;
 /// Number of LP tokens to mint when liquidity is provided for the first time to the pool.
@@ -296,7 +296,7 @@ impl InterchainMarketMaker {
         let asset_in = self.pool.clone().find_asset_by_denom(&amount_in.denom)?;
         let asset_out = self.pool.clone().find_asset_by_denom(denom_out)?;
 
-        let token_precision = asset_out.decimal as u8;
+        //let token_precision = asset_out.decimal as u8;
 
         let pool_post_swap_in_balance = asset_in.balance.amount + amount_in.amount;
 
@@ -321,14 +321,14 @@ impl InterchainMarketMaker {
         )?;
     
         // adjust return amount to correct precision
-        let return_amount = adjust_precision(
-            return_amount.atomics(),
-            return_amount.decimal_places() as u8,
-            token_precision,
-        )?;
+        // let return_amount = adjust_precision(
+        //     return_amount.atomics(),
+        //     return_amount.decimal_places() as u8,
+        //     token_precision,
+        // )?;
 
         Ok(Coin {
-            amount: return_amount.clone(),
+            amount: return_amount.to_uint_floor(),
             denom: denom_out.to_string(),
         })
     }
@@ -338,7 +338,7 @@ impl InterchainMarketMaker {
         let asset_out = self.pool.clone().find_asset_by_denom(&amount_out.denom)?;
 
         // get ask asset precisison
-        let token_precision = asset_in.decimal as u8;
+        //let token_precision = asset_in.decimal as u8;
         let one_minus_commission = Decimal256::one()
             - decimal2decimal256(Decimal::from_ratio(self.fee_rate, FEE_PRECISION))?;
         let inv_one_minus_commission = Decimal256::one() / one_minus_commission;
@@ -368,11 +368,12 @@ impl InterchainMarketMaker {
         Decimal::from_ratio(asset_in.weight, Uint128::from(100u64)),
         )?; 
         // adjust return amount to correct precision
-        let real_offer = adjust_precision(
-        real_offer.atomics(),
-        real_offer.decimal_places() as u8,
-        token_precision,
-        )?;
+        // let real_offer = adjust_precision(
+        // real_offer.atomics(),
+        // real_offer.decimal_places() as u8,
+        // token_precision,
+        // )?;
+        let real_offer = real_offer.to_uint_floor();
        
         let offer_amount_including_fee = (Uint256::from(real_offer) * inv_one_minus_commission).try_into()?;
         let _total_fee = offer_amount_including_fee - real_offer;

@@ -824,11 +824,11 @@ fn swap(
     let msg_type: InterchainMessageType;
 
     match msg.swap_type {
-        SwapMsgType::Left => {
+        SwapMsgType::LEFT => {
             msg_type = InterchainMessageType::LeftSwap;
             token_out = amm.compute_swap(msg.token_in.clone(), &msg.token_out.denom)?;
         }
-        SwapMsgType::Right => {
+        SwapMsgType::RIGHT => {
             msg_type = InterchainMessageType::RightSwap;
             token_out = amm.compute_offer_amount(msg.token_in.clone(), msg.token_out.clone())?;
         }
@@ -900,6 +900,8 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::PoolAddressByToken { tokens } => to_binary(&query_pool_address(deps, tokens)?),
         QueryMsg::PoolTokenList { start_after, limit } =>
             to_binary(&query_pool_list(deps, start_after, limit)?),
+        QueryMsg::LeftSwap { pool_id, token_in, token_out } =>
+            to_binary(&query_left_swap(deps, pool_id, token_in, token_out)?),
     }
 }
 
@@ -1028,6 +1030,41 @@ fn query_pool_list(
         .collect::<Vec<String>>();
 
     Ok(PoolListResponse { pools: list })
+}
+
+fn query_left_swap(
+    deps: Deps,
+    pool_id: String,
+    token_in: Coin,
+    token_out: Coin
+) -> StdResult<Coin> {
+    // Get liquidity pool
+    // load pool throw error if not found
+    let interchain_pool_temp = POOLS.may_load(deps.storage, &pool_id.clone())?;
+    let interchain_pool;
+    if let Some(pool) = interchain_pool_temp {
+        interchain_pool = pool
+    } else {
+        return Err(StdError::generic_err(format!(
+            "Pool doesn't exist {}", pool_id
+        )));
+    }
+
+    // Check the pool status
+    if interchain_pool.status != PoolStatus::PoolStatusActive {
+        return Err(StdError::generic_err(format!(
+            "Pool not ready for swap!"
+        )));
+    }
+
+    // Create the interchain market maker
+    let amm = InterchainMarketMaker {
+        pool_id: interchain_pool.clone().id,
+        pool: interchain_pool.clone(),
+        fee_rate: interchain_pool.swap_fee,
+    };
+    let result = amm.compute_swap(token_in.clone(), &token_out.denom)?;
+    Ok(result)
 }
 
 

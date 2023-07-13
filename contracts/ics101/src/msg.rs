@@ -183,10 +183,9 @@ pub struct MsgSingleAssetWithdrawRequest {
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum SwapMsgType {
-    Left = 0,
-    Right = 1,
+    LEFT = 0,
+    RIGHT = 1,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -294,6 +293,12 @@ pub enum QueryMsg {
         start_after: Option<String>,
         limit: Option<u32>,
     },
+    LeftSwap {
+        pool_id: String,
+        token_in: Coin,
+        token_out: Coin,
+    }
+    
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
