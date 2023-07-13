@@ -82,12 +82,12 @@ pub(crate) fn do_ibc_packet_receive(
             on_received_multi_withdraw(deps, env, packet, msg, state_change_data)
         }
         InterchainMessageType::LeftSwap => {
-            let msg: MsgSwapRequest = from_slice(&packet_data.data.clone())?;
+            let msg: MsgSwapRequest = from_binary(&packet_data.data.clone())?;
             let state_change_data: StateChange = from_slice(&packet_data.state_change.unwrap())?;
             on_received_swap(deps, env, packet, msg, state_change_data)
         }
         InterchainMessageType::RightSwap => {
-            let msg: MsgSwapRequest = from_slice(&packet_data.data.clone())?;
+            let msg: MsgSwapRequest = from_binary(&packet_data.data.clone())?;
             let state_change_data: StateChange = from_slice(&packet_data.state_change.unwrap())?;
             on_received_swap(deps, env, packet, msg, state_change_data)
         }
@@ -436,15 +436,15 @@ pub(crate) fn on_received_swap(
     let token_out = state_change.out_tokens.unwrap();
 
     // send tokens
-    let sub_messages = send_tokens_coin(&Addr::unchecked(msg.recipient), token_out[0].clone())?;
+    let sub_messages = send_tokens_coin(&Addr::unchecked(msg.recipient), token_out.get(0).unwrap().clone())?;
 
     // Update pool status by subtracting output token and adding input token
     match msg.swap_type {
-        crate::msg::SwapMsgType::Left => {
+        crate::msg::SwapMsgType::LEFT => {
             interchain_pool.add_asset(msg.token_in).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;
             interchain_pool.subtract_asset(token_out.get(0).unwrap().clone()).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;        
         }
-        crate::msg::SwapMsgType::Right => {
+        crate::msg::SwapMsgType::RIGHT => {
             // token_out here is offer amount that is needed to get msg.token_out
             interchain_pool.add_asset(token_out.get(0).unwrap().clone()).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;
             interchain_pool.subtract_asset(msg.token_out).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;        
@@ -557,6 +557,8 @@ pub(crate) fn on_packet_success(
         }
         InterchainMessageType::MakeMultiDeposit => {
             // TODO: Refund remaining assets here or in takeMultiDeposit
+            // TODO: Add something or return empty 
+            // packet messages are redundant\ncosmossdk.io/errors.Wrap\n\t/Users/ay/go/pkg/mod/cosmossdk
             Ok(IbcBasicResponse::new().add_attributes(attributes))
         }
         InterchainMessageType::TakeMultiDeposit => {
