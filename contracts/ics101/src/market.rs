@@ -21,10 +21,10 @@ pub enum PoolSide {
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub enum PoolStatus {
-    #[serde(rename = "POOL_STATUS_INITIALIZED")]
-    PoolStatusInitialized = 0,
-    #[serde(rename = "POOL_STATUS_ACTIVE")]
-    PoolStatusActive = 1,
+    #[serde(rename = "INITIALIZED")]
+    Initialized = 0,
+    #[serde(rename = "ACTIVE")]
+    Active = 1,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -151,7 +151,7 @@ impl InterchainMarketMaker {
         let issue_amount;
         let _fee_charged;
 
-        if self.pool.status != PoolStatus::PoolStatusActive {
+        if self.pool.status != PoolStatus::Active {
             return Err(StdError::generic_err("Pool is not active!"));
         } else {
             let pool_asset_weighted = &WeightedAsset {
@@ -196,7 +196,7 @@ impl InterchainMarketMaker {
         let mut asset_shares = vec![];
         // TODO: query lp token from lp token list map
         // let lp_token = "MOCK".to_string();
-        if self.pool.status == PoolStatus::PoolStatusInitialized && self.pool.supply.amount.is_zero() {
+        if self.pool.status == PoolStatus::Initialized && self.pool.supply.amount.is_zero() {
             // TODO: add query precision from cw20
             // let num_decimals = MULTIPLIER; //query_token_precision(lp_token)?;
             // let decimals = 10u128.pow(num_decimals as u32);

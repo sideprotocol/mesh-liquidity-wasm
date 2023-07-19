@@ -154,6 +154,7 @@
         "counterpartyChannel",
         "counterpartyCreator",
         "creator",
+        "destinationChainId",
         "liquidity",
         "sourceChainId",
         "sourceChannel",
@@ -170,6 +171,9 @@
           "type": "string"
         },
         "creator": {
+          "type": "string"
+        },
+        "destinationChainId": {
           "type": "string"
         },
         "liquidity": {

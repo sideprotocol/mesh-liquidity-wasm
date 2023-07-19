@@ -1,4 +1,4 @@
-use std::{ops::{Div}};
+use std::{ops::{Div}, vec};
 
 use cosmwasm_std::{
     from_binary, Addr, BankMsg, Coin, IbcAcknowledgement, IbcChannel, IbcOrder, StdResult,
@@ -14,16 +14,28 @@ pub const MULTIPLIER: u128 = 1e18 as u128;
 pub const MAXIMUM_SLIPPAGE: u64 = 10000;
 pub const INSTANTIATE_TOKEN_REPLY_ID: u64 = 2000;
 
-pub fn get_pool_id_with_tokens(tokens: &[Coin]) -> String {
+pub fn get_pool_id_with_tokens(tokens: &[Coin], source: String, destination: String) -> String {
     let mut denoms: Vec<String> = tokens.iter().map(|token| token.denom.clone()).collect();
     denoms.sort();
+    let mut chan = vec![];
+    chan.push(source);
+    chan.push(destination);
+    let connection = get_connection_id(chan);
 
-    let res = denoms.join("");
+    let mut res = denoms.join("");
+    res = res + &connection;
     let res_bytes = res.as_bytes();
     let hash = Sha256::digest(&res_bytes);
 
     let pool_id = format!("pool{}", hex::encode(hash));
     pool_id
+}
+
+pub fn get_connection_id(mut chain_ids: Vec<String>) -> String {
+    chain_ids.sort();
+
+    let res = chain_ids.join("/");
+    return res;
 }
 
 /// ## Description
