@@ -106,14 +106,11 @@
         "PoolAddressByToken": {
           "type": "object",
           "required": [
-            "tokens"
+            "pool_id"
           ],
           "properties": {
-            "tokens": {
-              "type": "array",
-              "items": {
-                "$ref": "#/definitions/Coin"
-              }
+            "pool_id": {
+              "type": "string"
             }
           }
         }
@@ -129,14 +126,11 @@
         "InterchainPool": {
           "type": "object",
           "required": [
-            "tokens"
+            "pool_id"
           ],
           "properties": {
-            "tokens": {
-              "type": "array",
-              "items": {
-                "$ref": "#/definitions/Coin"
-              }
+            "pool_id": {
+              "type": "string"
             }
           }
         }

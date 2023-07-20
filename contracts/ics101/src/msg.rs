@@ -43,6 +43,7 @@ pub struct MsgMakePoolRequest {
     pub source_port: String,
     pub source_channel: String,
     pub source_chain_id: String,
+    pub destination_chain_id: String,
     pub counterparty_channel: String,
     pub creator: String,
     pub counterparty_creator: String,
@@ -284,10 +285,10 @@ pub enum QueryMsg {
         limit: Option<u32>,
     },
     PoolAddressByToken {
-        tokens: Vec<Coin>
+        pool_id: String
     },
     InterchainPool {
-        tokens: Vec<Coin>
+        pool_id: String
     },
     InterchainPoolList {
         start_after: Option<String>,

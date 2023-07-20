@@ -10,7 +10,7 @@ use crate::{
     }, msg::{MsgMakePoolRequest, MsgTakePoolRequest, MsgSingleAssetDepositRequest,
      MsgMultiAssetWithdrawRequest, MsgSwapRequest,
     MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest}
-    ,market::{InterchainLiquidityPool, PoolStatus::{PoolStatusInitialized, PoolStatusActive}, InterchainMarketMaker},
+    ,market::{InterchainLiquidityPool, PoolStatus::{Initialized, Active}, InterchainMarketMaker},
 };
 use cosmwasm_std::{
     attr, from_binary, to_binary, Binary, DepsMut, Env, IbcBasicResponse, IbcPacket,
@@ -112,9 +112,9 @@ pub(crate) fn on_received_make_pool(
     tokens[0] = msg.liquidity[0].balance.clone();
     tokens[1] = msg.liquidity[1].balance.clone();
 
-    let pool_id = get_pool_id_with_tokens(&tokens);
+    let pool_id = get_pool_id_with_tokens(&tokens, msg.source_chain_id.clone(), msg.destination_chain_id);
 
-    // load pool throw error if found
+    //load pool throw error if found
     let interchain_pool_temp = POOLS.may_load(deps.storage, &pool_id.clone())?;
     if let Some(_pool) = interchain_pool_temp {
         return Err(ContractError::Std(StdError::generic_err(format!(
@@ -129,7 +129,7 @@ pub(crate) fn on_received_make_pool(
         destination_creator: msg.counterparty_creator,
         assets: msg.liquidity,
         supply: supply,
-        status: PoolStatusInitialized,
+        status: Initialized,
         counter_party_port: msg.source_port,
         counter_party_channel: msg.counterparty_channel,
         swap_fee: msg.swap_fee,
@@ -194,7 +194,7 @@ pub(crate) fn on_received_take_pool(
 
     interchain_pool.add_supply(Coin {denom: msg.pool_id.clone(), amount: new_shares})
     .map_err(|err| StdError::generic_err(format!("Failed to add supply: {}", err)))?;
-    interchain_pool.status = PoolStatusActive;
+    interchain_pool.status = Active;
 
     POOLS.save(deps.storage, &msg.pool_id, &interchain_pool)?;
 
@@ -514,7 +514,7 @@ pub(crate) fn on_packet_success(
             interchain_pool.add_supply(Coin {denom: msg.pool_id.clone(), amount: new_shares})
             .map_err(|err| StdError::generic_err(format!("Failed to add supply: {}", err)))?;
             
-            interchain_pool.status = PoolStatusActive;
+            interchain_pool.status = Active;
             POOLS.save(deps.storage, &msg.pool_id, &interchain_pool)?;
 
             Ok(IbcBasicResponse::new().add_attributes(attributes))
@@ -745,7 +745,7 @@ pub(crate) fn refund_packet_token(
             tokens[0] = msg.liquidity[0].balance.clone();
             tokens[1] = msg.liquidity[1].balance.clone();
 
-            let pool_id = get_pool_id_with_tokens(&tokens);
+            let pool_id = get_pool_id_with_tokens(&tokens, msg.source_chain_id, msg.destination_chain_id);
             let sub_messages = send_tokens_coin(&Addr::unchecked(msg.creator), tokens[0].clone())?;
 
             POOLS.remove(deps.storage, &pool_id);

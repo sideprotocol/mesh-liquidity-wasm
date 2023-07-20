@@ -175,7 +175,7 @@ fn make_pool(
     tokens[0] = msg.liquidity[0].balance.clone();
     tokens[1] = msg.liquidity[1].balance.clone();
 
-    let pool_id = get_pool_id_with_tokens(&tokens);
+    let pool_id = get_pool_id_with_tokens(&tokens, msg.source_chain_id.clone(), msg.destination_chain_id.clone());
 
     TEMP.save(deps.storage, &pool_id)?;
     // load pool throw error if not found
@@ -208,7 +208,7 @@ fn make_pool(
         destination_creator: msg.counterparty_creator.clone(),
         assets: msg.liquidity.clone(),
         supply: supply,
-        status: PoolStatus::PoolStatusInitialized,
+        status: PoolStatus::Initialized,
         counter_party_port: msg.source_port.clone(),
         counter_party_channel: msg.source_channel.clone(),
         swap_fee: msg.swap_fee,
@@ -328,7 +328,7 @@ fn take_pool(
 
     TEMP.save(deps.storage, &msg.pool_id)?;
 
-    if interchain_pool.status != PoolStatus::PoolStatusInitialized {
+    if interchain_pool.status != PoolStatus::Initialized {
         return Err(ContractError::Expired);
     }
 
@@ -413,7 +413,7 @@ pub fn single_asset_deposit(
         ))));
     }
 
-    if pool.status != PoolStatus::PoolStatusActive {
+    if pool.status != PoolStatus::Active {
         return Err(ContractError::NotReadyForSwap);
     }
 
@@ -496,7 +496,7 @@ fn make_multi_asset_deposit(
     }
 
     // Check the pool status
-    if interchain_pool.status != PoolStatus::PoolStatusActive {
+    if interchain_pool.status != PoolStatus::Active {
         return Err(ContractError::NotReadyForSwap);
     }
 
@@ -793,7 +793,7 @@ fn swap(
     }
 
     // Check the pool status
-    if interchain_pool.status != PoolStatus::PoolStatusActive {
+    if interchain_pool.status != PoolStatus::Active {
         return Err(ContractError::NotReadyForSwap);
     }
 
@@ -807,7 +807,7 @@ fn swap(
     }
     if !ok {
         return Err(ContractError::Std(StdError::generic_err(format!(
-            "Funds mismatch: Funds mismatched to with message and sent values: Make Pool"
+            "Funds mismatch: Funds mismatched to with message and sent values: Swap"
         ))));
     }
 
@@ -890,14 +890,14 @@ fn swap(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::Config {} => to_binary(&query_config(deps)?),
-        QueryMsg::InterchainPool { tokens } => to_binary(&query_interchain_pool(deps, tokens)?),
+        QueryMsg::InterchainPool { pool_id } => to_binary(&query_interchain_pool(deps, pool_id)?),
         QueryMsg::InterchainPoolList {  start_after, limit } => 
             to_binary(&query_interchain_pool_list(deps, start_after, limit)?),
         QueryMsg::Order { pool_id, order_id } => 
             to_binary(&query_order(deps, pool_id, order_id)?),
         QueryMsg::OrderList { start_after, limit } =>
             to_binary(&query_orders(deps, start_after, limit)?),
-        QueryMsg::PoolAddressByToken { tokens } => to_binary(&query_pool_address(deps, tokens)?),
+        QueryMsg::PoolAddressByToken { pool_id } => to_binary(&query_pool_address(deps, pool_id)?),
         QueryMsg::PoolTokenList { start_after, limit } =>
             to_binary(&query_pool_list(deps, start_after, limit)?),
         QueryMsg::LeftSwap { pool_id, token_in, token_out } =>
@@ -919,9 +919,8 @@ fn query_config(
 
 fn query_interchain_pool(
     deps: Deps,
-    tokens: Vec<Coin>
+    pool_id: String
 ) -> StdResult<InterchainPoolResponse> {
-    let pool_id = get_pool_id_with_tokens(&tokens.to_vec());
     // load pool throw error if found
     let interchain_pool_temp = POOLS.may_load(deps.storage, &pool_id)?;
     let interchain_pool;
@@ -999,9 +998,8 @@ fn query_orders(
 
 fn query_pool_address(
     deps: Deps,
-    tokens: Vec<Coin>
+    pool_id: String
 ) -> StdResult<String> {
-    let pool_id = get_pool_id_with_tokens(&tokens);
     let res;
     if let Some(lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &pool_id.clone())? {
         res = lp_token
@@ -1051,7 +1049,7 @@ fn query_left_swap(
     }
 
     // Check the pool status
-    if interchain_pool.status != PoolStatus::PoolStatusActive {
+    if interchain_pool.status != PoolStatus::Active {
         return Err(StdError::generic_err(format!(
             "Pool not ready for swap!"
         )));
