@@ -298,14 +298,23 @@ pub enum QueryMsg {
         pool_id: String,
         token_in: Coin,
         token_out: Coin,
+    },
+    QueryActiveOrders {
+        source_maker: String,
+        pool_id: String,
+    },
+    Rate {
+        amount: Uint128,
+        pool_id: String
     }
-    
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct InterchainPoolResponse {
-    pub pool_id: String,
+    pub id: String,
     pub source_creator: String,
+    pub source_chain_id: String,
+    pub destination_chain_id: String,
     pub destination_creator: String,
     pub assets: Vec<PoolAsset>,
     pub swap_fee: u32,
