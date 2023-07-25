@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     error::ContractError,
     types::{InterchainSwapPacketData, InterchainMessageType, StateChange, MultiAssetDepositOrder, OrderStatus},
-    state::{POOLS, CONFIG, MULTI_ASSET_DEPOSIT_ORDERS, POOL_TOKENS_LIST},
+    state::{POOLS, CONFIG, MULTI_ASSET_DEPOSIT_ORDERS, POOL_TOKENS_LIST, ACTIVE_ORDERS},
     utils::{
         get_pool_id_with_tokens, get_coins_from_deposits, mint_tokens_cw20, send_tokens_coin, send_tokens_cw20, burn_tokens_cw20,
     }, msg::{MsgMakePoolRequest, MsgTakePoolRequest, MsgSingleAssetDepositRequest,
@@ -112,15 +112,15 @@ pub(crate) fn on_received_make_pool(
     tokens[0] = msg.liquidity[0].balance.clone();
     tokens[1] = msg.liquidity[1].balance.clone();
 
-    let pool_id = get_pool_id_with_tokens(&tokens, msg.source_chain_id.clone(), msg.destination_chain_id);
+    let pool_id = get_pool_id_with_tokens(&tokens, msg.source_chain_id.clone(), msg.destination_chain_id.clone());
 
     //load pool throw error if found
-    let interchain_pool_temp = POOLS.may_load(deps.storage, &pool_id.clone())?;
-    if let Some(_pool) = interchain_pool_temp {
-        return Err(ContractError::Std(StdError::generic_err(format!(
-            "Pool already exists"
-        ))));
-    }
+    // let interchain_pool_temp = POOLS.may_load(deps.storage, &pool_id.clone())?;
+    // if let Some(_pool) = interchain_pool_temp {
+    //     return Err(ContractError::Std(StdError::generic_err(format!(
+    //         "Pool already exists"
+    //     ))));
+    // }
 
     let supply: Coin = Coin {amount: Uint128::from(0u64), denom: pool_id.clone()};
     let interchain_pool: InterchainLiquidityPool = InterchainLiquidityPool {
@@ -134,6 +134,7 @@ pub(crate) fn on_received_make_pool(
         counter_party_channel: msg.counterparty_channel,
         swap_fee: msg.swap_fee,
         source_chain_id: msg.source_chain_id,
+        destination_chain_id: msg.destination_chain_id.clone(),
         pool_price: 0
     };
 
@@ -287,6 +288,8 @@ pub(crate) fn on_received_make_multi_deposit(
     };
 
     MULTI_ASSET_DEPOSIT_ORDERS.save(deps.storage, key, &multi_asset_order)?;
+    let ac_key = msg.deposits[0].sender.clone() + "-" + &msg.pool_id.clone();
+    ACTIVE_ORDERS.save(deps.storage, ac_key, &multi_asset_order)?;
     CONFIG.save(deps.storage, &config)?;
 
     let res = IbcReceiveResponse::new()
@@ -325,6 +328,8 @@ pub(crate) fn on_received_take_multi_deposit(
     if let Some(order) = multi_asset_order_temp {
         multi_asset_order = order;
         multi_asset_order.status = OrderStatus::Complete;
+        let ac_key = multi_asset_order.source_maker.clone() + "-" + &msg.pool_id.clone();
+        ACTIVE_ORDERS.remove(deps.storage, ac_key);
     } else {
         return Err(ContractError::ErrOrderNotFound);
     }
@@ -584,6 +589,8 @@ pub(crate) fn on_packet_success(
             if let Some(order) = multi_asset_order_temp {
                 multi_asset_order = order;
                 multi_asset_order.status = OrderStatus::Complete;
+                let ac_key = multi_asset_order.source_maker.clone() + "-" + &msg.pool_id.clone();
+                ACTIVE_ORDERS.remove(deps.storage, ac_key);
             } else {
                 return Err(ContractError::ErrOrderNotFound);
             }
@@ -783,7 +790,12 @@ pub(crate) fn refund_packet_token(
         InterchainMessageType::MakeMultiDeposit => {
             let msg: MsgMakeMultiAssetDepositRequest = from_binary(&packet.data.clone())?;
             let sub_messages = send_tokens_coin(&Addr::unchecked(msg.deposits[0].clone().sender), msg.deposits.get(0).unwrap().clone().balance)?;
+            let ac_key = msg.deposits[0].sender.clone() + "-" + &msg.pool_id.clone();
 
+            let order = ACTIVE_ORDERS.load(deps.storage, ac_key.clone())?;
+            let key = msg.pool_id.clone() + &order.order_id.to_string();
+            MULTI_ASSET_DEPOSIT_ORDERS.remove(deps.storage, key);
+            ACTIVE_ORDERS.remove(deps.storage, ac_key);
             Ok(sub_messages)
         }
         InterchainMessageType::TakeMultiDeposit => {
@@ -795,6 +807,8 @@ pub(crate) fn refund_packet_token(
             if let Some(order) = multi_asset_order_temp {
                 multi_asset_order = order;
                 multi_asset_order.status = OrderStatus::Complete;
+                let ac_key = multi_asset_order.pool_id.clone() + &multi_asset_order.order_id.clone().to_string();
+                ACTIVE_ORDERS.remove(deps.storage, ac_key);
             } else {
                 return Err(ContractError::ErrOrderNotFound);
             }

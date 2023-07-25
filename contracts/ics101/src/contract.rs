@@ -1,4 +1,5 @@
 use std::ops::{Div, Mul};
+use std::vec;
 
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
@@ -22,8 +23,8 @@ use crate::msg::{
     MsgMultiAssetWithdrawRequest, MsgSingleAssetDepositRequest,
     MsgSwapRequest, SwapMsgType, MsgMakePoolRequest, MsgTakePoolRequest, MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, QueryMsg, QueryConfigResponse, InterchainPoolResponse, InterchainListResponse, OrderListResponse, PoolListResponse, TokenInstantiateMsg, Cw20HookMsg,
 };
-use crate::state::{POOLS, MULTI_ASSET_DEPOSIT_ORDERS, CONFIG, POOL_TOKENS_LIST, Config, TEMP};
-use crate::types::{InterchainSwapPacketData, StateChange, InterchainMessageType, MultiAssetDepositOrder, OrderStatus, MULTI_DEPOSIT_PENDING_LIMIT};
+use crate::state::{POOLS, MULTI_ASSET_DEPOSIT_ORDERS, CONFIG, POOL_TOKENS_LIST, Config, TEMP, ACTIVE_ORDERS};
+use crate::types::{InterchainSwapPacketData, StateChange, InterchainMessageType, MultiAssetDepositOrder, OrderStatus};
 use crate::utils::{check_slippage, get_coins_from_deposits, get_pool_id_with_tokens, INSTANTIATE_TOKEN_REPLY_ID};
 
 // Version info, for migration info
@@ -179,12 +180,12 @@ fn make_pool(
 
     TEMP.save(deps.storage, &pool_id)?;
     // load pool throw error if not found
-    let interchain_pool_temp = POOLS.may_load(deps.storage,&pool_id)?;
-    if let Some(_pool) = interchain_pool_temp {
-        return Err(ContractError::Std(StdError::generic_err(format!(
-            "Pool already exists"
-        ))));
-    }
+    // let interchain_pool_temp = POOLS.may_load(deps.storage,&pool_id)?;
+    // if let Some(_pool) = interchain_pool_temp {
+    //     return Err(ContractError::Std(StdError::generic_err(format!(
+    //         "Pool already exists"
+    //     ))));
+    // }
 
     // check if given tokens are received here
     let mut ok = false;
@@ -213,6 +214,7 @@ fn make_pool(
         counter_party_channel: msg.source_channel.clone(),
         swap_fee: msg.swap_fee,
         source_chain_id: msg.source_chain_id.clone(),
+        destination_chain_id: msg.destination_chain_id.clone(),
         pool_price: 0
     };
     POOLS.save(deps.storage, &pool_id, &interchain_pool)?;
@@ -221,9 +223,10 @@ fn make_pool(
     let config = CONFIG.load(deps.storage)?;
     let sub_msg: Vec<SubMsg>;
     if let Some(_lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &pool_id.clone())? {
-        return Err(ContractError::Std(StdError::generic_err(format!(
-            "Pool token already exist: Make Pool"
-        ))));
+        // return Err(ContractError::Std(StdError::generic_err(format!(
+        //     "Pool token already exist: Make Pool"
+        // ))));
+        sub_msg = vec![];
     } else {
         // Create the LP token contract
         sub_msg = vec![SubMsg {
@@ -541,32 +544,33 @@ fn make_multi_asset_deposit(
     };
 
     // load orders
-    let mut key = msg.pool_id.clone() + "-" + &config.counter.clone().to_string();
-    let multi_asset_order_temp = MULTI_ASSET_DEPOSIT_ORDERS.may_load(deps.storage, key.clone())?;
+    // check for order, if exist throw error.
 
-    let mut found = false;
-    if let Some(order) = multi_asset_order_temp {
-        found = true;
-        multi_asset_order = order;
-    } else {
-        config.counter = config.counter + 1;
-        multi_asset_order.order_id = config.counter;
-    }
+    let ac_key = msg.deposits[0].sender.clone() + "-" + &msg.pool_id.clone();
+    // let multi_asset_order_temp = ACTIVE_ORDERS.may_load(deps.storage, ac_key.clone())?;
 
-    let pending_height = env.block.height - multi_asset_order.created_at;
-    if found && multi_asset_order.status == OrderStatus::Pending && pending_height < MULTI_DEPOSIT_PENDING_LIMIT {
-        return Err(ContractError::ErrPreviousOrderNotCompleted);
-    }
+    // if let Some(_order) = multi_asset_order_temp {
+    //     return Err(ContractError::ErrPreviousOrderNotCompleted);
+    // }
+    config.counter = config.counter + 1;
+    multi_asset_order.order_id = config.counter;
+    //}
+
+    // let pending_height = env.block.height - multi_asset_order.created_at;
+    // if found && multi_asset_order.status == OrderStatus::Pending && pending_height < MULTI_DEPOSIT_PENDING_LIMIT {
+    //     return Err(ContractError::ErrPreviousOrderNotCompleted);
+    // }
 
 	// protect malicious deposit action. we will not refund token as a penalty.
-    if found && pending_height > MULTI_DEPOSIT_PENDING_LIMIT {
-        MULTI_ASSET_DEPOSIT_ORDERS.remove(deps.storage, key);
-        //multi_asset_orders.pop();
-    }
+    // if found && pending_height > MULTI_DEPOSIT_PENDING_LIMIT {
+    //     MULTI_ASSET_DEPOSIT_ORDERS.remove(deps.storage, key);
+    //     //multi_asset_orders.pop();
+    // }
 
     // save order in source chain
-    key = msg.pool_id.clone() + "-" + &config.counter.clone().to_string();
+    let key = msg.pool_id.clone() + "-" + &config.counter.clone().to_string();
     MULTI_ASSET_DEPOSIT_ORDERS.save(deps.storage, key, &multi_asset_order)?;
+    ACTIVE_ORDERS.save(deps.storage, ac_key, &multi_asset_order)?;
     CONFIG.save(deps.storage, &config)?;
 
     // Construct the IBC packet
@@ -902,6 +906,9 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             to_binary(&query_pool_list(deps, start_after, limit)?),
         QueryMsg::LeftSwap { pool_id, token_in, token_out } =>
             to_binary(&query_left_swap(deps, pool_id, token_in, token_out)?),
+        QueryMsg::QueryActiveOrders { source_maker, pool_id } =>
+        to_binary(&query_active_orders(deps, pool_id, source_maker)?),
+        QueryMsg::Rate { pool_id, amount } => to_binary(&query_rate(deps, pool_id, amount)?),
     }
 }
 
@@ -933,7 +940,7 @@ fn query_interchain_pool(
     }
 
     Ok(InterchainPoolResponse {
-        pool_id: interchain_pool.id,
+        id: interchain_pool.id,
         source_creator: interchain_pool.source_creator,
         destination_creator: interchain_pool.destination_creator,
         assets: interchain_pool.assets,
@@ -942,6 +949,8 @@ fn query_interchain_pool(
         status: interchain_pool.status,
         counter_party_channel: interchain_pool.counter_party_channel,
         counter_party_port: interchain_pool.counter_party_port,
+        source_chain_id: interchain_pool.source_chain_id,
+        destination_chain_id: interchain_pool.destination_chain_id
     })
 }
 
@@ -1063,6 +1072,48 @@ fn query_left_swap(
     };
     let result = amm.compute_swap(token_in.clone(), &token_out.denom)?;
     Ok(result)
+}
+
+fn query_active_orders(
+    deps: Deps,
+    pool_id: String,
+    source_maker: String
+) -> StdResult<MultiAssetDepositOrder> {
+    let key = source_maker + "-" + &pool_id;
+    let multi_asset_order_temp = ACTIVE_ORDERS.may_load(deps.storage, key)?;
+    let multi_asset_order;
+    if let Some(order) = multi_asset_order_temp {
+        multi_asset_order = order;
+    } else {
+        return Err(StdError::generic_err(format!(
+            "No active order"
+        )));
+    };
+
+    Ok(multi_asset_order)
+}
+
+fn query_rate(deps: Deps, pool_id: String, amount: Uint128) -> StdResult<Vec<Coin>> {
+    // Get liquidity pool
+    // load pool throw error if not found
+    let interchain_pool_temp = POOLS.may_load(deps.storage, &pool_id)?;
+    let interchain_pool;
+    if let Some(pool) = interchain_pool_temp {
+        interchain_pool = pool
+    } else {
+        return Err(StdError::generic_err(format!(
+            "Pool doesn't exist {}", pool_id
+        )));
+    }
+
+    // Create the interchain market maker
+    let amm = InterchainMarketMaker {
+        pool_id: interchain_pool.clone().id,
+        pool: interchain_pool.clone(),
+        fee_rate: interchain_pool.swap_fee,
+    };
+
+    Ok(amm.multi_asset_withdraw(Coin {amount: amount, denom: pool_id})?)
 }
 
 

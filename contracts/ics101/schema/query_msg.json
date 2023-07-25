@@ -192,6 +192,30 @@
         }
       },
       "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "QueryActiveOrders"
+      ],
+      "properties": {
+        "QueryActiveOrders": {
+          "type": "object",
+          "required": [
+            "pool_id",
+            "source_maker"
+          ],
+          "properties": {
+            "pool_id": {
+              "type": "string"
+            },
+            "source_maker": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
     }
   ],
   "definitions": {

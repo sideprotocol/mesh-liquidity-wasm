@@ -41,6 +41,7 @@ pub struct InterchainLiquidityPool {
     pub counter_party_channel: String,
     pub counter_party_port: String,
     pub destination_creator: String,
+    pub destination_chain_id: String,
     pub id: String,
     pub source_chain_id: String,
     pub source_creator: String,
