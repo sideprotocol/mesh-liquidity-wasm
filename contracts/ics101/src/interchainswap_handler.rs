@@ -10,7 +10,7 @@ use crate::{
     }, msg::{MsgMakePoolRequest, MsgTakePoolRequest, MsgSingleAssetDepositRequest,
      MsgMultiAssetWithdrawRequest, MsgSwapRequest,
     MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest}
-    ,market::{InterchainLiquidityPool, PoolStatus::{Initialized, Active}, InterchainMarketMaker},
+    ,market::{InterchainLiquidityPool, PoolStatus::{Initialized, Active}, InterchainMarketMaker, PoolSide},
 };
 use cosmwasm_std::{
     attr, from_binary, to_binary, Binary, DepsMut, Env, IbcBasicResponse, IbcPacket,
@@ -115,19 +115,29 @@ pub(crate) fn on_received_make_pool(
     let pool_id = get_pool_id_with_tokens(&tokens, msg.source_chain_id.clone(), msg.destination_chain_id.clone());
 
     //load pool throw error if found
-    // let interchain_pool_temp = POOLS.may_load(deps.storage, &pool_id.clone())?;
-    // if let Some(_pool) = interchain_pool_temp {
-    //     return Err(ContractError::Std(StdError::generic_err(format!(
-    //         "Pool already exists"
-    //     ))));
-    // }
+    let interchain_pool_temp = POOLS.may_load(deps.storage, &pool_id.clone())?;
+    if let Some(_pool) = interchain_pool_temp {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Pool already exists"
+        ))));
+    }
+
+    let mut liquidity = vec![];
+    for mut asset in msg.liquidity {
+        if asset.side == PoolSide::SOURCE {
+            asset.side = PoolSide::DESTINATION
+        } else if asset.side == PoolSide::DESTINATION {
+            asset.side = PoolSide::SOURCE
+        }
+        liquidity.push(asset);
+    }
 
     let supply: Coin = Coin {amount: Uint128::from(0u64), denom: pool_id.clone()};
     let interchain_pool: InterchainLiquidityPool = InterchainLiquidityPool {
         id: pool_id.clone(),
         source_creator: msg.creator,
         destination_creator: msg.counterparty_creator,
-        assets: msg.liquidity,
+        assets: liquidity,
         supply: supply,
         status: Initialized,
         counter_party_port: msg.source_port,

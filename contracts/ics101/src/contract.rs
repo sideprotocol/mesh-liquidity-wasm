@@ -180,12 +180,12 @@ fn make_pool(
 
     TEMP.save(deps.storage, &pool_id)?;
     // load pool throw error if not found
-    // let interchain_pool_temp = POOLS.may_load(deps.storage,&pool_id)?;
-    // if let Some(_pool) = interchain_pool_temp {
-    //     return Err(ContractError::Std(StdError::generic_err(format!(
-    //         "Pool already exists"
-    //     ))));
-    // }
+    let interchain_pool_temp = POOLS.may_load(deps.storage,&pool_id)?;
+    if let Some(_pool) = interchain_pool_temp {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Pool already exists"
+        ))));
+    }
 
     // check if given tokens are received here
     let mut ok = false;
@@ -223,10 +223,10 @@ fn make_pool(
     let config = CONFIG.load(deps.storage)?;
     let sub_msg: Vec<SubMsg>;
     if let Some(_lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &pool_id.clone())? {
-        // return Err(ContractError::Std(StdError::generic_err(format!(
-        //     "Pool token already exist: Make Pool"
-        // ))));
-        sub_msg = vec![];
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Pool token already exist: Make Pool"
+        ))));
+        //sub_msg = vec![];
     } else {
         // Create the LP token contract
         sub_msg = vec![SubMsg {
@@ -332,7 +332,7 @@ fn take_pool(
     TEMP.save(deps.storage, &msg.pool_id)?;
 
     if interchain_pool.status != PoolStatus::Initialized {
-        return Err(ContractError::Expired);
+        return Err(ContractError::InvalidStatus);
     }
 
     // order can only be taken by creator
@@ -341,7 +341,7 @@ fn take_pool(
     }
 
     // check balance and funds sent handle error
-    let token = interchain_pool.find_asset_by_side(PoolSide::DESTINATION)
+    let token = interchain_pool.find_asset_by_side(PoolSide::SOURCE)
     .map_err(|err| StdError::generic_err(format!("Failed to find asset: {}", err)))?;
     // check if given tokens are received here
     let mut ok = false;
@@ -547,11 +547,11 @@ fn make_multi_asset_deposit(
     // check for order, if exist throw error.
 
     let ac_key = msg.deposits[0].sender.clone() + "-" + &msg.pool_id.clone();
-    // let multi_asset_order_temp = ACTIVE_ORDERS.may_load(deps.storage, ac_key.clone())?;
+    let multi_asset_order_temp = ACTIVE_ORDERS.may_load(deps.storage, ac_key.clone())?;
 
-    // if let Some(_order) = multi_asset_order_temp {
-    //     return Err(ContractError::ErrPreviousOrderNotCompleted);
-    // }
+    if let Some(_order) = multi_asset_order_temp {
+        return Err(ContractError::ErrPreviousOrderNotCompleted);
+    }
     config.counter = config.counter + 1;
     multi_asset_order.order_id = config.counter;
     //}
@@ -633,7 +633,7 @@ fn take_multi_asset_deposit(
     }
 
     // TODO: Add chain id to order and add check
-    let token = interchain_pool.find_asset_by_side(PoolSide::DESTINATION)
+    let token = interchain_pool.find_asset_by_side(PoolSide::SOURCE)
     .map_err(|err| StdError::generic_err(format!("Failed to find asset: {}", err)))?;
     // check if given tokens are received here
     let mut ok = false;
