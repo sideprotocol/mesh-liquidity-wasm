@@ -906,6 +906,8 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             to_binary(&query_pool_list(deps, start_after, limit)?),
         QueryMsg::LeftSwap { pool_id, token_in, token_out } =>
             to_binary(&query_left_swap(deps, pool_id, token_in, token_out)?),
+        QueryMsg::RightSwap { pool_id, token_in, token_out } =>
+        to_binary(&query_right_swap(deps, pool_id, token_in, token_out)?),
         QueryMsg::QueryActiveOrders { source_maker, pool_id } =>
         to_binary(&query_active_orders(deps, pool_id, source_maker)?),
         QueryMsg::Rate { pool_id, amount } => to_binary(&query_rate(deps, pool_id, amount)?),
@@ -1071,6 +1073,41 @@ fn query_left_swap(
         fee_rate: interchain_pool.swap_fee,
     };
     let result = amm.compute_swap(token_in.clone(), &token_out.denom)?;
+    Ok(result)
+}
+
+fn query_right_swap(
+    deps: Deps,
+    pool_id: String,
+    token_in: Coin,
+    token_out: Coin
+) -> StdResult<Coin> {
+    // Get liquidity pool
+    // load pool throw error if not found
+    let interchain_pool_temp = POOLS.may_load(deps.storage, &pool_id.clone())?;
+    let interchain_pool;
+    if let Some(pool) = interchain_pool_temp {
+        interchain_pool = pool
+    } else {
+        return Err(StdError::generic_err(format!(
+            "Pool doesn't exist {}", pool_id
+        )));
+    }
+
+    // Check the pool status
+    if interchain_pool.status != PoolStatus::Active {
+        return Err(StdError::generic_err(format!(
+            "Pool not ready for swap!"
+        )));
+    }
+
+    // Create the interchain market maker
+    let amm = InterchainMarketMaker {
+        pool_id: interchain_pool.clone().id,
+        pool: interchain_pool.clone(),
+        fee_rate: interchain_pool.swap_fee,
+    };
+    let result = amm.compute_offer_amount(token_in.clone(), token_out)?;
     Ok(result)
 }
 

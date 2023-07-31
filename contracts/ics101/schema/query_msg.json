@@ -196,6 +196,34 @@
     {
       "type": "object",
       "required": [
+        "RightSwap"
+      ],
+      "properties": {
+        "RightSwap": {
+          "type": "object",
+          "required": [
+            "pool_id",
+            "token_in",
+            "token_out"
+          ],
+          "properties": {
+            "pool_id": {
+              "type": "string"
+            },
+            "token_in": {
+              "$ref": "#/definitions/Coin"
+            },
+            "token_out": {
+              "$ref": "#/definitions/Coin"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
         "QueryActiveOrders"
       ],
       "properties": {

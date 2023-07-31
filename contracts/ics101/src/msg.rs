@@ -299,6 +299,11 @@ pub enum QueryMsg {
         token_in: Coin,
         token_out: Coin,
     },
+    RightSwap {
+        pool_id: String,
+        token_in: Coin,
+        token_out: Coin,
+    },
     QueryActiveOrders {
         source_maker: String,
         pool_id: String,
