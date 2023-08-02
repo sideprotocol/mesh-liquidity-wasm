@@ -25,7 +25,7 @@ use crate::msg::{
 };
 use crate::state::{POOLS, MULTI_ASSET_DEPOSIT_ORDERS, CONFIG, POOL_TOKENS_LIST, Config, TEMP, ACTIVE_ORDERS};
 use crate::types::{InterchainSwapPacketData, StateChange, InterchainMessageType, MultiAssetDepositOrder, OrderStatus};
-use crate::utils::{check_slippage, get_coins_from_deposits, get_pool_id_with_tokens, INSTANTIATE_TOKEN_REPLY_ID};
+use crate::utils::{get_coins_from_deposits, get_pool_id_with_tokens, INSTANTIATE_TOKEN_REPLY_ID, get_order_id};
 
 // Version info, for migration info
 const CONTRACT_NAME: &str = "ics101-interchainswap";
@@ -437,7 +437,11 @@ pub fn single_asset_deposit(
     let state_change_data = to_binary(&StateChange {
         in_tokens: None,
         out_tokens: None,
-        pool_tokens: Some(vec![pool_token])
+        pool_tokens: Some(vec![pool_token]),
+        pool_id: None,
+        multi_deposit_order_id: None,
+        source_chain_id: None,
+        shares: None
     })?;
     // Construct the IBC swap packet.
     let packet_data = InterchainSwapPacketData {
@@ -506,19 +510,6 @@ fn make_multi_asset_deposit(
         return Err(ContractError::NotReadyForSwap);
     }
 
-    let source_asset = interchain_pool.find_asset_by_side(PoolSide::SOURCE)
-    .map_err(|err| StdError::generic_err(format!("Failed to find asset: {}", err)))?;
-    let destination_asset = interchain_pool.find_asset_by_side(PoolSide::DESTINATION)
-    .map_err(|err| StdError::generic_err(format!("Failed to find asset: {}", err)))?;
-
-    check_slippage(
-        Uint128::from(source_asset.balance.amount), 
-        Uint128::from(destination_asset.balance.amount),
-        Uint128::from(msg.deposits[0].balance.amount),
-        Uint128::from(msg.deposits[1].balance.amount),
-        10
-    ).map_err(|err| StdError::generic_err(format!("Invalid Slippage: {}", err)))?;
-
     // Create the interchain market maker
     let amm = InterchainMarketMaker {
         pool_id: interchain_pool.clone().id,
@@ -527,7 +518,6 @@ fn make_multi_asset_deposit(
     };
 
     // Deposit the assets into the interchain market maker
-    // TODO: refund rem_assets
     let (_shares, added_assets, _rem_assets) = amm.deposit_multi_asset(&vec![
         msg.deposits[0].balance.clone(),
         msg.deposits[1].balance.clone(),
@@ -536,7 +526,7 @@ fn make_multi_asset_deposit(
     let mut config = CONFIG.load(deps.storage)?;
 
     let mut multi_asset_order = MultiAssetDepositOrder {
-        order_id: config.counter,
+        order_id: "".to_string(),
         pool_id: msg.pool_id.clone(),
         source_maker: msg.deposits[0].sender.clone(),
         destination_taker: msg.deposits[1].sender.clone(),
@@ -556,19 +546,8 @@ fn make_multi_asset_deposit(
     //     return Err(ContractError::ErrPreviousOrderNotCompleted);
     // }
     config.counter = config.counter + 1;
-    multi_asset_order.order_id = config.counter;
+    multi_asset_order.order_id = get_order_id(msg.deposits[0].sender.clone(), config.counter);
     //}
-
-    // let pending_height = env.block.height - multi_asset_order.created_at;
-    // if found && multi_asset_order.status == OrderStatus::Pending && pending_height < MULTI_DEPOSIT_PENDING_LIMIT {
-    //     return Err(ContractError::ErrPreviousOrderNotCompleted);
-    // }
-
-	// protect malicious deposit action. we will not refund token as a penalty.
-    // if found && pending_height > MULTI_DEPOSIT_PENDING_LIMIT {
-    //     MULTI_ASSET_DEPOSIT_ORDERS.remove(deps.storage, key);
-    //     //multi_asset_orders.pop();
-    // }
 
     // save order in source chain
     let key = msg.pool_id.clone() + "-" + &config.counter.clone().to_string();
@@ -580,7 +559,11 @@ fn make_multi_asset_deposit(
     let state_change_data = to_binary(&StateChange {
         in_tokens: Some(added_assets),
         out_tokens: None,
-        pool_tokens: None
+        pool_tokens: None,
+        pool_id: None,
+        multi_deposit_order_id: Some(multi_asset_order.order_id),
+        source_chain_id: None,
+        shares: None
     })?;
     let packet_data = InterchainSwapPacketData {
         r#type: InterchainMessageType::MakeMultiDeposit,
@@ -635,7 +618,10 @@ fn take_multi_asset_deposit(
         return Err(ContractError::ErrFailedMultiAssetDeposit);
     }
 
-    // TODO: Add chain id to order and add check
+    if multi_asset_order.status == OrderStatus::Complete {
+        return Err(ContractError::ErrOrderAlreadyCompleted);
+    }
+
     let token = interchain_pool.find_asset_by_side(PoolSide::SOURCE)
     .map_err(|err| StdError::generic_err(format!("Failed to find asset: {}", err)))?;
     // check if given tokens are received here
@@ -652,11 +638,26 @@ fn take_multi_asset_deposit(
             "Funds mismatch: Funds mismatched to with message and sent values: Take Multi Asset"
         ))));
     }
+
+    // find number of tokens to be minted
+    // Create the interchain market maker (amm).
+    let amm = InterchainMarketMaker {
+        pool_id: msg.pool_id.clone(),
+        pool: interchain_pool.clone(),
+        fee_rate: interchain_pool.swap_fee,
+    };
+
+    let (new_shares, added_assets, rem_assets) = amm.deposit_multi_asset(&multi_asset_order.deposits)?;
+
     // Construct the IBC packet
     let state_change_data = to_binary(&StateChange {
         in_tokens: None,
-        out_tokens: None,
-        pool_tokens: None
+        out_tokens: Some(rem_assets),
+        pool_tokens: Some(added_assets),
+        pool_id: None,
+        multi_deposit_order_id: None,
+        source_chain_id: None,
+        shares: Some(new_shares)
     })?;
     let packet_data = InterchainSwapPacketData {
         r#type: InterchainMessageType::TakeMultiDeposit,
@@ -756,8 +757,13 @@ fn multi_asset_withdraw(
         out_tokens: Some(vec![source_out, destination_out]),
         pool_tokens: Some(vec![
             msg.pool_token.clone()
-        ])
+        ]),
+        pool_id: None,
+        multi_deposit_order_id: None,
+        source_chain_id: None,
+        shares: None
     })?;
+
     let packet = InterchainSwapPacketData {
         r#type: InterchainMessageType::MultiWithdraw,
         data: to_binary(&msg)?,
@@ -841,15 +847,6 @@ fn swap(
         }
     }
 
-    // let token_out = match token_out {
-    //     Some(token) => token,
-    //     None => {
-    //         return Err(ContractError::FailedSwap {
-    //             err: "token_out not found".to_string(),
-    //         })
-    //     }
-    // };
-
     // Slippage checking
     let factor = MAXIMUM_SLIPPAGE - msg.slippage;
     let expected = msg
@@ -869,7 +866,11 @@ fn swap(
     let state_change_data = to_binary(&StateChange {
         in_tokens: None,
         out_tokens: Some(vec![token_out]),
-        pool_tokens: None
+        pool_tokens: None,
+        pool_id: None,
+        multi_deposit_order_id: None,
+        source_chain_id: None,
+        shares: None
     })?;
     let packet = InterchainSwapPacketData {
         r#type: msg_type,

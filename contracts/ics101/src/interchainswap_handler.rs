@@ -271,7 +271,7 @@ pub(crate) fn on_received_make_multi_deposit(
     env: Env,
     _packet: &IbcPacket,
     msg: MsgMakeMultiAssetDepositRequest,
-    _state_change: StateChange
+    state_change: StateChange
 ) -> Result<IbcReceiveResponse, ContractError> {
 	// load pool throw error if found
     let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id.clone())?;
@@ -288,7 +288,7 @@ pub(crate) fn on_received_make_multi_deposit(
 
     let key = msg.pool_id.clone() + "-" + &config.counter.clone().to_string();
     let multi_asset_order = MultiAssetDepositOrder {
-        order_id: config.counter,
+        order_id: state_change.multi_deposit_order_id.unwrap(),
         pool_id: msg.pool_id.clone(),
         source_maker: msg.deposits[0].sender.clone(),
         destination_taker: msg.deposits[1].sender.clone(),
@@ -316,7 +316,7 @@ pub(crate) fn on_received_take_multi_deposit(
     _env: Env,
     _packet: &IbcPacket,
     msg: MsgTakeMultiAssetDepositRequest,
-    _state_change: StateChange
+    state_change: StateChange
 ) -> Result<IbcReceiveResponse, ContractError> {
 	// load pool throw error if found
     let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id.clone())?;
@@ -344,16 +344,20 @@ pub(crate) fn on_received_take_multi_deposit(
         return Err(ContractError::ErrOrderNotFound);
     }
 
-    // find number of tokens to be minted
-    // Create the interchain market maker (amm).
-    let amm = InterchainMarketMaker {
-        pool_id: msg.pool_id.clone(),
-        pool: interchain_pool.clone(),
-        fee_rate: interchain_pool.swap_fee,
-    };
+    let new_shares = state_change.shares.unwrap();
+    let added_assets = state_change.pool_tokens.unwrap();
+    let rem_assets = state_change.out_tokens.unwrap();
 
-    // TODO: Check how extra tokens will be handled for refund
-    let (new_shares, added_assets, _rem_assets) = amm.deposit_multi_asset(&multi_asset_order.deposits)?;
+    // let (new_shares, added_assets, rem_assets) = amm.deposit_multi_asset(&multi_asset_order.deposits)?;
+    // Send back extra tokens
+    let token = interchain_pool.find_asset_by_side(PoolSide::SOURCE)
+    .map_err(|err| StdError::generic_err(format!("Failed to find asset: {}", err)))?;
+    for asset in rem_assets {
+       if asset.denom == token.balance.denom {
+            send_tokens_coin(&Addr::unchecked(multi_asset_order.source_maker.clone()), asset)?;
+       }
+    }
+
     let sub_message;
     // Mint tokens (cw20) to the sender
     if let Some(lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id.clone())? {
@@ -536,7 +540,6 @@ pub(crate) fn on_packet_success(
         }
         InterchainMessageType::SingleAssetDeposit => {
             let msg: MsgSingleAssetDepositRequest = from_binary(&packet_data.data.clone())?;
-            //let state_change = packet_data.state_change.unwrap();
             let state_change: StateChange = from_slice(&packet_data.state_change.unwrap())?;
 
             // load pool throw error if found
@@ -571,13 +574,11 @@ pub(crate) fn on_packet_success(
             Ok(IbcBasicResponse::new().add_attributes(attributes).add_submessages(sub_message))
         }
         InterchainMessageType::MakeMultiDeposit => {
-            // TODO: Refund remaining assets here or in takeMultiDeposit
-            // TODO: Add something or return empty 
-            // packet messages are redundant\ncosmossdk.io/errors.Wrap\n\t/Users/ay/go/pkg/mod/cosmossdk
             Ok(IbcBasicResponse::new().add_attributes(attributes))
         }
         InterchainMessageType::TakeMultiDeposit => {
             let msg: MsgTakeMultiAssetDepositRequest = from_binary(&packet_data.data.clone())?;
+            let state_change: StateChange = from_slice(&packet_data.state_change.unwrap())?;
             // Mint tokens in take only i.e after receiving all the assets
             // load pool throw error if found
             let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id.clone())?;
@@ -605,16 +606,19 @@ pub(crate) fn on_packet_success(
                 return Err(ContractError::ErrOrderNotFound);
             }
 
-            // find number of tokens to be minted
-            // Create the interchain market maker (amm).
-            let amm = InterchainMarketMaker {
-                pool_id: msg.pool_id.clone(),
-                pool: interchain_pool.clone(),
-                fee_rate: interchain_pool.swap_fee,
-            };
-
-            // TODO: Check how extra tokens will be handled for refund
-            let (new_shares, added_assets, _rem_assets) = amm.deposit_multi_asset(&multi_asset_order.deposits)?;
+            let new_shares = state_change.shares.unwrap();
+            let added_assets = state_change.pool_tokens.unwrap();
+            let rem_assets = state_change.out_tokens.unwrap();
+        
+            // let (new_shares, added_assets, rem_assets) = amm.deposit_multi_asset(&multi_asset_order.deposits)?;
+            // Send back extra tokens
+            let token = interchain_pool.find_asset_by_side(PoolSide::SOURCE)
+            .map_err(|err| StdError::generic_err(format!("Failed to find asset: {}", err)))?;
+            for asset in rem_assets {
+               if asset.denom == token.balance.denom {
+                    send_tokens_coin(&Addr::unchecked(multi_asset_order.source_maker.clone()), asset)?;
+               }
+            }
             // Mint tokens (cw20) to the sender
             if let Some(_lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id.clone())? {
 

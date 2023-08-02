@@ -1,7 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{Binary, Coin, Decimal};
+use cosmwasm_std::{Binary, Coin, Decimal, Uint128};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct StateChange {
@@ -11,6 +11,14 @@ pub struct StateChange {
     pub out_tokens: Option<Vec<Coin>>,
     #[serde(rename = "PoolTokens")]
     pub pool_tokens: Option<Vec<Coin>>,
+    #[serde(rename = "PoolId")]
+    pub pool_id: Option<String>,
+    #[serde(rename = "MultiDepositOrderId")]
+    pub multi_deposit_order_id: Option<String>,
+    #[serde(rename = "SourceChainId")]
+    pub source_chain_id: Option<String>,
+    #[serde(rename = "Shares")]
+    pub shares: Option<Uint128>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -56,7 +64,7 @@ pub enum OrderStatus {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MultiAssetDepositOrder {
-    pub order_id: u64,
+    pub order_id: String,
     pub pool_id: String,
     //chain_id: String,
     pub source_maker: String,

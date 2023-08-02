@@ -1,4 +1,4 @@
-use std::{ops::{Div}, vec};
+use std::{ops::{Div}, vec, str::FromStr};
 
 use cosmwasm_std::{
     from_binary, Addr, BankMsg, Coin, IbcAcknowledgement, IbcChannel, IbcOrder, StdResult,
@@ -36,6 +36,14 @@ pub fn get_connection_id(mut chain_ids: Vec<String>) -> String {
 
     let res = chain_ids.join("/");
     return res;
+}
+
+pub fn get_order_id(maker: String, count: u64) -> String {
+    let res = maker + &count.to_string();
+    let res_bytes = res.as_bytes();
+    let hash = Sha256::digest(&res_bytes);
+    let order_id = format!("multi_deposit_order{}", hex::encode(hash));
+    return order_id;
 }
 
 /// ## Description
@@ -108,10 +116,10 @@ pub fn check_slippage(
     };
 
     // Calculate slippage percentage (slippage = ratio_diff/expect * 100)
-    let slippage = ratio_diff * Uint128::from(10000 as u64) / expect;
+    let slippage = ratio_diff.div(expect).checked_mul(Decimal::from_str("10000")?).unwrap();
 
     // Check if the slippage is within the tolerance
-    if slippage >= slippage_tolerance {
+    if slippage.to_uint_ceil() >= slippage_tolerance {
         return Err(ContractError::InvalidPairRatio {});
     }
 

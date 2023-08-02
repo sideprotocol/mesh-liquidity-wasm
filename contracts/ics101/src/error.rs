@@ -102,6 +102,9 @@ pub enum ContractError {
     #[error("Error previous order is not completed")]
     ErrPreviousOrderNotCompleted,
 
+    #[error("Error order is already completed")]
+    ErrOrderAlreadyCompleted,
+
     #[error("Order not found")]
     ErrOrderNotFound,
 
