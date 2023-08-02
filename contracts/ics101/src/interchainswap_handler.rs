@@ -804,8 +804,12 @@ pub(crate) fn refund_packet_token(
 
             let order = ACTIVE_ORDERS.load(deps.storage, ac_key.clone())?;
             let key = msg.pool_id.clone() + &order.order_id.to_string();
+
+            let mut config = CONFIG.load(deps.storage)?;
+            config.counter = config.counter - 1;
             MULTI_ASSET_DEPOSIT_ORDERS.remove(deps.storage, key);
             ACTIVE_ORDERS.remove(deps.storage, ac_key);
+            CONFIG.save(deps.storage, &config)?;
             Ok(sub_messages)
         }
         InterchainMessageType::TakeMultiDeposit => {

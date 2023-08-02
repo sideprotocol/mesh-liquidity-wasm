@@ -90,10 +90,8 @@ pub fn check_slippage(
     desire_slippage: u64,
 ) -> Result<(), ContractError> {
     // Check the ratio of local amount and remote amount
-    let expect = source_amount
-        .div(destination_amount);
-    let result = source_balance
-        .div(Uint128::from(destination_balance));
+    let expect = Decimal::from_ratio(source_amount, destination_amount);
+    let result = Decimal::from_ratio(source_balance, destination_balance);
 
     if desire_slippage > MAXIMUM_SLIPPAGE {
         return Err(ContractError::InvalidSlippage {});

@@ -386,6 +386,7 @@ pub fn single_asset_deposit(
     info: MessageInfo,
     msg: MsgSingleAssetDepositRequest,
 ) -> Result<Response, ContractError> {
+
     if let Err(err) = msg.validate_basic() {
         return Err(ContractError::Std(StdError::generic_err(format!(
             "Failed to validate message: {}",
@@ -478,6 +479,8 @@ fn make_multi_asset_deposit(
            "Pool doesn't exist {}", msg.pool_id
        ))));
    }
+   // TODO: deposit balance or any balance can't be zero
+   // Add checks in every function
 
    let mut tokens: [Coin; 2] = Default::default();
    tokens[0] = msg.deposits[0].balance.clone();
@@ -514,7 +517,7 @@ fn make_multi_asset_deposit(
         Uint128::from(msg.deposits[0].balance.amount),
         Uint128::from(msg.deposits[1].balance.amount),
         10
-        ).map_err(|err| StdError::generic_err(format!("Invalid Slippage: {}", err)))?;
+    ).map_err(|err| StdError::generic_err(format!("Invalid Slippage: {}", err)))?;
 
     // Create the interchain market maker
     let amm = InterchainMarketMaker {
@@ -547,11 +550,11 @@ fn make_multi_asset_deposit(
     // check for order, if exist throw error.
 
     let ac_key = msg.deposits[0].sender.clone() + "-" + &msg.pool_id.clone();
-    let multi_asset_order_temp = ACTIVE_ORDERS.may_load(deps.storage, ac_key.clone())?;
+    // let multi_asset_order_temp = ACTIVE_ORDERS.may_load(deps.storage, ac_key.clone())?;
 
-    if let Some(_order) = multi_asset_order_temp {
-        return Err(ContractError::ErrPreviousOrderNotCompleted);
-    }
+    // if let Some(_order) = multi_asset_order_temp {
+    //     return Err(ContractError::ErrPreviousOrderNotCompleted);
+    // }
     config.counter = config.counter + 1;
     multi_asset_order.order_id = config.counter;
     //}
