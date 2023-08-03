@@ -550,7 +550,7 @@ fn make_multi_asset_deposit(
     //}
 
     // save order in source chain
-    let key = msg.pool_id.clone() + "-" + &config.counter.clone().to_string();
+    let key = msg.pool_id.clone() + "-" + &multi_asset_order.order_id.clone().to_string();
     MULTI_ASSET_DEPOSIT_ORDERS.save(deps.storage, key, &multi_asset_order)?;
     ACTIVE_ORDERS.save(deps.storage, ac_key, &multi_asset_order)?;
     CONFIG.save(deps.storage, &config)?;

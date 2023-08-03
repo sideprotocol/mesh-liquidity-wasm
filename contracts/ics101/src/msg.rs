@@ -140,7 +140,7 @@ pub struct MsgMakeMultiAssetDepositRequest {
 pub struct MsgTakeMultiAssetDepositRequest {
     pub sender: String,
     pub pool_id: String,
-    pub order_id: u64,
+    pub order_id: String,
     pub timeout_height: u64,
     pub timeout_timestamp: u64
 }

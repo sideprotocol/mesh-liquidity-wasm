@@ -286,7 +286,6 @@ pub(crate) fn on_received_make_multi_deposit(
     let mut config = CONFIG.load(deps.storage)?;
     config.counter = config.counter + 1;
 
-    let key = msg.pool_id.clone() + "-" + &config.counter.clone().to_string();
     let multi_asset_order = MultiAssetDepositOrder {
         order_id: state_change.multi_deposit_order_id.unwrap(),
         pool_id: msg.pool_id.clone(),
@@ -296,6 +295,7 @@ pub(crate) fn on_received_make_multi_deposit(
         status: OrderStatus::Pending,
         created_at: env.block.height
     };
+    let key = msg.pool_id.clone() + "-" + &multi_asset_order.order_id;
 
     MULTI_ASSET_DEPOSIT_ORDERS.save(deps.storage, key, &multi_asset_order)?;
     let ac_key = msg.deposits[0].sender.clone() + "-" + &msg.pool_id.clone();
@@ -806,13 +806,16 @@ pub(crate) fn refund_packet_token(
             let sub_messages = send_tokens_coin(&Addr::unchecked(msg.deposits[0].clone().sender), msg.deposits.get(0).unwrap().clone().balance)?;
             let ac_key = msg.deposits[0].sender.clone() + "-" + &msg.pool_id.clone();
 
-            let order = ACTIVE_ORDERS.load(deps.storage, ac_key.clone())?;
-            let key = msg.pool_id.clone() + &order.order_id.to_string();
+            let state_change: StateChange = from_slice(&packet.state_change.unwrap())?;
+            let key = msg.pool_id.clone() + &state_change.multi_deposit_order_id.unwrap();
 
             let mut config = CONFIG.load(deps.storage)?;
             config.counter = config.counter - 1;
             MULTI_ASSET_DEPOSIT_ORDERS.remove(deps.storage, key);
-            ACTIVE_ORDERS.remove(deps.storage, ac_key);
+
+            if let Ok(Some(_active_order)) = ACTIVE_ORDERS.may_load(deps.storage, ac_key.clone()) {
+                ACTIVE_ORDERS.remove(deps.storage, ac_key);
+            }
             CONFIG.save(deps.storage, &config)?;
             Ok(sub_messages)
         }
