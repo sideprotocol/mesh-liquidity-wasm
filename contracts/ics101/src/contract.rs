@@ -21,7 +21,7 @@ use crate::market::{InterchainMarketMaker, PoolStatus, PoolSide, InterchainLiqui
 use crate::msg::{
     ExecuteMsg, InstantiateMsg,
     MsgMultiAssetWithdrawRequest, MsgSingleAssetDepositRequest,
-    MsgSwapRequest, SwapMsgType, MsgMakePoolRequest, MsgTakePoolRequest, MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, QueryMsg, QueryConfigResponse, InterchainPoolResponse, InterchainListResponse, OrderListResponse, PoolListResponse, TokenInstantiateMsg, Cw20HookMsg,
+    MsgSwapRequest, SwapMsgType, MsgMakePoolRequest, MsgTakePoolRequest, MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, QueryMsg, QueryConfigResponse, InterchainPoolResponse, InterchainListResponse, OrderListResponse, PoolListResponse, TokenInstantiateMsg, Cw20HookMsg, MsgCancelPoolRequest,
 };
 use crate::state::{POOLS, MULTI_ASSET_DEPOSIT_ORDERS, CONFIG, POOL_TOKENS_LIST, Config, TEMP, ACTIVE_ORDERS};
 use crate::types::{InterchainSwapPacketData, StateChange, InterchainMessageType, MultiAssetDepositOrder, OrderStatus};
@@ -111,6 +111,7 @@ pub fn execute(
     match msg {
         ExecuteMsg::MakePool(msg) => make_pool(deps, env, info, msg),
         ExecuteMsg::TakePool(msg) => take_pool(deps, env, info, msg),
+        ExecuteMsg::CancelPool(msg) => cancel_pool(deps, env, info, msg),
         ExecuteMsg::SingleAssetDeposit(msg) => single_asset_deposit(deps, env, info, msg),
         ExecuteMsg::MakeMultiAssetDeposit(msg) => make_multi_asset_deposit(deps, env, info, msg),
         ExecuteMsg::TakeMultiAssetDeposit(msg) => take_multi_asset_deposit(deps, env, info, msg),
@@ -377,6 +378,55 @@ fn take_pool(
         .add_submessages(sub_msg)
         .add_message(ibc_msg)
         .add_attribute("action", "make_pool");
+    Ok(res)
+}
+
+fn cancel_pool(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    msg: MsgCancelPoolRequest,
+) -> Result<Response, ContractError> {
+    // load pool throw error if not found
+    let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id)?;
+    let interchain_pool;
+    if let Some(pool) = interchain_pool_temp {
+        interchain_pool = pool
+    } else {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Pool doesn't exist {}", msg.pool_id
+        ))));
+    }
+
+    if interchain_pool.status != PoolStatus::Initialized {
+        return Err(ContractError::InvalidStatus);
+    }
+
+    // order can only be cancelled by creator
+    if interchain_pool.source_creator != info.sender {
+        return Err(ContractError::InvalidSender);
+    }
+    
+    let pool_data = to_binary(&msg).unwrap();
+    let ibc_packet_data = InterchainSwapPacketData {
+        r#type: InterchainMessageType::CancelPool,
+        data: pool_data.clone(),
+        state_change: None,
+    };
+
+    let ibc_msg = IbcMsg::SendPacket {
+        channel_id: interchain_pool.counter_party_channel.clone(),
+        data: to_binary(&ibc_packet_data)?,
+        timeout: IbcTimeout::from(
+            env.block
+                .time
+                .plus_seconds(DEFAULT_TIMEOUT_TIMESTAMP_OFFSET),
+        ),
+    };
+
+    let res = Response::default()
+        .add_message(ibc_msg)
+        .add_attribute("action", "cancel_pool");
     Ok(res)
 }
 

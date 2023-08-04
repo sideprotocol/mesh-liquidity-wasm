@@ -9,8 +9,8 @@ use crate::{
         get_pool_id_with_tokens, get_coins_from_deposits, mint_tokens_cw20, send_tokens_coin, send_tokens_cw20, burn_tokens_cw20,
     }, msg::{MsgMakePoolRequest, MsgTakePoolRequest, MsgSingleAssetDepositRequest,
      MsgMultiAssetWithdrawRequest, MsgSwapRequest,
-    MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest}
-    ,market::{InterchainLiquidityPool, PoolStatus::{Initialized, Active}, InterchainMarketMaker, PoolSide},
+    MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, MsgCancelPoolRequest}
+    ,market::{InterchainLiquidityPool, PoolStatus::{Initialized, Active, Cancelled}, InterchainMarketMaker, PoolSide},
 };
 use cosmwasm_std::{
     attr, from_binary, to_binary, Binary, DepsMut, Env, IbcBasicResponse, IbcPacket,
@@ -44,7 +44,6 @@ pub(crate) fn do_ibc_packet_receive(
     let packet_data: InterchainSwapPacketData = from_slice(&packet.data)?;
 
     match packet_data.r#type {
-        // TODO: Add test for each operation
         InterchainMessageType::Unspecified => {
             let res = IbcReceiveResponse::new()
                 .set_ack(ack_success())
@@ -60,6 +59,10 @@ pub(crate) fn do_ibc_packet_receive(
         InterchainMessageType::TakePool => {
             let msg: MsgTakePoolRequest = from_slice(&packet_data.data.clone())?;
             on_received_take_pool(deps, env, packet, msg)
+        }
+        InterchainMessageType::CancelPool => {
+            let msg: MsgCancelPoolRequest = from_slice(&packet_data.data.clone())?;
+            on_received_cancel_pool(deps, env, packet, msg)
         }
         InterchainMessageType::SingleAssetDeposit => {
             let msg: MsgSingleAssetDepositRequest = from_slice(&packet_data.data.clone())?;
@@ -215,6 +218,34 @@ pub(crate) fn on_received_take_pool(
         .add_attribute("action", "receive")
         .add_attribute("success", "true")
         .add_attribute("sucess", "take_pool_receive");
+
+    Ok(res)
+}
+
+pub(crate) fn on_received_cancel_pool(
+    deps: DepsMut,
+    _env: Env,
+    _packet: &IbcPacket,
+    msg: MsgCancelPoolRequest,
+) -> Result<IbcReceiveResponse, ContractError> {
+    // load pool throw error if found
+    let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id)?;
+    let mut interchain_pool;
+    if let Some(pool) = interchain_pool_temp {
+        interchain_pool = pool;
+    } else {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Pool not found"
+        ))));
+    }
+    interchain_pool.status = Cancelled;
+    POOLS.save(deps.storage, &msg.pool_id, &interchain_pool)?;
+
+    let res = IbcReceiveResponse::new()
+        .set_ack(ack_success())
+        .add_attribute("action", "receive")
+        .add_attribute("success", "true")
+        .add_attribute("sucess", "cancel_pool_receive");
 
     Ok(res)
 }
@@ -510,7 +541,6 @@ pub(crate) fn on_packet_success(
             // tokens will be minted with takePool call because then only all the assets are deposited
             Ok(IbcBasicResponse::new().add_attributes(attributes))
         }
-        // TODO: Add reverse make pool aka cancel pool
         InterchainMessageType::TakePool => {
             let msg: MsgTakePoolRequest = from_binary(&packet_data.data.clone())?;
             // load pool throw error if found
@@ -542,6 +572,23 @@ pub(crate) fn on_packet_success(
             .map_err(|err| StdError::generic_err(format!("Failed to add supply: {}", err)))?;
             
             interchain_pool.status = Active;
+            POOLS.save(deps.storage, &msg.pool_id, &interchain_pool)?;
+
+            Ok(IbcBasicResponse::new().add_attributes(attributes))
+        }
+        InterchainMessageType::CancelPool => {
+            let msg: MsgCancelPoolRequest = from_binary(&packet_data.data.clone())?;
+            // load pool throw error if found
+            let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id)?;
+            let mut interchain_pool;
+            if let Some(pool) = interchain_pool_temp {
+                interchain_pool = pool;
+            } else {
+                return Err(ContractError::Std(StdError::generic_err(format!(
+                    "Pool not found"
+                ))));
+            }
+            interchain_pool.status = Cancelled;
             POOLS.save(deps.storage, &msg.pool_id, &interchain_pool)?;
 
             Ok(IbcBasicResponse::new().add_attributes(attributes))

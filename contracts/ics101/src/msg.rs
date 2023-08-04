@@ -18,6 +18,7 @@ pub struct InstantiateMsg {
 pub enum ExecuteMsg {
     MakePool(MsgMakePoolRequest),
     TakePool(MsgTakePoolRequest),
+    CancelPool(MsgCancelPoolRequest),
     SingleAssetDeposit(MsgSingleAssetDepositRequest),
     MakeMultiAssetDeposit(MsgMakeMultiAssetDepositRequest),
     TakeMultiAssetDeposit(MsgTakeMultiAssetDepositRequest),
@@ -86,6 +87,14 @@ pub struct MsgMakePoolResponse {
 pub struct MsgTakePoolRequest {
     pub counter_creator: String,
     pub creator: String,
+    pub pool_id: String,
+    pub timeout_height: u64,
+    pub timeout_timestamp: u64
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct MsgCancelPoolRequest {
     pub pool_id: String,
     pub timeout_height: u64,
     pub timeout_timestamp: u64

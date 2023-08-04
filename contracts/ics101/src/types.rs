@@ -51,6 +51,8 @@ pub enum InterchainMessageType {
     LeftSwap = 7,
     #[serde(rename = "TYPE_RIGHT_SWAP")]
     RightSwap = 8,
+    #[serde(rename = "TYPE_CANCEL_POOL")]
+    CancelPool = 9
 }
 
 pub const MULTI_DEPOSIT_PENDING_LIMIT: u64 = 10;
