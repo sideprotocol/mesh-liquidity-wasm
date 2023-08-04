@@ -239,7 +239,7 @@ pub(crate) fn on_received_cancel_pool(
         ))));
     }
     interchain_pool.status = Cancelled;
-    POOLS.save(deps.storage, &msg.pool_id, &interchain_pool)?;
+    POOLS.remove(deps.storage, &msg.pool_id);
 
     let res = IbcReceiveResponse::new()
         .set_ack(ack_success())
@@ -450,8 +450,7 @@ pub(crate) fn on_received_multi_withdraw(
     for pool_asset in out_assets {
         if token.balance.denom == pool_asset.denom {
             // Unlock tokens for this chain
-            let lp_token = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id.clone())?.unwrap();
-            sub_messages = send_tokens_cw20(msg.receiver.clone(), lp_token, pool_asset.amount.clone())?;
+            sub_messages = send_tokens_coin(&Addr::unchecked(msg.counterparty_receiver.clone()), pool_asset.clone())?;
         }
         interchain_pool.subtract_asset(pool_asset.clone()).map_err(|err| StdError::generic_err(format!("Failed to subtract asset: {}", err)))?;
     }
@@ -589,7 +588,15 @@ pub(crate) fn on_packet_success(
                 ))));
             }
             interchain_pool.status = Cancelled;
-            POOLS.save(deps.storage, &msg.pool_id, &interchain_pool)?;
+
+            // Refund tokens
+            let token = interchain_pool.find_asset_by_side(PoolSide::SOURCE)
+            .map_err(|err| StdError::generic_err(format!("Failed to find asset: {}", err)))?;
+
+            send_tokens_coin(&Addr::unchecked(interchain_pool.source_creator.clone()), token.balance)?;
+
+            POOL_TOKENS_LIST.remove(deps.storage, &msg.pool_id.clone());
+            POOLS.remove(deps.storage, &msg.pool_id);
 
             Ok(IbcBasicResponse::new().add_attributes(attributes))
         }
@@ -723,8 +730,7 @@ pub(crate) fn on_packet_success(
             for pool_asset in out_assets {
                 if token.balance.denom == pool_asset.denom {
                     // Unlock tokens for this chain
-                    let lp_token = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id.clone())?.unwrap();
-                    sub_messages = send_tokens_cw20(msg.receiver.clone(), lp_token, pool_asset.amount.clone())?;
+                    sub_messages = send_tokens_coin(&Addr::unchecked(msg.receiver.clone()), pool_asset.clone())?;
                 }
                 interchain_pool.subtract_asset(pool_asset.clone()).map_err(|err| StdError::generic_err(format!("Failed to subtract asset: {}", err)))?;
             }
@@ -858,6 +864,10 @@ pub(crate) fn refund_packet_token(
             let sub_messages = send_tokens_coin(&Addr::unchecked(msg.creator), tokens[1].clone())?;
 
             Ok(sub_messages)
+        }
+        InterchainMessageType::CancelPool => {
+            // do nothing
+            Ok(vec![])
         }
         InterchainMessageType::SingleAssetDeposit => {
             let msg: MsgSingleAssetDepositRequest = from_binary(&packet.data.clone())?;

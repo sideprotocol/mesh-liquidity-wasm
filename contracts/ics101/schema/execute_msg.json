@@ -29,6 +29,18 @@
     {
       "type": "object",
       "required": [
+        "CancelPool"
+      ],
+      "properties": {
+        "CancelPool": {
+          "$ref": "#/definitions/MsgCancelPoolRequest"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
         "SingleAssetDeposit"
       ],
       "properties": {
@@ -115,6 +127,29 @@
         },
         "sender": {
           "type": "string"
+        }
+      }
+    },
+    "MsgCancelPoolRequest": {
+      "type": "object",
+      "required": [
+        "poolId",
+        "timeoutHeight",
+        "timeoutTimestamp"
+      ],
+      "properties": {
+        "poolId": {
+          "type": "string"
+        },
+        "timeoutHeight": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "timeoutTimestamp": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
         }
       }
     },
