@@ -409,17 +409,25 @@ pub(crate) fn on_received_multi_withdraw(
         ))));
     }
 
+    let out_assets = state_change.out_tokens.unwrap();
+    let pool_tokens = state_change.pool_tokens.unwrap();
+    let token = interchain_pool.find_asset_by_side(PoolSide::SOURCE)
+    .map_err(|err| StdError::generic_err(format!("Failed to find asset: {}", err)))?;
+    let mut sub_messages = vec![];
+
     // Update pool status by subtracting the supplied pool coin and output token
-    for pool_asset in state_change.out_tokens.as_ref().unwrap() {
+    for pool_asset in out_assets {
+        if token.balance.denom == pool_asset.denom {
+            // Unlock tokens for this chain
+            let lp_token = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id.clone())?.unwrap();
+            sub_messages = send_tokens_cw20(msg.receiver.clone(), lp_token, pool_asset.amount.clone())?;
+        }
         interchain_pool.subtract_asset(pool_asset.clone()).map_err(|err| StdError::generic_err(format!("Failed to subtract asset: {}", err)))?;
     }
 
-    for pool_token in state_change.pool_tokens.unwrap() {
+    for pool_token in pool_tokens {
         interchain_pool.subtract_supply(pool_token).map_err(|err| StdError::generic_err(format!("Failed to subtract supply: {}", err)))?;
     }
-
-    // Unlock tokens for this chain
-    let sub_messages = send_tokens_coin(&Addr::unchecked(msg.counterparty_receiver), state_change.out_tokens.unwrap()[1].clone())?;
 
 	// Save pool
 	POOLS.save(deps.storage, &msg.pool_id.clone(), &interchain_pool)?;
@@ -658,17 +666,26 @@ pub(crate) fn on_packet_success(
                 ))));
             }
 
+            let out_assets = state_change.out_tokens.unwrap();
+            let pool_tokens = state_change.pool_tokens.unwrap();
+            let token = interchain_pool.find_asset_by_side(PoolSide::SOURCE)
+            .map_err(|err| StdError::generic_err(format!("Failed to find asset: {}", err)))?;
+            let mut sub_messages = vec![];
+
             // Update pool status by subtracting the supplied pool coin and output token
-            for pool_asset in state_change.out_tokens.as_ref().unwrap() {
+            for pool_asset in out_assets {
+                if token.balance.denom == pool_asset.denom {
+                    // Unlock tokens for this chain
+                    let lp_token = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id.clone())?.unwrap();
+                    sub_messages = send_tokens_cw20(msg.receiver.clone(), lp_token, pool_asset.amount.clone())?;
+                }
                 interchain_pool.subtract_asset(pool_asset.clone()).map_err(|err| StdError::generic_err(format!("Failed to subtract asset: {}", err)))?;
             }
 
-            for pool_token in state_change.pool_tokens.unwrap() {
+            for pool_token in pool_tokens {
                 interchain_pool.subtract_supply(pool_token).map_err(|err| StdError::generic_err(format!("Failed to subtract supply: {}", err)))?;
             }
 
-            // Unlock tokens for this chain
-            let mut sub_messages = send_tokens_coin(&Addr::unchecked(msg.receiver), state_change.out_tokens.unwrap()[0].clone())?;
             // Burn tokens (cw20) to the sender
             if let Some(lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id.clone())? {
                 sub_messages.push(burn_tokens_cw20(lp_token, msg.pool_token.amount)?);
@@ -676,7 +693,7 @@ pub(crate) fn on_packet_success(
                 // throw error token not found, initialization is done in make_pool and
                 // take_pool
                 return Err(ContractError::Std(StdError::generic_err(format!(
-                    "LP Token is not initialized"
+                    "LP Token is not initialized: Error"
                 ))));
             }
             // Save pool

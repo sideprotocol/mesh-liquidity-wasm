@@ -25,6 +25,8 @@ pub enum PoolStatus {
     Initialized = 0,
     #[serde(rename = "ACTIVE")]
     Active = 1,
+    #[serde(rename = "CANCELLED")]
+    Cancelled = 2,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
