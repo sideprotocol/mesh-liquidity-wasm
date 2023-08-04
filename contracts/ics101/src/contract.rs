@@ -1016,7 +1016,7 @@ fn query_interchain_pool_list(
     limit: Option<u32>,
 ) -> StdResult<InterchainListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.map(|s| Bound::exclusive(s.into_bytes()));
+    let start = start_after.map(|denom| Bound::ExclusiveRaw(denom.into_bytes()));
     let list = POOLS
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
@@ -1051,7 +1051,7 @@ fn query_orders(
     limit: Option<u32>,
 ) -> StdResult<OrderListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.map(|s| Bound::exclusive(s.into_bytes()));
+    let start = start_after.map(|denom| Bound::ExclusiveRaw(denom.into_bytes()));
     let list = MULTI_ASSET_DEPOSIT_ORDERS
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
@@ -1085,7 +1085,7 @@ fn query_pool_list(
     limit: Option<u32>,
 ) -> StdResult<PoolListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.map(|s| Bound::exclusive(s.into_bytes()));
+    let start = start_after.map(|denom| Bound::ExclusiveRaw(denom.into_bytes()));
     let list = POOL_TOKENS_LIST
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)

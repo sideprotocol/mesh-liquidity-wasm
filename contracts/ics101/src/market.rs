@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::{math::{calc_minted_shares_given_single_asset_in, solve_constant_function_invariant}, types::WeightedAsset, utils::{MULTIPLIER, decimal2decimal256, adjust_precision} };
 
 pub const FEE_PRECISION: u16 = 10000;
+pub const FIXED_PRECISION: u8 = 12;
 /// Number of LP tokens to mint when liquidity is provided for the first time to the pool.
 /// This does not include the token decimals.
 const INIT_LP_TOKENS: u128 = 100;
@@ -301,7 +302,8 @@ impl InterchainMarketMaker {
 
         let token_precision = asset_out.decimal as u8;
 
-        let pool_post_swap_in_balance = asset_in.balance.amount + amount_in.amount;
+        let fees = self.minus_fees(amount_in.amount).to_uint_floor();
+        let pool_post_swap_in_balance = asset_in.balance.amount + amount_in.amount - fees;
 
         //         /**********************************************************************************************
         //         // outGivenIn                                                                                //
@@ -312,14 +314,22 @@ impl InterchainMarketMaker {
         //         // wI = weightIn               \      \       ( bI + aI )         /              /           //
         //         // wO = weightOut                                                                            //
         //         **********************************************************************************************/
-        // deduct swapfee on the tokensIn
         // delta balanceOut is positive(tokens inside the pool decreases)
-        
+
+        let token_balance_fixed_before = 
+            adjust_precision(asset_in.balance.amount, asset_in.decimal.try_into().unwrap(), FIXED_PRECISION)?;
+        let token_balance_fixed_after = 
+            adjust_precision(pool_post_swap_in_balance, asset_in.decimal.try_into().unwrap(), FIXED_PRECISION)?;
+        let token_balance_unknown_before = 
+            adjust_precision(asset_out.balance.amount, asset_out.decimal.try_into().unwrap(), FIXED_PRECISION)?;
+
+        // Adjust precision to 12 decimals before passing
+        // After getting result make it to original
         let return_amount = solve_constant_function_invariant(
-            Decimal::from_str(&asset_in.balance.amount.to_string())?,
-            Decimal::from_str(&pool_post_swap_in_balance.to_string())?,
+            Decimal::from_str(&token_balance_fixed_before.to_string())?,
+            Decimal::from_str(&token_balance_fixed_after.to_string())?,
             Decimal::from_ratio(asset_in.weight, Uint128::from(100u64)),
-            Decimal::from_str(&asset_out.balance.amount.to_string())?,
+            Decimal::from_str(&token_balance_unknown_before.to_string())?,
             Decimal::from_ratio(asset_out.weight, Uint128::from(100u64)),
         )?;
     
@@ -371,11 +381,11 @@ impl InterchainMarketMaker {
         Decimal::from_ratio(asset_in.weight, Uint128::from(100u64)),
         )?; 
         // adjust return amount to correct precision
-        // let real_offer = adjust_precision(
-        // real_offer.atomics(),
-        // real_offer.decimal_places() as u8,
-        // token_precision,
-        // )?;
+        let real_offer = adjust_precision(
+        real_offer.atomics(),
+        real_offer.decimal_places() as u8,
+        token_precision,
+        )?;
         let real_offer = real_offer.to_uint_floor();
        
         let offer_amount_including_fee = (Uint256::from(real_offer) * inv_one_minus_commission).try_into()?;

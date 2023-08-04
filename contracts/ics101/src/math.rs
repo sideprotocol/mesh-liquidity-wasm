@@ -101,3 +101,34 @@ fn fee_ratio(normalized_weight: Decimal, swap_fee: Decimal) -> Decimal {
 // pub fn get_normalized_weight(weight: Uint128, total_weight: Uint128) -> Decimal {
 //     Decimal::from_ratio(weight, total_weight)
 // }
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use super::*;
+    #[test]
+    fn test_solve_constant_function_invariant() {
+        // Define some example inputs for the function
+        let token_balance_fixed_before = Decimal::from_str("500000000000").unwrap();
+        let token_balance_fixed_after = Decimal::from_str( "530000000000").unwrap();
+        let token_weight_fixed = Decimal::from_str("0.5").unwrap();
+        let token_balance_unknown_before = Decimal::from_str("500000000000").unwrap();
+        let token_weight_unknown = Decimal::from_str("0.5").unwrap();
+
+        // Call the function with the example inputs
+        let result = solve_constant_function_invariant(
+            token_balance_fixed_before,
+            token_balance_fixed_after,
+            token_weight_fixed,
+            token_balance_unknown_before,
+            token_weight_unknown,
+        );
+
+        // Assert the result is as expected
+        assert!(result.is_ok());
+        let amount_y = result.unwrap();
+        let res = adjust_precision(amount_y.to_uint_floor(), 12, 6).unwrap();
+        assert_eq!(res, Uint128::from(28301u128));
+    }
+}
