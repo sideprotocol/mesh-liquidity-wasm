@@ -576,7 +576,8 @@ fn make_multi_asset_deposit(
     let mut config = CONFIG.load(deps.storage)?;
 
     let mut multi_asset_order = MultiAssetDepositOrder {
-        order_id: "".to_string(),
+        id: "".to_string(),
+        chain_id: msg.chain_id.clone(),
         pool_id: msg.pool_id.clone(),
         source_maker: msg.deposits[0].sender.clone(),
         destination_taker: msg.deposits[1].sender.clone(),
@@ -589,18 +590,18 @@ fn make_multi_asset_deposit(
     // load orders
     // check for order, if exist throw error.
 
-    let ac_key = msg.deposits[0].sender.clone() + "-" + &msg.pool_id.clone();
+    let ac_key = msg.deposits[0].sender.clone() + "-" + &msg.pool_id.clone() + "-" + &msg.deposits[1].sender.clone();
     // let multi_asset_order_temp = ACTIVE_ORDERS.may_load(deps.storage, ac_key.clone())?;
 
     // if let Some(_order) = multi_asset_order_temp {
     //     return Err(ContractError::ErrPreviousOrderNotCompleted);
     // }
     config.counter = config.counter + 1;
-    multi_asset_order.order_id = get_order_id(msg.deposits[0].sender.clone(), config.counter);
+    multi_asset_order.id = get_order_id(msg.deposits[0].sender.clone(), config.counter);
     //}
 
     // save order in source chain
-    let key = msg.pool_id.clone() + "-" + &multi_asset_order.order_id.clone().to_string();
+    let key = msg.pool_id.clone() + "-" + &multi_asset_order.id.clone().to_string();
     MULTI_ASSET_DEPOSIT_ORDERS.save(deps.storage, key, &multi_asset_order)?;
     ACTIVE_ORDERS.save(deps.storage, ac_key, &multi_asset_order)?;
     CONFIG.save(deps.storage, &config)?;
@@ -611,7 +612,7 @@ fn make_multi_asset_deposit(
         out_tokens: None,
         pool_tokens: None,
         pool_id: None,
-        multi_deposit_order_id: Some(multi_asset_order.order_id),
+        multi_deposit_order_id: Some(multi_asset_order.id),
         source_chain_id: None,
         shares: None
     })?;
@@ -962,8 +963,8 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             to_binary(&query_left_swap(deps, pool_id, token_in, token_out)?),
         QueryMsg::RightSwap { pool_id, token_in, token_out } =>
         to_binary(&query_right_swap(deps, pool_id, token_in, token_out)?),
-        QueryMsg::QueryActiveOrders { source_maker, pool_id } =>
-        to_binary(&query_active_orders(deps, pool_id, source_maker)?),
+        QueryMsg::QueryActiveOrders { source_maker, destination_taker ,pool_id } =>
+        to_binary(&query_active_orders(deps, pool_id, source_maker, destination_taker)?),
         QueryMsg::Rate { pool_id, amount } => to_binary(&query_rate(deps, pool_id, amount)?),
     }
 }
@@ -1168,9 +1169,10 @@ fn query_right_swap(
 fn query_active_orders(
     deps: Deps,
     pool_id: String,
-    source_maker: String
+    source_maker: String,
+    destination_taker: String
 ) -> StdResult<MultiAssetDepositOrder> {
-    let key = source_maker + "-" + &pool_id;
+    let key = source_maker + "-" + &pool_id + "-" + &destination_taker;
     let multi_asset_order_temp = ACTIVE_ORDERS.may_load(deps.storage, key)?;
     let multi_asset_order;
     if let Some(order) = multi_asset_order_temp {

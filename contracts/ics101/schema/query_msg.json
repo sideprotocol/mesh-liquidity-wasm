@@ -230,10 +230,14 @@
         "QueryActiveOrders": {
           "type": "object",
           "required": [
+            "destination_taker",
             "pool_id",
             "source_maker"
           ],
           "properties": {
+            "destination_taker": {
+              "type": "string"
+            },
             "pool_id": {
               "type": "string"
             },

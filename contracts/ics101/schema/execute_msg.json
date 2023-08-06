@@ -156,12 +156,16 @@
     "MsgMakeMultiAssetDepositRequest": {
       "type": "object",
       "required": [
+        "chainId",
         "deposits",
         "poolId",
         "timeoutHeight",
         "timeoutTimestamp"
       ],
       "properties": {
+        "chainId": {
+          "type": "string"
+        },
         "deposits": {
           "type": "array",
           "items": {

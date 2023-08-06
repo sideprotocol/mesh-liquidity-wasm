@@ -140,6 +140,7 @@ pub struct DepositAsset {
 pub struct MsgMakeMultiAssetDepositRequest {
     pub pool_id: String,
     pub deposits: Vec<DepositAsset>,
+    pub chain_id: String,
     pub timeout_height: u64,
     pub timeout_timestamp: u64
 }
@@ -315,6 +316,7 @@ pub enum QueryMsg {
     },
     QueryActiveOrders {
         source_maker: String,
+        destination_taker: String,
         pool_id: String,
     },
     Rate {

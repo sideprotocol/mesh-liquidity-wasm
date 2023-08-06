@@ -318,7 +318,8 @@ pub(crate) fn on_received_make_multi_deposit(
     config.counter = config.counter + 1;
 
     let multi_asset_order = MultiAssetDepositOrder {
-        order_id: state_change.multi_deposit_order_id.unwrap(),
+        id: state_change.multi_deposit_order_id.unwrap(),
+        chain_id: msg.chain_id.clone(),
         pool_id: msg.pool_id.clone(),
         source_maker: msg.deposits[0].sender.clone(),
         destination_taker: msg.deposits[1].sender.clone(),
@@ -326,7 +327,7 @@ pub(crate) fn on_received_make_multi_deposit(
         status: OrderStatus::Pending,
         created_at: env.block.height
     };
-    let key = msg.pool_id.clone() + "-" + &multi_asset_order.order_id;
+    let key = msg.pool_id.clone() + "-" + &multi_asset_order.id;
 
     MULTI_ASSET_DEPOSIT_ORDERS.save(deps.storage, key, &multi_asset_order)?;
     let ac_key = msg.deposits[0].sender.clone() + "-" + &msg.pool_id.clone();
@@ -369,7 +370,7 @@ pub(crate) fn on_received_take_multi_deposit(
     if let Some(order) = multi_asset_order_temp {
         multi_asset_order = order;
         multi_asset_order.status = OrderStatus::Complete;
-        let ac_key = multi_asset_order.source_maker.clone() + "-" + &msg.pool_id.clone();
+        let ac_key = multi_asset_order.source_maker.clone() + "-" + &msg.pool_id.clone() + "-" + &multi_asset_order.destination_taker.clone();
         ACTIVE_ORDERS.remove(deps.storage, ac_key);
     } else {
         return Err(ContractError::ErrOrderNotFound);
@@ -662,7 +663,7 @@ pub(crate) fn on_packet_success(
             if let Some(order) = multi_asset_order_temp {
                 multi_asset_order = order;
                 multi_asset_order.status = OrderStatus::Complete;
-                let ac_key = multi_asset_order.source_maker.clone() + "-" + &msg.pool_id.clone();
+                let ac_key = multi_asset_order.source_maker.clone() + "-" + &msg.pool_id.clone() + "-" + &multi_asset_order.destination_taker.clone();
                 ACTIVE_ORDERS.remove(deps.storage, ac_key);
             } else {
                 return Err(ContractError::ErrOrderNotFound);
@@ -878,7 +879,7 @@ pub(crate) fn refund_packet_token(
         InterchainMessageType::MakeMultiDeposit => {
             let msg: MsgMakeMultiAssetDepositRequest = from_binary(&packet.data.clone())?;
             let sub_messages = send_tokens_coin(&Addr::unchecked(msg.deposits[0].clone().sender), msg.deposits.get(0).unwrap().clone().balance)?;
-            let ac_key = msg.deposits[0].sender.clone() + "-" + &msg.pool_id.clone();
+            let ac_key = msg.deposits[0].sender.clone() + "-" + &msg.pool_id.clone() + "-" + &msg.deposits[1].sender.clone();
 
             let state_change: StateChange = from_slice(&packet.state_change.unwrap())?;
             let key = msg.pool_id.clone() + &state_change.multi_deposit_order_id.unwrap();
@@ -898,12 +899,10 @@ pub(crate) fn refund_packet_token(
 
             let key = msg.pool_id.clone() + "-" + &msg.order_id.clone().to_string();
             let multi_asset_order_temp = MULTI_ASSET_DEPOSIT_ORDERS.may_load(deps.storage, key.clone())?;
-            let mut multi_asset_order;
+            let multi_asset_order;
             if let Some(order) = multi_asset_order_temp {
                 multi_asset_order = order;
-                multi_asset_order.status = OrderStatus::Complete;
-                let ac_key = multi_asset_order.pool_id.clone() + &multi_asset_order.order_id.clone().to_string();
-                ACTIVE_ORDERS.remove(deps.storage, ac_key);
+                // multi_asset_order.status = OrderStatus::Complete;
             } else {
                 return Err(ContractError::ErrOrderNotFound);
             }

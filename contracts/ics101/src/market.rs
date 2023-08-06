@@ -323,8 +323,6 @@ impl InterchainMarketMaker {
         let token_balance_unknown_before = 
             adjust_precision(asset_out.balance.amount, asset_out.decimal.try_into().unwrap(), FIXED_PRECISION)?;
 
-        // Adjust precision to 12 decimals before passing
-        // After getting result make it to original
         let return_amount = solve_constant_function_invariant(
             Decimal::from_str(&token_balance_fixed_before.to_string())?,
             Decimal::from_str(&token_balance_fixed_after.to_string())?,
@@ -335,8 +333,8 @@ impl InterchainMarketMaker {
     
         // adjust return amount to correct precision
         let return_amount = adjust_precision(
-            return_amount.atomics(),
-            return_amount.decimal_places() as u8,
+            return_amount.to_uint_floor(),
+            FIXED_PRECISION,
             token_precision,
         )?;
 
@@ -351,15 +349,14 @@ impl InterchainMarketMaker {
         let asset_out = self.pool.clone().find_asset_by_denom(&amount_out.denom)?;
 
         // get ask asset precisison
-        //let token_precision = asset_in.decimal as u8;
+        let token_precision = asset_in.decimal as u8;
         let one_minus_commission = Decimal256::one()
             - decimal2decimal256(Decimal::from_ratio(self.fee_rate, FEE_PRECISION))?;
         let inv_one_minus_commission = Decimal256::one() / one_minus_commission;
 
-        let ask_asset_amount = Decimal::from_str(&amount_out.amount.clone().to_string())?;
+        let ask_asset_amount = &amount_out.amount.clone();
         // Ask pool balance after swap
-        let pool_post_swap_out_balance =
-        Decimal::from_str(&asset_out.balance.amount.to_string())? - ask_asset_amount;
+        let pool_post_swap_out_balance = asset_out.balance.amount - ask_asset_amount;
 
         //         /**********************************************************************************************
         //         // inGivenOut                                                                                //
@@ -370,23 +367,28 @@ impl InterchainMarketMaker {
         //         // wI = weightIn               \  \       ( bO - aO )         /                   /          //
         //         // wO = weightOut                                                                            //
         //         **********************************************************************************************/
-        // deduct swapfee on the tokensIn
         // delta balanceOut is positive(tokens inside the pool decreases)
 
+        let token_balance_fixed_before = 
+            adjust_precision(asset_out.balance.amount, asset_out.decimal.try_into().unwrap(), FIXED_PRECISION)?;
+        let token_balance_fixed_after = 
+            adjust_precision(pool_post_swap_out_balance, asset_out.decimal.try_into().unwrap(), FIXED_PRECISION)?;
+        let token_balance_unknown_before = 
+            adjust_precision(asset_in.balance.amount, asset_in.decimal.try_into().unwrap(), FIXED_PRECISION)?;
+
         let real_offer = solve_constant_function_invariant(
-        Decimal::from_str(&asset_out.balance.amount.to_string())?,
-        pool_post_swap_out_balance,
+        Decimal::from_str(&token_balance_fixed_before.to_string())?,
+        Decimal::from_str(&token_balance_fixed_after.to_string())?,
         Decimal::from_ratio(asset_out.weight, Uint128::from(100u64)),
-        Decimal::from_str(&asset_in.balance.amount.to_string())?,
+        Decimal::from_str(&token_balance_unknown_before.to_string())?,
         Decimal::from_ratio(asset_in.weight, Uint128::from(100u64)),
         )?; 
         // adjust return amount to correct precision
         let real_offer = adjust_precision(
-        real_offer.atomics(),
-        real_offer.decimal_places() as u8,
+        real_offer.to_uint_floor(),
+        FIXED_PRECISION,
         token_precision,
         )?;
-        let real_offer = real_offer.to_uint_floor();
        
         let offer_amount_including_fee = (Uint256::from(real_offer) * inv_one_minus_commission).try_into()?;
         let _total_fee = offer_amount_including_fee - real_offer;
