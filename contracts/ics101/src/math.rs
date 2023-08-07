@@ -125,6 +125,11 @@ mod tests {
             token_weight_unknown,
         );
 
+        // let amount_dec = Decimal::from_ratio(2000u128, Uint128::one());
+        // let fee_rate_dec = Decimal::from_ratio(25u128, Uint128::new(10000));
+        // let fees = amount_dec * fee_rate_dec;
+        // let amount_minus_fees = amount_dec - fees;
+        // assert_eq!(amount_minus_fees, fees);
         // Assert the result is as expected
         assert!(result.is_ok());
         let amount_y = result.unwrap();

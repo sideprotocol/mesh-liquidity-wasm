@@ -65,6 +65,18 @@
     {
       "type": "object",
       "required": [
+        "CancelMultiAssetDeposit"
+      ],
+      "properties": {
+        "CancelMultiAssetDeposit": {
+          "$ref": "#/definitions/MsgCancelMultiAssetDepositRequest"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
         "TakeMultiAssetDeposit"
       ],
       "properties": {
@@ -127,6 +139,37 @@
         },
         "sender": {
           "type": "string"
+        }
+      }
+    },
+    "MsgCancelMultiAssetDepositRequest": {
+      "type": "object",
+      "required": [
+        "orderId",
+        "poolId",
+        "sender",
+        "timeoutHeight",
+        "timeoutTimestamp"
+      ],
+      "properties": {
+        "orderId": {
+          "type": "string"
+        },
+        "poolId": {
+          "type": "string"
+        },
+        "sender": {
+          "type": "string"
+        },
+        "timeoutHeight": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "timeoutTimestamp": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
         }
       }
     },

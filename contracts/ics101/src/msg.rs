@@ -21,6 +21,7 @@ pub enum ExecuteMsg {
     CancelPool(MsgCancelPoolRequest),
     SingleAssetDeposit(MsgSingleAssetDepositRequest),
     MakeMultiAssetDeposit(MsgMakeMultiAssetDepositRequest),
+    CancelMultiAssetDeposit(MsgCancelMultiAssetDepositRequest),
     TakeMultiAssetDeposit(MsgTakeMultiAssetDepositRequest),
     MultiAssetWithdraw(MsgMultiAssetWithdrawRequest),
     Swap(MsgSwapRequest),
@@ -148,6 +149,16 @@ pub struct MsgMakeMultiAssetDepositRequest {
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct MsgTakeMultiAssetDepositRequest {
+    pub sender: String,
+    pub pool_id: String,
+    pub order_id: String,
+    pub timeout_height: u64,
+    pub timeout_timestamp: u64
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct MsgCancelMultiAssetDepositRequest {
     pub sender: String,
     pub pool_id: String,
     pub order_id: String,

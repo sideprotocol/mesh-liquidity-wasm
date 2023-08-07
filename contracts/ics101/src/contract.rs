@@ -21,7 +21,7 @@ use crate::market::{InterchainMarketMaker, PoolStatus, PoolSide, InterchainLiqui
 use crate::msg::{
     ExecuteMsg, InstantiateMsg,
     MsgMultiAssetWithdrawRequest, MsgSingleAssetDepositRequest,
-    MsgSwapRequest, SwapMsgType, MsgMakePoolRequest, MsgTakePoolRequest, MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, QueryMsg, QueryConfigResponse, InterchainPoolResponse, InterchainListResponse, OrderListResponse, PoolListResponse, TokenInstantiateMsg, Cw20HookMsg, MsgCancelPoolRequest,
+    MsgSwapRequest, SwapMsgType, MsgMakePoolRequest, MsgTakePoolRequest, MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, QueryMsg, QueryConfigResponse, InterchainPoolResponse, InterchainListResponse, OrderListResponse, PoolListResponse, TokenInstantiateMsg, Cw20HookMsg, MsgCancelPoolRequest, MsgCancelMultiAssetDepositRequest,
 };
 use crate::state::{POOLS, MULTI_ASSET_DEPOSIT_ORDERS, CONFIG, POOL_TOKENS_LIST, Config, TEMP, ACTIVE_ORDERS};
 use crate::types::{InterchainSwapPacketData, StateChange, InterchainMessageType, MultiAssetDepositOrder, OrderStatus};
@@ -114,6 +114,7 @@ pub fn execute(
         ExecuteMsg::CancelPool(msg) => cancel_pool(deps, env, info, msg),
         ExecuteMsg::SingleAssetDeposit(msg) => single_asset_deposit(deps, env, info, msg),
         ExecuteMsg::MakeMultiAssetDeposit(msg) => make_multi_asset_deposit(deps, env, info, msg),
+        ExecuteMsg::CancelMultiAssetDeposit(msg) => cancel_multi_asset_deposit(deps, env, info, msg),
         ExecuteMsg::TakeMultiAssetDeposit(msg) => take_multi_asset_deposit(deps, env, info, msg),
         ExecuteMsg::MultiAssetWithdraw(msg) => multi_asset_withdraw(deps, env, info, msg),
         ExecuteMsg::Swap(msg) => swap(deps, env, info, msg),
@@ -635,6 +636,63 @@ fn make_multi_asset_deposit(
     let res = Response::default()
         .add_message(ibc_msg)
         .add_attribute("action", "make_multi_asset_deposit");
+    Ok(res)
+}
+
+fn cancel_multi_asset_deposit(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    msg: MsgCancelMultiAssetDepositRequest,
+) -> Result<Response, ContractError> {
+    // load pool throw error if not found
+    let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id)?;
+    let interchain_pool;
+    if let Some(pool) = interchain_pool_temp {
+        interchain_pool = pool
+    } else {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Pool doesn't exist {}", msg.pool_id
+        ))));
+    }
+    // get order
+    // load orders
+    let key = msg.pool_id.clone() + "-" + &msg.order_id.clone().to_string();
+    let multi_asset_order_temp = MULTI_ASSET_DEPOSIT_ORDERS.may_load(deps.storage, key)?;
+    let multi_asset_order;
+    if let Some(order) = multi_asset_order_temp {
+        multi_asset_order = order;
+    } else {
+        return Err(ContractError::ErrOrderNotFound);
+    }
+
+    if multi_asset_order.destination_taker != info.sender {
+        return Err(ContractError::InvalidSender);
+    }
+
+    if multi_asset_order.status != OrderStatus::Pending {
+        return Err(ContractError::ErrOrderAlreadyCompleted);
+    }
+
+    let packet_data = InterchainSwapPacketData {
+        r#type: InterchainMessageType::CancelMultiDeposit,
+        data: to_binary(&msg.clone())?,
+        state_change: None,
+    };
+
+    let ibc_msg = IbcMsg::SendPacket {
+        channel_id: interchain_pool.clone().counter_party_channel,
+        data: to_binary(&packet_data)?,
+        timeout: IbcTimeout::from(
+            env.block
+                .time
+                .plus_seconds(DEFAULT_TIMEOUT_TIMESTAMP_OFFSET),
+        ),
+    };
+
+    let res = Response::default()
+        .add_message(ibc_msg)
+        .add_attribute("action", "cancel_multi_asset_deposit");
     Ok(res)
 }
 

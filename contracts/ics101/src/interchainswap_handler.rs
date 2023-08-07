@@ -9,7 +9,7 @@ use crate::{
         get_pool_id_with_tokens, get_coins_from_deposits, mint_tokens_cw20, send_tokens_coin, send_tokens_cw20, burn_tokens_cw20,
     }, msg::{MsgMakePoolRequest, MsgTakePoolRequest, MsgSingleAssetDepositRequest,
      MsgMultiAssetWithdrawRequest, MsgSwapRequest,
-    MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, MsgCancelPoolRequest}
+    MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, MsgCancelPoolRequest, MsgCancelMultiAssetDepositRequest}
     ,market::{InterchainLiquidityPool, PoolStatus::{Initialized, Active, Cancelled}, InterchainMarketMaker, PoolSide},
 };
 use cosmwasm_std::{
@@ -78,6 +78,11 @@ pub(crate) fn do_ibc_packet_receive(
             let msg: MsgTakeMultiAssetDepositRequest = from_slice(&packet_data.data.clone())?;
             let state_change_data: StateChange = from_slice(&packet_data.state_change.unwrap())?;
             on_received_take_multi_deposit(deps, env, packet, msg, state_change_data)
+        }
+        InterchainMessageType::CancelMultiDeposit => {
+            let msg: MsgCancelMultiAssetDepositRequest = from_slice(&packet_data.data.clone())?;
+            let state_change_data: StateChange = from_slice(&packet_data.state_change.unwrap())?;
+            on_received_cancel_multi_deposit(deps, env, packet, msg, state_change_data)
         }
         InterchainMessageType::MultiWithdraw => {
             let msg: MsgMultiAssetWithdrawRequest = from_slice(&packet_data.data.clone())?;
@@ -330,7 +335,7 @@ pub(crate) fn on_received_make_multi_deposit(
     let key = msg.pool_id.clone() + "-" + &multi_asset_order.id;
 
     MULTI_ASSET_DEPOSIT_ORDERS.save(deps.storage, key, &multi_asset_order)?;
-    let ac_key = msg.deposits[0].sender.clone() + "-" + &msg.pool_id.clone();
+    let ac_key = msg.deposits[0].sender.clone() + "-" + &msg.pool_id.clone() + "-" + &msg.deposits[1].sender.clone();
     ACTIVE_ORDERS.save(deps.storage, ac_key, &multi_asset_order)?;
     CONFIG.save(deps.storage, &config)?;
 
@@ -419,6 +424,48 @@ pub(crate) fn on_received_take_multi_deposit(
     .add_attribute("action", "receive")
     .add_attribute("success", "true")
     .add_attribute("sucess", "take_multi_asset_deposit");
+
+    Ok(res)
+}
+
+pub(crate) fn on_received_cancel_multi_deposit(
+    deps: DepsMut,
+    _env: Env,
+    _packet: &IbcPacket,
+    msg: MsgCancelMultiAssetDepositRequest,
+    _state_change: StateChange
+) -> Result<IbcReceiveResponse, ContractError> {
+	// load pool throw error if found
+    let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id.clone())?;
+    if let Some(_pool) = interchain_pool_temp {
+    } else {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Pool not found"
+        ))));
+    }
+
+    // find order
+    // get order
+    // load orders
+    let key = msg.pool_id.clone() + "-" + &msg.order_id.clone().to_string();
+    let multi_asset_order_temp = MULTI_ASSET_DEPOSIT_ORDERS.may_load(deps.storage, key.clone())?;
+    let mut multi_asset_order;
+    if let Some(order) = multi_asset_order_temp {
+        multi_asset_order = order;
+        multi_asset_order.status = OrderStatus::Cancelled;
+        let ac_key = multi_asset_order.source_maker.clone() + "-" + &msg.pool_id.clone() + "-" + &multi_asset_order.destination_taker.clone();
+        ACTIVE_ORDERS.remove(deps.storage, ac_key);
+    } else {
+        return Err(ContractError::ErrOrderNotFound);
+    }
+
+    MULTI_ASSET_DEPOSIT_ORDERS.save(deps.storage, key, &multi_asset_order)?;
+
+    let res = IbcReceiveResponse::new()
+    .set_ack(ack_success())
+    .add_attribute("action", "receive")
+    .add_attribute("success", "true")
+    .add_attribute("sucess", "cancel_multi_asset_deposit");
 
     Ok(res)
 }
@@ -704,6 +751,47 @@ pub(crate) fn on_packet_success(
             POOLS.save(deps.storage, &msg.pool_id.clone(), &interchain_pool)?;
             Ok(IbcBasicResponse::new().add_attributes(attributes))
         }
+        InterchainMessageType::CancelMultiDeposit => {
+            let msg: MsgCancelMultiAssetDepositRequest = from_binary(&packet_data.data.clone())?;
+            // load pool throw error if found
+            let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id.clone())?;
+            let interchain_pool;
+            if let Some(pool) = interchain_pool_temp {
+                interchain_pool = pool;
+            } else {
+                return Err(ContractError::Std(StdError::generic_err(format!(
+                    "Pool not found"
+                ))));
+            }
+
+            // find order
+            // get order
+            // load orders
+            let key = msg.pool_id.clone() + "-" + &msg.order_id.clone().to_string();
+            let multi_asset_order_temp = MULTI_ASSET_DEPOSIT_ORDERS.may_load(deps.storage, key.clone())?;
+            let mut multi_asset_order;
+            if let Some(order) = multi_asset_order_temp {
+                multi_asset_order = order;
+                multi_asset_order.status = OrderStatus::Cancelled;
+                let ac_key = multi_asset_order.source_maker.clone() + "-" + &msg.pool_id.clone() + "-" + &multi_asset_order.destination_taker.clone();
+                ACTIVE_ORDERS.remove(deps.storage, ac_key);
+            } else {
+                return Err(ContractError::ErrOrderNotFound);
+            }
+
+            // Refund tokens
+            let token = interchain_pool.find_asset_by_side(PoolSide::SOURCE)
+            .map_err(|err| StdError::generic_err(format!("Failed to find asset: {}", err)))?;
+
+            for asset in multi_asset_order.deposits.clone() {
+                if asset.denom == token.balance.denom {
+                    send_tokens_coin(&Addr::unchecked(multi_asset_order.source_maker.clone()), asset)?;
+                }
+            }
+
+            MULTI_ASSET_DEPOSIT_ORDERS.save(deps.storage, key, &multi_asset_order)?;
+            Ok(IbcBasicResponse::new().add_attributes(attributes))
+        }
         InterchainMessageType::MultiWithdraw => {
             // Unlock tokens for user
             let msg: MsgMultiAssetWithdrawRequest = from_binary(&packet_data.data.clone())?;
@@ -910,6 +998,10 @@ pub(crate) fn refund_packet_token(
             let sub_messages = send_tokens_coin(&Addr::unchecked(msg.sender), multi_asset_order.deposits.get(1).unwrap().clone())?;
 
             Ok(sub_messages)
+        }
+        InterchainMessageType::CancelMultiDeposit => {
+            // do nothing
+            Ok(vec![])
         }
         InterchainMessageType::MultiWithdraw => {
             let msg: MsgMultiAssetWithdrawRequest = from_binary(&packet.data.clone())?;

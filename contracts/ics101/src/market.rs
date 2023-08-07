@@ -302,8 +302,7 @@ impl InterchainMarketMaker {
 
         let token_precision = asset_out.decimal as u8;
 
-        let fees = self.minus_fees(amount_in.amount).to_uint_floor();
-        let pool_post_swap_in_balance = asset_in.balance.amount + amount_in.amount - fees;
+        let pool_post_swap_in_balance = asset_in.balance.amount + self.minus_fees(amount_in.amount).to_uint_floor();
 
         //         /**********************************************************************************************
         //         // outGivenIn                                                                                //

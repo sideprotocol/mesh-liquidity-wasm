@@ -33,26 +33,28 @@ pub struct InterchainSwapPacketData {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub enum InterchainMessageType {
-    #[serde(rename = "TYPE_UNSPECIFIED")]
+    #[serde(rename = "UNSPECIFIED")]
     Unspecified = 0,
-    #[serde(rename = "TYPE_MAKE_POOL")]
+    #[serde(rename = "MAKE_POOL")]
     MakePool = 1,
-    #[serde(rename = "TYPE_TAKE_POOL")]
+    #[serde(rename = "TAKE_POOL")]
     TakePool = 2,
-    #[serde(rename = "TYPE_SINGLE_ASSET_DEPOSIT")]
-    SingleAssetDeposit = 3,
-    #[serde(rename = "TYPE_MAKE_MULTI_DEPOSIT")]
-    MakeMultiDeposit = 4,
-    #[serde(rename = "TYPE_TAKE_MULTI_DEPOSIT")]
-    TakeMultiDeposit = 5,
-    #[serde(rename = "TYPE_MULTI_WITHDRAW")]
-    MultiWithdraw = 6,
-    #[serde(rename = "TYPE_LEFT_SWAP")]
-    LeftSwap = 7,
-    #[serde(rename = "TYPE_RIGHT_SWAP")]
-    RightSwap = 8,
-    #[serde(rename = "TYPE_CANCEL_POOL")]
-    CancelPool = 9
+    #[serde(rename = "CANCEL_POOL")]
+    CancelPool = 3,
+    #[serde(rename = "SINGLE_ASSET_DEPOSIT")]
+    SingleAssetDeposit = 4,
+    #[serde(rename = "MAKE_MULTI_DEPOSIT")]
+    MakeMultiDeposit = 5,
+    #[serde(rename = "CANCEL_MULTI_DEPOSIT")]
+    CancelMultiDeposit = 6,
+    #[serde(rename = "TAKE_MULTI_DEPOSIT")]
+    TakeMultiDeposit = 7,
+    #[serde(rename = "MULTI_WITHDRAW")]
+    MultiWithdraw = 8,
+    #[serde(rename = "LEFT_SWAP")]
+    LeftSwap = 9,
+    #[serde(rename = "RIGHT_SWAP")]
+    RightSwap = 10,
 }
 
 pub const MULTI_DEPOSIT_PENDING_LIMIT: u64 = 10;
@@ -62,6 +64,7 @@ pub const MULTI_DEPOSIT_PENDING_LIMIT: u64 = 10;
 pub enum OrderStatus {
     Pending = 0,
     Complete = 1,
+    Cancelled = 2
 }
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "camelCase")]
