@@ -388,7 +388,8 @@ fn take_pool(
     let res = Response::default()
         .add_submessages(sub_msg)
         .add_message(ibc_msg)
-        .add_attribute("action", "make_pool");
+        .add_attribute("pool_id", msg.pool_id.clone())
+        .add_attribute("action", "take_pool");
     Ok(res)
 }
 
@@ -437,7 +438,8 @@ fn cancel_pool(
 
     let res = Response::default()
         .add_message(ibc_msg)
-        .add_attribute("action", "cancel_pool");
+        .add_attribute("pool_id", msg.pool_id.clone())
+        .add_attribute("action", "take_pool");
     Ok(res)
 }
 
@@ -523,6 +525,7 @@ pub fn single_asset_deposit(
 
     let res = Response::default()
         .add_message(ibc_msg)
+        .add_attribute("pool_id", msg.pool_id.clone())
         .add_attribute("action", "single_asset_deposit");
     Ok(res)
 }
@@ -643,6 +646,7 @@ fn make_multi_asset_deposit(
 
     let res = Response::default()
         .add_message(ibc_msg)
+        .add_attribute("pool_id", msg.pool_id.clone())
         .add_attribute("action", "make_multi_asset_deposit");
     Ok(res)
 }
@@ -700,6 +704,7 @@ fn cancel_multi_asset_deposit(
 
     let res = Response::default()
         .add_message(ibc_msg)
+        .add_attribute("pool_id", msg.pool_id.clone())
         .add_attribute("action", "cancel_multi_asset_deposit");
     Ok(res)
 }
@@ -793,6 +798,7 @@ fn take_multi_asset_deposit(
 
     let res = Response::default()
         .add_message(ibc_msg)
+        .add_attribute("pool_id", msg.pool_id.clone())
         .add_attribute("action", "take_multi_asset_deposit");
     Ok(res)
 }
@@ -898,6 +904,7 @@ fn multi_asset_withdraw(
     let res = Response::default()
         .add_submessages(sub_messages)
         .add_message(ibc_msg)
+        .add_attribute("pool_id", msg.pool_id.clone())
         .add_attribute("action", "multi_asset_withdraw");
     Ok(res)
 }
@@ -1004,6 +1011,7 @@ fn swap(
 
     let res = Response::default()
         .add_message(ibc_msg)
+        .add_attribute("pool_id", msg.pool_id.clone())
         .add_attribute("action", "swap");
     Ok(res)
 }
