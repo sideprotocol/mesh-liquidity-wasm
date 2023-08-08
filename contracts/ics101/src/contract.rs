@@ -256,11 +256,20 @@ fn make_pool(
         }];
     }
 
+    let state_change_data = to_binary(&StateChange {
+        in_tokens: None,
+        out_tokens: None,
+        pool_tokens: None,
+        pool_id: Some(pool_id.clone()),
+        multi_deposit_order_id: None,
+        source_chain_id: None,
+    })?;
+
     let pool_data = to_binary(&msg)?;
     let ibc_packet_data = InterchainSwapPacketData {
         r#type: InterchainMessageType::MakePool,
         data: pool_data.clone(),
-        state_change: None,
+        state_change: Some(state_change_data),
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -274,10 +283,11 @@ fn make_pool(
     };
 
     let res = Response::default()
+        .add_attribute("pool_id", pool_id.clone())
+        .add_attribute("action", "make_pool")
         .add_attribute("ics101-lp-instantiate", pool_id.clone())
         .add_submessages(sub_msg)
-        .add_message(ibc_msg)
-        .add_attribute("action", "make_pool");
+        .add_message(ibc_msg);
     Ok(res)
 }
 

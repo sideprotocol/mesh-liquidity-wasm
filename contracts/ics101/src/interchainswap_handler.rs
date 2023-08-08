@@ -159,11 +159,12 @@ pub(crate) fn on_received_make_pool(
     POOLS.save(deps.storage, &pool_id, &interchain_pool)?;
 
     let res = IbcReceiveResponse::new()
+        .add_attribute("pool_id", pool_id.clone())
+        .add_attribute("action", "make_pool_receive")
         .add_attribute("ics101-lp-instantiate", pool_id.clone())
         .set_ack(ack_success())
         .add_attribute("action", "receive")
-        .add_attribute("success", "true")
-        .add_attribute("sucess", "make_pool_receive");
+        .add_attribute("success", "true");
 
     Ok(res)
 }
@@ -223,10 +224,10 @@ pub(crate) fn on_received_take_pool(
 
     let res = IbcReceiveResponse::new()
         .set_ack(ack_success())
-        .add_submessages(sub_message)
-        .add_attribute("action", "receive")
-        .add_attribute("success", "true")
-        .add_attribute("sucess", "take_pool_receive");
+        .add_submessages(sub_message).to_owned()
+        .add_attribute("pool_id", msg.pool_id)
+        .add_attribute("action", "take_pool_receive")
+        .add_attribute("success", "true");
 
     Ok(res)
 }
@@ -252,9 +253,9 @@ pub(crate) fn on_received_cancel_pool(
 
     let res = IbcReceiveResponse::new()
         .set_ack(ack_success())
-        .add_attribute("action", "receive")
-        .add_attribute("success", "true")
-        .add_attribute("sucess", "cancel_pool_receive");
+        .add_attribute("pool_id", msg.pool_id)
+        .add_attribute("action", "cancel_pool_receive")
+        .add_attribute("success", "true");
 
     Ok(res)
 }
@@ -299,9 +300,9 @@ pub(crate) fn on_received_single_deposit(
 
     let res = IbcReceiveResponse::new()
     .set_ack(ack_success())
-    .add_attribute("action", "receive")
-    .add_attribute("success", "true")
-    .add_attribute("sucess", "single_asset_deposit");
+    .add_attribute("pool_id", msg.pool_id)
+    .add_attribute("action", "single_asset_deposit")
+    .add_attribute("success", "true");
 
     Ok(res)
 }
@@ -345,9 +346,9 @@ pub(crate) fn on_received_make_multi_deposit(
 
     let res = IbcReceiveResponse::new()
     .set_ack(ack_success())
-    .add_attribute("action", "receive")
-    .add_attribute("success", "true")
-    .add_attribute("sucess", "make_multi_asset_deposit");
+    .add_attribute("pool_id", msg.pool_id)
+    .add_attribute("action", "make_multi_asset_deposit")
+    .add_attribute("success", "true");
 
     Ok(res)
 }
@@ -417,9 +418,9 @@ pub(crate) fn on_received_take_multi_deposit(
     let res = IbcReceiveResponse::new()
     .set_ack(ack_success())
     .add_submessages(sub_message)
-    .add_attribute("action", "receive")
-    .add_attribute("success", "true")
-    .add_attribute("sucess", "take_multi_asset_deposit");
+    .add_attribute("pool_id", msg.pool_id)
+    .add_attribute("action", "take_multi_asset_deposit")
+    .add_attribute("success", "true");
 
     Ok(res)
 }
@@ -459,9 +460,9 @@ pub(crate) fn on_received_cancel_multi_deposit(
 
     let res = IbcReceiveResponse::new()
     .set_ack(ack_success())
-    .add_attribute("action", "receive")
-    .add_attribute("success", "true")
-    .add_attribute("sucess", "cancel_multi_asset_deposit");
+    .add_attribute("pool_id", msg.pool_id)
+    .add_attribute("action", "cancel_multi_asset_deposit")
+    .add_attribute("success", "true");
 
     Ok(res)
 }
@@ -509,9 +510,9 @@ pub(crate) fn on_received_multi_withdraw(
     let res = IbcReceiveResponse::new()
     .set_ack(ack_success())
     .add_submessages(sub_messages)
-    .add_attribute("action", "receive")
-    .add_attribute("success", "true")
-    .add_attribute("sucess", "multi_asset_withdraw");
+    .add_attribute("pool_id", msg.pool_id)
+    .add_attribute("action", "multi_asset_withdraw")
+    .add_attribute("success", "true");
 
     Ok(res)
 }
@@ -557,10 +558,9 @@ pub(crate) fn on_received_swap(
     let res = IbcReceiveResponse::new()
     .set_ack(ack_success())
     .add_submessages(sub_messages)
-    .add_attribute("action", "receive")
-    .add_attribute("success", "true")
-    .add_attribute("sucess", "swap_asset");
-
+    .add_attribute("pool_id", msg.pool_id)
+    .add_attribute("action", "swap_asset")
+    .add_attribute("success", "true");
     Ok(res)
 }
 
@@ -572,17 +572,21 @@ pub(crate) fn on_packet_success(
 ) -> Result<IbcBasicResponse, ContractError> {
     let packet_data: InterchainSwapPacketData = from_binary(&packet.data)?;
     // similar event messages like ibctransfer module
-    let attributes = vec![attr("action", "acknowledge"), attr("success", "true")];
+    let attributes = vec![attr("success", "true")];
 
     match packet_data.r#type {
         // This is the step 4 (Acknowledge Make Packet) of the atomic swap: https://github.com/liangping/ibc/blob/atomic-swap/spec/app/ics-100-atomic-swap/ibcswap.png
         // This logic is executed when Taker chain acknowledge the make swap packet.
         InterchainMessageType::Unspecified => Ok(IbcBasicResponse::new()),
         InterchainMessageType::MakePool => {
+            let state_change: StateChange = from_slice(&packet_data.state_change.unwrap())?;
             // pool is already saved when makePool is called.
             // mint lp tokens 
             // tokens will be minted with takePool call because then only all the assets are deposited
-            Ok(IbcBasicResponse::new().add_attributes(attributes))
+            Ok(IbcBasicResponse::new()
+            .add_attribute("pool_id", state_change.pool_id.unwrap())
+            .add_attribute("action", "make_pool_acknowledged")
+            .add_attributes(attributes))
         }
         InterchainMessageType::TakePool => {
             let msg: MsgTakePoolRequest = from_binary(&packet_data.data.clone())?;
@@ -623,7 +627,10 @@ pub(crate) fn on_packet_success(
             interchain_pool.status = Active;
             POOLS.save(deps.storage, &msg.pool_id, &interchain_pool)?;
 
-            Ok(IbcBasicResponse::new().add_attributes(attributes))
+            Ok(IbcBasicResponse::new()
+            .add_attribute("pool_id", msg.pool_id)
+            .add_attribute("action", "take_pool_acknowledged")
+            .add_attributes(attributes))
         }
         InterchainMessageType::CancelPool => {
             let msg: MsgCancelPoolRequest = from_binary(&packet_data.data.clone())?;
@@ -648,7 +655,10 @@ pub(crate) fn on_packet_success(
             POOL_TOKENS_LIST.remove(deps.storage, &msg.pool_id.clone());
             POOLS.remove(deps.storage, &msg.pool_id);
 
-            Ok(IbcBasicResponse::new().add_attributes(attributes))
+            Ok(IbcBasicResponse::new()
+            .add_attribute("pool_id", msg.pool_id)
+            .add_attribute("action", "cancel_pool_acknowledged")
+            .add_attributes(attributes))
         }
         InterchainMessageType::SingleAssetDeposit => {
             let msg: MsgSingleAssetDepositRequest = from_binary(&packet_data.data.clone())?;
@@ -683,10 +693,17 @@ pub(crate) fn on_packet_success(
 
             POOLS.save(deps.storage, &msg.pool_id, &interchain_pool)?;
 
-            Ok(IbcBasicResponse::new().add_attributes(attributes).add_submessages(sub_message))
+            Ok(IbcBasicResponse::new()
+            .add_attribute("pool_id", msg.pool_id)
+            .add_attribute("action", "single_asset_deposit_acknowledged")
+            .add_attributes(attributes).add_submessages(sub_message))
         }
         InterchainMessageType::MakeMultiDeposit => {
-            Ok(IbcBasicResponse::new().add_attributes(attributes))
+            let msg: MsgMakeMultiAssetDepositRequest = from_binary(&packet_data.data.clone())?;
+            Ok(IbcBasicResponse::new()
+            .add_attribute("pool_id", msg.pool_id)
+            .add_attribute("action", "make_multi_deposit_acknowledged")
+            .add_attributes(attributes))
         }
         InterchainMessageType::TakeMultiDeposit => {
             let msg: MsgTakeMultiAssetDepositRequest = from_binary(&packet_data.data.clone())?;
@@ -744,7 +761,10 @@ pub(crate) fn on_packet_success(
 
             MULTI_ASSET_DEPOSIT_ORDERS.save(deps.storage, key, &multi_asset_order)?;
             POOLS.save(deps.storage, &msg.pool_id.clone(), &interchain_pool)?;
-            Ok(IbcBasicResponse::new().add_attributes(attributes))
+            Ok(IbcBasicResponse::new()
+            .add_attribute("pool_id", msg.pool_id)
+            .add_attribute("action", "take_multi_deposit_acknowledged")
+            .add_attributes(attributes))
         }
         InterchainMessageType::CancelMultiDeposit => {
             let msg: MsgCancelMultiAssetDepositRequest = from_binary(&packet_data.data.clone())?;
@@ -785,7 +805,10 @@ pub(crate) fn on_packet_success(
             }
 
             MULTI_ASSET_DEPOSIT_ORDERS.save(deps.storage, key, &multi_asset_order)?;
-            Ok(IbcBasicResponse::new().add_attributes(attributes))
+            Ok(IbcBasicResponse::new()
+            .add_attribute("pool_id", msg.pool_id)
+            .add_attribute("action", "cancel_multi_deposit_acknowledged")
+            .add_attributes(attributes))
         }
         InterchainMessageType::MultiWithdraw => {
             // Unlock tokens for user
@@ -836,7 +859,10 @@ pub(crate) fn on_packet_success(
             // Save pool
             POOLS.save(deps.storage, &msg.pool_id.clone(), &interchain_pool)?;
 
-            Ok(IbcBasicResponse::new().add_attributes(attributes).add_submessages(sub_messages))
+            Ok(IbcBasicResponse::new()
+            .add_attribute("pool_id", msg.pool_id)
+            .add_attribute("action", "multi_asset_withdraw_acknowledged")
+            .add_attributes(attributes).add_submessages(sub_messages))
         }
         InterchainMessageType::LeftSwap => {
             let msg: MsgSwapRequest = from_binary(&packet_data.data.clone())?;
@@ -861,7 +887,10 @@ pub(crate) fn on_packet_success(
         
             POOLS.save(deps.storage, &msg.pool_id, &interchain_pool)?;
 
-            Ok(IbcBasicResponse::new().add_attributes(attributes))
+            Ok(IbcBasicResponse::new()
+            .add_attribute("pool_id", msg.pool_id)
+            .add_attribute("action", "swap_asset_acknowledged")
+            .add_attributes(attributes))
         }
         InterchainMessageType::RightSwap => {
             let msg: MsgSwapRequest = from_binary(&packet_data.data.clone())?;
@@ -885,7 +914,10 @@ pub(crate) fn on_packet_success(
             interchain_pool.subtract_asset(msg.token_out).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;        
         
             POOLS.save(deps.storage, &msg.pool_id, &interchain_pool)?;
-            Ok(IbcBasicResponse::new().add_attributes(attributes))
+            Ok(IbcBasicResponse::new()
+            .add_attribute("pool_id", msg.pool_id)
+            .add_attribute("action", "swap_asset_acknowledged")
+            .add_attributes(attributes))
         }
     }
 }
