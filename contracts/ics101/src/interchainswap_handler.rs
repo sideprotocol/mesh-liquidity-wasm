@@ -197,7 +197,11 @@ pub(crate) fn on_received_take_pool(
         fee_rate: interchain_pool.swap_fee,
     };
 
-    let (new_shares, _added_assets, _rem_assets) = amm.deposit_multi_asset(&tokens).map_err(|err| StdError::generic_err(format!("Failed to deposit multi asset: {}", err)))?;
+    let pool_tokens = amm.deposit_multi_asset(&tokens).map_err(|err| StdError::generic_err(format!("Failed to deposit multi asset: {}", err)))?;
+    let mut new_shares = Uint128::from(0u128);
+    for pool in pool_tokens {
+        new_shares = new_shares + pool.amount;
+    }
     // mint new_shares in take receive
     let sub_message;
     // Mint tokens (cw20) to the sender
@@ -381,18 +385,10 @@ pub(crate) fn on_received_take_multi_deposit(
         return Err(ContractError::ErrOrderNotFound);
     }
 
-    let new_shares = state_change.shares.unwrap();
-    let added_assets = state_change.pool_tokens.unwrap();
-    let rem_assets = state_change.out_tokens.unwrap();
-
-    // let (new_shares, added_assets, rem_assets) = amm.deposit_multi_asset(&multi_asset_order.deposits)?;
-    // Send back extra tokens
-    let token = interchain_pool.find_asset_by_side(PoolSide::SOURCE)
-    .map_err(|err| StdError::generic_err(format!("Failed to find asset: {}", err)))?;
-    for asset in rem_assets {
-       if asset.denom == token.balance.denom {
-            send_tokens_coin(&Addr::unchecked(multi_asset_order.source_maker.clone()), asset)?;
-       }
+    let pool_tokens = state_change.pool_tokens.unwrap();
+    let mut new_shares = Uint128::from(0u128);
+    for pool in pool_tokens {
+        new_shares = new_shares + pool.amount;
     }
 
     let sub_message;
@@ -404,7 +400,7 @@ pub(crate) fn on_received_take_multi_deposit(
         interchain_pool.add_supply(Coin { denom:msg.pool_id.clone(), amount:new_shares }).map_err(|err| StdError::generic_err(format!("Failed to add supply: {}", err)))?;
 
         // Add assets to pool
-        for asset in added_assets.clone() {
+        for asset in multi_asset_order.deposits.clone() {
             interchain_pool.add_asset(asset).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;
         }
     } else {
@@ -613,8 +609,14 @@ pub(crate) fn on_packet_success(
                 fee_rate: interchain_pool.swap_fee,
             };
 
-            let (new_shares, _added_assets, _rem_assets) = amm.deposit_multi_asset(&tokens)
+            let pool_tokens = amm.deposit_multi_asset(&tokens)
             .map_err(|err| StdError::generic_err(format!("Failed to deposit multi asset: {}", err)))?;
+
+            let mut new_shares = Uint128::from(0u128);
+            for pool in pool_tokens {
+                new_shares = new_shares + pool.amount;
+            }
+
             interchain_pool.add_supply(Coin {denom: msg.pool_id.clone(), amount: new_shares})
             .map_err(|err| StdError::generic_err(format!("Failed to add supply: {}", err)))?;
             
@@ -716,19 +718,12 @@ pub(crate) fn on_packet_success(
                 return Err(ContractError::ErrOrderNotFound);
             }
 
-            let new_shares = state_change.shares.unwrap();
-            let added_assets = state_change.pool_tokens.unwrap();
-            let rem_assets = state_change.out_tokens.unwrap();
-        
-            // let (new_shares, added_assets, rem_assets) = amm.deposit_multi_asset(&multi_asset_order.deposits)?;
-            // Send back extra tokens
-            let token = interchain_pool.find_asset_by_side(PoolSide::SOURCE)
-            .map_err(|err| StdError::generic_err(format!("Failed to find asset: {}", err)))?;
-            for asset in rem_assets {
-               if asset.denom == token.balance.denom {
-                    send_tokens_coin(&Addr::unchecked(multi_asset_order.source_maker.clone()), asset)?;
-               }
+            let pool_tokens = state_change.pool_tokens.unwrap();
+            let mut new_shares = Uint128::from(0u128);
+            for pool in pool_tokens {
+                new_shares = new_shares + pool.amount;
             }
+        
             // Mint tokens (cw20) to the sender
             if let Some(_lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id.clone())? {
 
@@ -736,7 +731,7 @@ pub(crate) fn on_packet_success(
                 interchain_pool.add_supply(Coin { denom:msg.pool_id.clone(), amount:new_shares }).map_err(|err| StdError::generic_err(format!("Failed to add supply: {}", err)))?;
 
                 // Add assets to pool
-                for asset in added_assets.clone() {
+                for asset in multi_asset_order.deposits.clone() {
                     interchain_pool.add_asset(asset).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;
                 }
             } else {

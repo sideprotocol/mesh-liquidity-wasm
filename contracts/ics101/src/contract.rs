@@ -492,7 +492,6 @@ pub fn single_asset_deposit(
         pool_id: None,
         multi_deposit_order_id: None,
         source_chain_id: None,
-        shares: None
     })?;
     // Construct the IBC swap packet.
     let packet_data = InterchainSwapPacketData {
@@ -569,7 +568,7 @@ fn make_multi_asset_deposit(
     };
 
     // Deposit the assets into the interchain market maker
-    let (_shares, added_assets, _rem_assets) = amm.deposit_multi_asset(&vec![
+    let pool_tokens = amm.deposit_multi_asset(&vec![
         msg.deposits[0].balance.clone(),
         msg.deposits[1].balance.clone(),
     ])?;
@@ -609,13 +608,12 @@ fn make_multi_asset_deposit(
 
     // Construct the IBC packet
     let state_change_data = to_binary(&StateChange {
-        in_tokens: Some(added_assets),
+        in_tokens: None,
         out_tokens: None,
-        pool_tokens: None,
+        pool_tokens: Some(pool_tokens),
         pool_id: None,
         multi_deposit_order_id: Some(multi_asset_order.id),
         source_chain_id: None,
-        shares: None
     })?;
     let packet_data = InterchainSwapPacketData {
         r#type: InterchainMessageType::MakeMultiDeposit,
@@ -756,17 +754,16 @@ fn take_multi_asset_deposit(
         fee_rate: interchain_pool.swap_fee,
     };
 
-    let (new_shares, added_assets, rem_assets) = amm.deposit_multi_asset(&multi_asset_order.deposits)?;
+    let pool_tokens = amm.deposit_multi_asset(&multi_asset_order.deposits)?;
 
     // Construct the IBC packet
     let state_change_data = to_binary(&StateChange {
         in_tokens: None,
-        out_tokens: Some(rem_assets),
-        pool_tokens: Some(added_assets),
+        out_tokens: None,
+        pool_tokens: Some(pool_tokens),
         pool_id: None,
         multi_deposit_order_id: None,
         source_chain_id: None,
-        shares: Some(new_shares)
     })?;
     let packet_data = InterchainSwapPacketData {
         r#type: InterchainMessageType::TakeMultiDeposit,
@@ -870,7 +867,6 @@ fn multi_asset_withdraw(
         pool_id: None,
         multi_deposit_order_id: None,
         source_chain_id: None,
-        shares: None
     })?;
 
     let packet = InterchainSwapPacketData {
@@ -979,7 +975,6 @@ fn swap(
         pool_id: None,
         multi_deposit_order_id: None,
         source_chain_id: None,
-        shares: None
     })?;
     let packet = InterchainSwapPacketData {
         r#type: msg_type,
