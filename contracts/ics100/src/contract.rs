@@ -2,7 +2,7 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     to_binary, Binary, Deps, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Order, Response,
-    StdResult, Timestamp,
+    StdResult, Timestamp, StdError,
 };
 
 use cw2::set_contract_version;
@@ -60,6 +60,19 @@ pub fn execute_make_swap(
     info: MessageInfo,
     msg: MakeSwapMsg,
 ) -> Result<Response, ContractError> {
+    // check if given tokens are received here
+    let mut ok = false;
+    // First token in this chain only first token needs to be verified
+    for asset in info.funds {
+        if asset.denom == msg.sell_token.denom && msg.sell_token.amount == asset.amount {
+            ok = true;
+        }
+    }
+    if !ok {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Funds mismatch: Funds mismatched to with message and sent values: Make swap"
+        ))));
+    }
     // this ignores 0 value coins, must have one or more with positive balance
     let balance = Balance::from(info.funds.clone());
 

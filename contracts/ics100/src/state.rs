@@ -27,8 +27,16 @@ pub enum Status {
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum Side {
+    Source,
+    Remote,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct AtomicSwapOrder {
     pub id: String,
+    pub side: Side,
     pub maker: MakeSwapMsg,
     pub status: Status,
     // an IBC path, define channel and port on both Maker Chain and Taker Chain
