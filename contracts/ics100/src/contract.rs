@@ -6,7 +6,6 @@ use cosmwasm_std::{
 };
 
 use cw2::set_contract_version;
-use cw20::Balance;
 
 use crate::error::ContractError;
 use crate::msg::{
@@ -73,16 +72,12 @@ pub fn execute_make_swap(
             "Funds mismatch: Funds mismatched to with message and sent values: Make swap"
         ))));
     }
-    // this ignores 0 value coins, must have one or more with positive balance
-    let balance = Balance::from(info.funds.clone());
-
-    if balance.is_empty() {
-        return Err(ContractError::EmptyBalance {});
-    }
 
     let ibc_packet = AtomicSwapPacketData {
         r#type: SwapMessageType::MakeSwap,
         data: to_binary(&msg)?,
+        order_id: None,
+        path: None,
         memo: String::new(),
     };
 
@@ -107,14 +102,21 @@ pub fn execute_take_swap(
     info: MessageInfo,
     msg: TakeSwapMsg,
 ) -> Result<Response, ContractError> {
-    let balance = Balance::from(info.funds.clone());
-
-    if balance.is_empty() {
-        return Err(ContractError::EmptyBalance {});
+    // check if given tokens are received here
+    let mut ok = false;
+    // First token in this chain only first token needs to be verified
+    for asset in info.funds {
+        if asset.denom == msg.sell_token.denom && msg.sell_token.amount == asset.amount {
+            ok = true;
+        }
+    }
+    if !ok {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Funds mismatch: Funds mismatched to with message and sent values: Make swap"
+        ))));
     }
 
-    let order_item = SWAP_ORDERS.load(deps.storage, &msg.order_id);
-    let order = order_item.unwrap();
+    let mut order = SWAP_ORDERS.load(deps.storage, &msg.order_id)?;
 
     if order.status != Status::Initial && order.status != Status::Sync {
         return Err(ContractError::OrderTaken);
@@ -126,8 +128,10 @@ pub fn execute_take_swap(
     }
 
     // Checks if the order has already been taken
-    if order.taker != None {
-        return Err(ContractError::AlreadyTakenOrder);
+    if let Some(_taker) = order.taker {
+        // Do Nothing
+    } else {
+        return Err(ContractError::OrderTaken);
     }
 
     // If `desiredTaker` is set, only the desiredTaker can accept the order.
@@ -135,21 +139,13 @@ pub fn execute_take_swap(
         return Err(ContractError::InvalidTakerAddress);
     }
 
-    // Update order state
-    // Mark that the order has been occupied
-    let new_order = AtomicSwapOrder {
-        id: order.id.clone(),
-        maker: order.maker.clone(),
-        status: order.status.clone(),
-        path: order.path.clone(),
-        taker: Some(msg.clone()),
-        cancel_timestamp: order.cancel_timestamp.clone(),
-        complete_timestamp: order.complete_timestamp.clone(),
-    };
+    order.taker = Some(msg.clone());
 
     let ibc_packet = AtomicSwapPacketData {
         r#type: SwapMessageType::TakeSwap,
         data: to_binary(&msg)?,
+        order_id: None,
+        path: None,
         memo: String::new(),
     };
 
@@ -159,12 +155,12 @@ pub fn execute_take_swap(
         timeout: IbcTimeout::from(Timestamp::from_nanos(msg.timeout_timestamp)),
     };
 
-    SWAP_ORDERS.save(deps.storage, &order.id, &new_order)?;
+    SWAP_ORDERS.save(deps.storage, &order.id, &order)?;
 
     let res = Response::new()
         .add_message(ibc_msg)
         .add_attribute("action", "take_swap")
-        .add_attribute("id", new_order.id.clone());
+        .add_attribute("order_id", order.id.clone());
     return Ok(res);
 }
 
@@ -198,6 +194,8 @@ pub fn execute_cancel_swap(
         r#type: SwapMessageType::CancelSwap,
         data: to_binary(&msg)?,
         memo: String::new(),
+        order_id: None,
+        path: None
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -209,7 +207,7 @@ pub fn execute_cancel_swap(
     let res = Response::new()
         .add_message(ibc_msg)
         .add_attribute("action", "cancel_swap")
-        .add_attribute("id", order.id.clone());
+        .add_attribute("order_id", order.id.clone());
     return Ok(res);
 }
 

@@ -20,16 +20,16 @@ pub struct ChannelInfo {
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Status {
-    Initial,  // initialed on maker chain
+    Initial,  // initialised on maker chain
     Sync,     // synced to the taker chain
-    Cancel,   // canceled
+    Cancel,   // cancelled
     Complete, // completed
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Side {
-    Source,
+    Native,
     Remote,
 }
 

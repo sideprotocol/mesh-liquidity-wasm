@@ -52,6 +52,8 @@ pub enum SwapMessageType {
 pub struct AtomicSwapPacketData {
     pub r#type: SwapMessageType,
     pub data: Binary,
+    pub order_id: Option<String>,
+    pub path: Option<String>,
     pub memo: String,
 }
 
@@ -140,8 +142,7 @@ pub struct TakeSwapMsg {
     /// Timeout timestamp in absolute nanoseconds since unix epoch.
 	/// The timeout is disabled when set to 0.
     pub timeout_timestamp: u64,
-
-    pub create_timestamp: i64,
+    pub create_timestamp: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug, JsonSchema)]
@@ -165,7 +166,7 @@ pub struct CancelSwapMsg {
 
     pub timeout_timestamp: String,
 
-    pub create_timestamp: String,
+    pub create_timestamp: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
