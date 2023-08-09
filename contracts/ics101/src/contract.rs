@@ -256,11 +256,20 @@ fn make_pool(
         }];
     }
 
+    let state_change_data = to_binary(&StateChange {
+        in_tokens: None,
+        out_tokens: None,
+        pool_tokens: None,
+        pool_id: Some(pool_id.clone()),
+        multi_deposit_order_id: None,
+        source_chain_id: None,
+    })?;
+
     let pool_data = to_binary(&msg)?;
     let ibc_packet_data = InterchainSwapPacketData {
         r#type: InterchainMessageType::MakePool,
         data: pool_data.clone(),
-        state_change: None,
+        state_change: Some(state_change_data),
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -274,10 +283,11 @@ fn make_pool(
     };
 
     let res = Response::default()
+        .add_attribute("pool_id", pool_id.clone())
+        .add_attribute("action", "make_pool")
         .add_attribute("ics101-lp-instantiate", pool_id.clone())
         .add_submessages(sub_msg)
-        .add_message(ibc_msg)
-        .add_attribute("action", "make_pool");
+        .add_message(ibc_msg);
     Ok(res)
 }
 
@@ -378,7 +388,8 @@ fn take_pool(
     let res = Response::default()
         .add_submessages(sub_msg)
         .add_message(ibc_msg)
-        .add_attribute("action", "make_pool");
+        .add_attribute("pool_id", msg.pool_id.clone())
+        .add_attribute("action", "take_pool");
     Ok(res)
 }
 
@@ -427,7 +438,8 @@ fn cancel_pool(
 
     let res = Response::default()
         .add_message(ibc_msg)
-        .add_attribute("action", "cancel_pool");
+        .add_attribute("pool_id", msg.pool_id.clone())
+        .add_attribute("action", "take_pool");
     Ok(res)
 }
 
@@ -513,6 +525,7 @@ pub fn single_asset_deposit(
 
     let res = Response::default()
         .add_message(ibc_msg)
+        .add_attribute("pool_id", msg.pool_id.clone())
         .add_attribute("action", "single_asset_deposit");
     Ok(res)
 }
@@ -633,6 +646,7 @@ fn make_multi_asset_deposit(
 
     let res = Response::default()
         .add_message(ibc_msg)
+        .add_attribute("pool_id", msg.pool_id.clone())
         .add_attribute("action", "make_multi_asset_deposit");
     Ok(res)
 }
@@ -690,6 +704,7 @@ fn cancel_multi_asset_deposit(
 
     let res = Response::default()
         .add_message(ibc_msg)
+        .add_attribute("pool_id", msg.pool_id.clone())
         .add_attribute("action", "cancel_multi_asset_deposit");
     Ok(res)
 }
@@ -783,6 +798,7 @@ fn take_multi_asset_deposit(
 
     let res = Response::default()
         .add_message(ibc_msg)
+        .add_attribute("pool_id", msg.pool_id.clone())
         .add_attribute("action", "take_multi_asset_deposit");
     Ok(res)
 }
@@ -888,6 +904,7 @@ fn multi_asset_withdraw(
     let res = Response::default()
         .add_submessages(sub_messages)
         .add_message(ibc_msg)
+        .add_attribute("pool_id", msg.pool_id.clone())
         .add_attribute("action", "multi_asset_withdraw");
     Ok(res)
 }
@@ -994,6 +1011,7 @@ fn swap(
 
     let res = Response::default()
         .add_message(ibc_msg)
+        .add_attribute("pool_id", msg.pool_id.clone())
         .add_attribute("action", "swap");
     Ok(res)
 }
