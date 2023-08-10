@@ -55,7 +55,7 @@ pub fn all_swap_order_ids(
     start: Option<Bound>,
     limit: usize,
 ) -> StdResult<Vec<String>> {
-    SWAP_ORDERS
+    ORDER_TO_COUNT
         .keys(storage, start, None, Order::Ascending)
         .take(limit)
         .collect()
@@ -65,11 +65,23 @@ pub fn all_swap_orders(
     storage: &dyn Storage,
     start: Option<Bound>,
     limit: usize,
-) -> StdResult<Vec<String>> {
-    SWAP_ORDERS
-        .keys(storage, start, None, Order::Ascending)
+) -> StdResult<Vec<AtomicSwapOrder>> {
+    Ok(SWAP_ORDERS
+        .range(storage, start, None, Order::Ascending)
         .take(limit)
-        .collect()
+        .map(|item: Result<(u64, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
+        .collect::<Vec<AtomicSwapOrder>>())
+}
+
+// append order to end of list
+pub fn append_atomic_order(storage: &mut dyn Storage, order_id: &str, order: &AtomicSwapOrder) -> StdResult<u64> {
+    let count = COUNT.load(storage)?;
+
+    SWAP_ORDERS.save(storage, count, order)?;
+    ORDER_TO_COUNT.save(storage, &order_id, &count)?;
+    COUNT.save(storage, &(count + 1))?;
+    
+    Ok(count)
 }
 
 // set specific order
@@ -90,6 +102,20 @@ pub fn get_atomic_order(storage: &dyn Storage, order_id: &str) -> StdResult<Atom
 pub fn remove_atomic_order(storage: &mut dyn Storage, order_id: &str) -> StdResult<u64> {
     let id = ORDER_TO_COUNT.load(storage, order_id)?;
     SWAP_ORDERS.remove(storage, id);
+    Ok(id)
+}
+
+pub fn move_order_to_bottom(storage: &mut dyn Storage, order_id: &str) -> StdResult<u64> {
+    // Step 1: Retrieve the item based on the given ID.
+    let count = COUNT.load(storage)?;
+    let id: u64 = ORDER_TO_COUNT.load(storage, order_id)?;
+    let swap_order = SWAP_ORDERS.load(storage, id)?;
+    // Step 2: Remove the item from its current position.
+    SWAP_ORDERS.remove(storage, id);
+    // Step 3: Append the item to the end.
+    SWAP_ORDERS.save(storage, count, &swap_order)?;
+    ORDER_TO_COUNT.save(storage, &order_id, &count)?;
+    COUNT.save(storage, &(count + 1))?;
     Ok(id)
 }
 

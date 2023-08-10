@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     error::ContractError,
     msg::{AtomicSwapPacketData, CancelSwapMsg, MakeSwapMsg, SwapMessageType, TakeSwapMsg},
-    state::{AtomicSwapOrder, Status, SWAP_ORDERS, Side, set_atomic_order, get_atomic_order},
+    state::{AtomicSwapOrder, Status, Side, set_atomic_order, get_atomic_order, ORDER_TO_COUNT, append_atomic_order, move_order_to_bottom},
     utils::{
         decode_make_swap_msg, decode_take_swap_msg, generate_order_id, order_path, send_tokens,
     },
@@ -88,11 +88,13 @@ pub(crate) fn on_received_make(
         path: path.clone(),
     };
 
-    // Use append here
-    SWAP_ORDERS.update(deps.storage, &order_id.clone(), |existing| match existing {
-        None => Ok(swap_order),
-        Some(_) => Err(ContractError::AlreadyExists {}),
-    })?;
+    let count_check = ORDER_TO_COUNT.may_load(deps.storage, &order_id)?;
+    if let Some(_count) = count_check {
+        return Err(ContractError::AlreadyExists {});
+    } else {
+        append_atomic_order(deps.storage, &order_id, &swap_order)?;
+    }
+
     let res = IbcReceiveResponse::new()
         .set_ack(ack_success())
         .add_attribute("action", "receive")
@@ -135,8 +137,7 @@ pub(crate) fn on_received_take(
     swap_order.complete_timestamp = Some(Timestamp::from_nanos(msg.create_timestamp));
 
     set_atomic_order(deps.storage, &msg.order_id, &swap_order)?;
-
-    // TODO: Move completed order to bottom
+    move_order_to_bottom(deps.storage, &msg.order_id)?;
 
     let res = IbcReceiveResponse::new()
         .set_ack(ack_success())
@@ -217,8 +218,8 @@ pub(crate) fn on_packet_success(
                 complete_timestamp: None,
             };
 
-            // apend here
-            SWAP_ORDERS.save(deps.storage, &order_id, &new_order)?;
+            append_atomic_order(deps.storage, &order_id, &new_order)?;
+
             Ok(IbcBasicResponse::new().add_attributes(attributes))
         }
         // This is the step 9 (Transfer Take Token & Close order): https://github.com/cosmos/ibc/tree/main/spec/app/ics-100-atomic-swap
@@ -238,10 +239,9 @@ pub(crate) fn on_packet_success(
             swap_order.status = Status::Complete;
             swap_order.taker = Some(msg.clone());
             swap_order.complete_timestamp = Some(Timestamp::from_nanos(msg.create_timestamp));
+
             set_atomic_order(deps.storage, &order_id, &swap_order)?;
-            //SWAP_ORDERS.save(deps.storage, &order_id, &swap_order)?;
-        
-            // TODO: Move completed order to bottom
+            move_order_to_bottom(deps.storage, &msg.order_id)?;
 
             Ok(IbcBasicResponse::new()
                 .add_submessages(submsg)
@@ -263,7 +263,7 @@ pub(crate) fn on_packet_success(
             swap_order.cancel_timestamp = Some(Timestamp::from_nanos(msg.create_timestamp));
 
             set_atomic_order(deps.storage, &order_id, &swap_order)?;
-            //SWAP_ORDERS.save(deps.storage, &order_id, &swap_order)?;
+
             Ok(IbcBasicResponse::new()
                 .add_submessages(submsg)
                 .add_attributes(attributes))
@@ -322,7 +322,6 @@ pub(crate) fn refund_packet_token(
             swap_order.taker = None;
             swap_order.status = Status::Sync;
             set_atomic_order(deps.storage, &order_id, &swap_order)?;
-            //SWAP_ORDERS.save(deps.storage, &order_id, &swap_order)?;
 
             Ok(submsg)
         }
