@@ -52,42 +52,33 @@ pub enum SwapMessageType {
 pub struct AtomicSwapPacketData {
     pub r#type: SwapMessageType,
     pub data: Binary,
+    pub order_id: Option<String>,
+    pub path: Option<String>,
     pub memo: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug, JsonSchema)]
 pub struct MakeSwapMsg {
-    #[serde(rename = "source_port")]
+    /// the port on which the packet will be sent
     pub source_port: String,
-
-    #[serde(rename = "source_channel")]
+    /// the channel by which the packet will be sent
     pub source_channel: String,
-
-    #[serde(rename = "sell_token")]
+    /// the tokens to be sold
     pub sell_token: Coin,
-
-    #[serde(rename = "buy_token")]
     pub buy_token: Coin,
-
-    #[serde(rename = "maker_address")]
+    /// the sender address
     pub maker_address: String,
-
-    #[serde(rename = "maker_receiving_address")]
+    /// the sender's address on the destination chain
     pub maker_receiving_address: String,
-
-    #[serde(rename = "desired_taker")]
+    /// if desired_taker is specified,
+	/// only the desired_taker is allowed to take this order
+	/// this is address on destination chain
     pub desired_taker: String,
-
-    #[serde(rename = "create_timestamp")]
     pub create_timestamp: i64,
 
-    #[serde(rename = "timeout_height")]
     pub timeout_height: Height,
-
-    #[serde(rename = "timeout_timestamp")]
     pub timeout_timestamp: u64,
 
-    #[serde(rename = "expiration_timestamp")]
     pub expiration_timestamp: u64,
 }
 
@@ -114,37 +105,16 @@ impl fmt::Display for MakeSwapMsg {
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug, JsonSchema)]
 pub struct MakeSwapMsgOutput {
-    #[serde(rename = "source_port")]
     pub source_port: String,
-
-    #[serde(rename = "source_channel")]
     pub source_channel: String,
-
-    #[serde(rename = "sell_token")]
     pub sell_token: Coin,
-
-    #[serde(rename = "buy_token")]
     pub buy_token: Coin,
-
-    #[serde(rename = "maker_address")]
     pub maker_address: String,
-
-    #[serde(rename = "maker_receiving_address")]
     pub maker_receiving_address: String,
-
-    #[serde(rename = "desired_taker")]
     pub desired_taker: String,
-
-    #[serde(rename = "create_timestamp")]
     pub create_timestamp: String,
-
-    #[serde(rename = "timeout_height")]
     pub timeout_height: HeightOutput,
-
-    #[serde(rename = "timeout_timestamp")]
     pub timeout_timestamp: String,
-
-    #[serde(rename = "expiration_timestamp")]
     pub expiration_timestamp: String,
 }
 
@@ -156,68 +126,47 @@ pub struct HeightOutput {
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug, JsonSchema)]
 pub struct TakeSwapMsg {
-    #[serde(rename = "order_id")]
     pub order_id: String,
 
-    #[serde(rename = "sell_token")]
+    /// the tokens to be sell
     pub sell_token: Coin,
-
-    #[serde(rename = "taker_address")]
+    /// the sender address
     pub taker_address: String,
-
-    #[serde(rename = "taker_receiving_address")]
+    /// the sender's address on the destination chain
     pub taker_receiving_address: String,
 
-    #[serde(rename = "timeout_height")]
+    /// Timeout height relative to the current block height.
+	/// The timeout is disabled when set to 0.
     pub timeout_height: Height,
 
-    #[serde(rename = "timeout_timestamp")]
+    /// Timeout timestamp in absolute nanoseconds since unix epoch.
+	/// The timeout is disabled when set to 0.
     pub timeout_timestamp: u64,
-
-    #[serde(rename = "create_timestamp")]
-    pub create_timestamp: i64,
+    pub create_timestamp: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug, JsonSchema)]
 pub struct TakeSwapMsgOutput {
-    #[serde(rename = "order_id")]
     pub order_id: String,
-
-    #[serde(rename = "sell_token")]
     pub sell_token: Coin,
-
-    #[serde(rename = "taker_address")]
     pub taker_address: String,
-
-    #[serde(rename = "taker_receiving_address")]
     pub taker_receiving_address: String,
-
-    #[serde(rename = "timeout_height")]
     pub timeout_height: HeightOutput,
-
-    #[serde(rename = "timeout_timestamp")]
     pub timeout_timestamp: String,
-
-    #[serde(rename = "create_timestamp")]
     pub create_timestamp: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug, JsonSchema)]
 pub struct CancelSwapMsg {
-    #[serde(rename = "order_id")]
     pub order_id: String,
 
-    #[serde(rename = "maker_address")]
     pub maker_address: String,
 
-    #[serde(rename = "timeout_height")]
     pub timeout_height: HeightOutput,
 
-    #[serde(rename = "timeout_timestamp")]
     pub timeout_timestamp: String,
 
-    #[serde(rename = "create_timestamp")]
-    pub create_timestamp: String,
+    pub create_timestamp: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]

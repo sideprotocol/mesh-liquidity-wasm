@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     error::ContractError,
     msg::{AtomicSwapPacketData, CancelSwapMsg, MakeSwapMsg, SwapMessageType, TakeSwapMsg},
-    state::{AtomicSwapOrder, Status, SWAP_ORDERS},
+    state::{AtomicSwapOrder, Status, Side, set_atomic_order, get_atomic_order, ORDER_TO_COUNT, append_atomic_order, move_order_to_bottom},
     utils::{
         decode_make_swap_msg, decode_take_swap_msg, generate_order_id, order_path, send_tokens,
     },
@@ -69,7 +69,6 @@ pub(crate) fn on_received_make(
     packet: &IbcPacket,
     msg: MakeSwapMsg,
 ) -> Result<IbcReceiveResponse, ContractError> {
-    // let packet_data: AtomicSwapPacketData = from_binary(&packet.data)?;
     let path = order_path(
         msg.source_channel.clone(),
         msg.source_port.clone(),
@@ -80,34 +79,39 @@ pub(crate) fn on_received_make(
     let order_id = generate_order_id(&path, msg.clone())?;
     let swap_order = AtomicSwapOrder {
         id: order_id.clone(),
+        side: Side::Remote,
         maker: msg.clone(),
-        status: Status::Initial,
+        status: Status::Sync,
         taker: None,
         cancel_timestamp: None,
         complete_timestamp: None,
         path: path.clone(),
     };
 
-    SWAP_ORDERS.update(deps.storage, &order_id.clone(), |existing| match existing {
-        None => Ok(swap_order),
-        Some(_) => Err(ContractError::AlreadyExists {}),
-    })?;
+    let count_check = ORDER_TO_COUNT.may_load(deps.storage, &order_id)?;
+    if let Some(_count) = count_check {
+        return Err(ContractError::AlreadyExists {});
+    } else {
+        append_atomic_order(deps.storage, &order_id, &swap_order)?;
+    }
+
     let res = IbcReceiveResponse::new()
         .set_ack(ack_success())
         .add_attribute("action", "receive")
-        .add_attribute("success", "true");
+        .add_attribute("success", "true")
+        .add_attribute("action", "make_swap_received");
 
     Ok(res)
 }
 
 pub(crate) fn on_received_take(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     _packet: &IbcPacket,
     msg: TakeSwapMsg,
 ) -> Result<IbcReceiveResponse, ContractError> {
     let order_id = msg.order_id.clone();
-    let swap_order = SWAP_ORDERS.load(deps.storage, &order_id)?;
+    let mut swap_order = get_atomic_order(deps.storage, &order_id)?;
 
     if msg.sell_token != swap_order.maker.buy_token {
         return Err(ContractError::InvalidSellToken);
@@ -128,16 +132,12 @@ pub(crate) fn on_received_take(
         swap_order.maker.sell_token.clone(),
     )?;
 
-    let new_order = AtomicSwapOrder {
-        id: order_id.clone(),
-        maker: swap_order.maker.clone(),
-        status: Status::Complete,
-        path: swap_order.path.clone(),
-        taker: Some(msg.clone()),
-        cancel_timestamp: None,
-        complete_timestamp: env.block.time.clone().into(),
-    };
-    SWAP_ORDERS.save(deps.storage, &order_id, &new_order)?;
+    swap_order.status = Status::Complete;
+    swap_order.taker = Some(msg.clone());
+    swap_order.complete_timestamp = Some(Timestamp::from_nanos(msg.create_timestamp));
+
+    set_atomic_order(deps.storage, &msg.order_id, &swap_order)?;
+    move_order_to_bottom(deps.storage, &msg.order_id)?;
 
     let res = IbcReceiveResponse::new()
         .set_ack(ack_success())
@@ -154,9 +154,8 @@ pub(crate) fn on_received_cancel(
     _packet: &IbcPacket,
     msg: CancelSwapMsg,
 ) -> Result<IbcReceiveResponse, ContractError> {
-    let order_id = msg.order_id;
-
-    let swap_order = SWAP_ORDERS.load(deps.storage, &order_id)?;
+    let order_id = msg.order_id.clone();
+    let mut swap_order = get_atomic_order(deps.storage, &order_id)?;
 
     if swap_order.maker.maker_address != msg.maker_address {
         return Err(ContractError::InvalidMakerAddress);
@@ -170,19 +169,9 @@ pub(crate) fn on_received_cancel(
         return Err(ContractError::AlreadyTakenOrder);
     }
 
-    let new_order = AtomicSwapOrder {
-        id: order_id.clone(),
-        maker: swap_order.maker.clone(),
-        status: Status::Cancel,
-        path: swap_order.path.clone(),
-        taker: swap_order.taker.clone(),
-        cancel_timestamp: Some(Timestamp::from_seconds(
-            msg.create_timestamp.parse().unwrap(),
-        )),
-        complete_timestamp: None,
-    };
-
-    SWAP_ORDERS.save(deps.storage, &order_id, &new_order)?;
+    swap_order.status = Status::Cancel;
+    swap_order.cancel_timestamp = Some(Timestamp::from_nanos(msg.create_timestamp));
+    set_atomic_order(deps.storage, &msg.order_id, &swap_order)?;
 
     let res = IbcReceiveResponse::new()
         .set_ack(ack_success())
@@ -217,10 +206,10 @@ pub(crate) fn on_packet_success(
                 packet.sequence,
             )?;
             let order_id = generate_order_id(&path, msg.clone())?;
-            // let swap_order = SWAP_ORDERS.load(deps.storage, &order_id)?;
 
             let new_order = AtomicSwapOrder {
                 id: order_id.clone(),
+                side: Side::Native,
                 maker: msg.clone(),
                 status: Status::Sync,
                 path: path.clone(),
@@ -229,7 +218,8 @@ pub(crate) fn on_packet_success(
                 complete_timestamp: None,
             };
 
-            SWAP_ORDERS.save(deps.storage, &order_id, &new_order)?;
+            append_atomic_order(deps.storage, &order_id, &new_order)?;
+
             Ok(IbcBasicResponse::new().add_attributes(attributes))
         }
         // This is the step 9 (Transfer Take Token & Close order): https://github.com/cosmos/ibc/tree/main/spec/app/ics-100-atomic-swap
@@ -237,26 +227,22 @@ pub(crate) fn on_packet_success(
         SwapMessageType::TakeSwap => {
             let msg: TakeSwapMsg = decode_take_swap_msg(&packet_data.data.clone());
 
-            let order_id = msg.order_id;
-            let swap_order = SWAP_ORDERS.load(deps.storage, &order_id)?;
+            let order_id = msg.order_id.clone();
+            let mut swap_order = get_atomic_order(deps.storage, &order_id)?;
 
             let maker_receiving_address = deps
                 .api
                 .addr_validate(&swap_order.maker.maker_receiving_address)?;
 
-            let submsg = send_tokens(&maker_receiving_address, msg.sell_token)?;
+            let submsg = send_tokens(&maker_receiving_address, msg.sell_token.clone())?;
 
-            let new_order = AtomicSwapOrder {
-                id: order_id.clone(),
-                maker: swap_order.maker.clone(),
-                status: Status::Complete,
-                path: swap_order.path.clone(),
-                taker: swap_order.taker.clone(),
-                cancel_timestamp: swap_order.cancel_timestamp.clone(),
-                complete_timestamp: Some(Timestamp::from_seconds(msg.create_timestamp as u64)),
-            };
+            swap_order.status = Status::Complete;
+            swap_order.taker = Some(msg.clone());
+            swap_order.complete_timestamp = Some(Timestamp::from_nanos(msg.create_timestamp));
 
-            SWAP_ORDERS.save(deps.storage, &order_id, &new_order)?;
+            set_atomic_order(deps.storage, &order_id, &swap_order)?;
+            move_order_to_bottom(deps.storage, &msg.order_id)?;
+
             Ok(IbcBasicResponse::new()
                 .add_submessages(submsg)
                 .add_attributes(attributes))
@@ -266,26 +252,18 @@ pub(crate) fn on_packet_success(
         SwapMessageType::CancelSwap => {
             let msg: CancelSwapMsg = from_binary(&packet_data.data.clone())?;
             let order_id = msg.order_id;
-            let swap_order = SWAP_ORDERS.load(deps.storage, &order_id)?;
+            let mut swap_order = get_atomic_order(deps.storage, &order_id)?;
 
             let maker_address = deps.api.addr_validate(&swap_order.maker.maker_address)?;
             let maker_msg = swap_order.maker.clone();
 
             let submsg = send_tokens(&maker_address, maker_msg.sell_token)?;
 
-            let new_order = AtomicSwapOrder {
-                id: order_id.clone(),
-                maker: swap_order.maker.clone(),
-                status: Status::Cancel,
-                path: swap_order.path.clone(),
-                taker: swap_order.taker.clone(),
-                cancel_timestamp: Some(Timestamp::from_seconds(
-                    msg.create_timestamp.parse().unwrap(),
-                )),
-                complete_timestamp: None,
-            };
+            swap_order.status = Status::Cancel;
+            swap_order.cancel_timestamp = Some(Timestamp::from_nanos(msg.create_timestamp));
 
-            SWAP_ORDERS.save(deps.storage, &order_id, &new_order)?;
+            set_atomic_order(deps.storage, &order_id, &swap_order)?;
+
             Ok(IbcBasicResponse::new()
                 .add_submessages(submsg)
                 .add_attributes(attributes))
@@ -336,22 +314,14 @@ pub(crate) fn refund_packet_token(
             // let msg: TakeSwapMsg = from_binary(&packet.data.clone())?;
             let msg: TakeSwapMsg = decode_take_swap_msg(&packet.data.clone());
             let order_id: String = msg.order_id.clone();
-            let swap_order: AtomicSwapOrder = SWAP_ORDERS.load(deps.storage, &order_id)?;
+            let mut swap_order = get_atomic_order(deps.storage, &order_id)?;
             let taker_address: Addr = deps.api.addr_validate(&msg.taker_address)?;
 
             let submsg = send_tokens(&taker_address, msg.sell_token)?;
 
-            let new_order: AtomicSwapOrder = AtomicSwapOrder {
-                id: order_id.clone(),
-                maker: swap_order.maker.clone(),
-                status: Status::Initial,
-                taker: None,
-                cancel_timestamp: None,
-                complete_timestamp: None,
-                path: swap_order.path.clone(),
-            };
-
-            SWAP_ORDERS.save(deps.storage, &order_id, &new_order)?;
+            swap_order.taker = None;
+            swap_order.status = Status::Sync;
+            set_atomic_order(deps.storage, &order_id, &swap_order)?;
 
             Ok(submsg)
         }

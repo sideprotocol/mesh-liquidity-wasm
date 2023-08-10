@@ -2,11 +2,10 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     to_binary, Binary, Deps, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Order, Response,
-    StdResult, Timestamp,
+    StdResult, Timestamp, StdError,
 };
 
 use cw2::set_contract_version;
-use cw20::Balance;
 
 use crate::error::ContractError;
 use crate::msg::{
@@ -17,7 +16,7 @@ use crate::state::{
     AtomicSwapOrder,
     Status,
     // CHANNEL_INFO,
-    SWAP_ORDERS,
+    SWAP_ORDERS, set_atomic_order, get_atomic_order, COUNT,
 };
 use crate::utils::extract_source_channel_for_taker_msg;
 use cw_storage_plus::Bound;
@@ -34,7 +33,7 @@ pub fn instantiate(
     _msg: InstantiateMsg,
 ) -> StdResult<Response> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
-    // No setup
+    COUNT.save(deps.storage, &0u64)?;
     Ok(Response::default())
 }
 
@@ -60,16 +59,25 @@ pub fn execute_make_swap(
     info: MessageInfo,
     msg: MakeSwapMsg,
 ) -> Result<Response, ContractError> {
-    // this ignores 0 value coins, must have one or more with positive balance
-    let balance = Balance::from(info.funds.clone());
-
-    if balance.is_empty() {
-        return Err(ContractError::EmptyBalance {});
+    // check if given tokens are received here
+    let mut ok = false;
+    // First token in this chain only first token needs to be verified
+    for asset in info.funds {
+        if asset.denom == msg.sell_token.denom && msg.sell_token.amount == asset.amount {
+            ok = true;
+        }
+    }
+    if !ok {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Funds mismatch: Funds mismatched to with message and sent values: Make swap"
+        ))));
     }
 
     let ibc_packet = AtomicSwapPacketData {
         r#type: SwapMessageType::MakeSwap,
         data: to_binary(&msg)?,
+        order_id: None,
+        path: None,
         memo: String::new(),
     };
 
@@ -94,14 +102,21 @@ pub fn execute_take_swap(
     info: MessageInfo,
     msg: TakeSwapMsg,
 ) -> Result<Response, ContractError> {
-    let balance = Balance::from(info.funds.clone());
-
-    if balance.is_empty() {
-        return Err(ContractError::EmptyBalance {});
+    // check if given tokens are received here
+    let mut ok = false;
+    // First token in this chain only first token needs to be verified
+    for asset in info.funds {
+        if asset.denom == msg.sell_token.denom && msg.sell_token.amount == asset.amount {
+            ok = true;
+        }
+    }
+    if !ok {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Funds mismatch: Funds mismatched to with message and sent values: Make swap"
+        ))));
     }
 
-    let order_item = SWAP_ORDERS.load(deps.storage, &msg.order_id);
-    let order = order_item.unwrap();
+    let mut order = get_atomic_order(deps.storage, &msg.order_id)?;
 
     if order.status != Status::Initial && order.status != Status::Sync {
         return Err(ContractError::OrderTaken);
@@ -113,8 +128,10 @@ pub fn execute_take_swap(
     }
 
     // Checks if the order has already been taken
-    if order.taker != None {
-        return Err(ContractError::AlreadyTakenOrder);
+    if let Some(_taker) = order.taker {
+        // Do Nothing
+    } else {
+        return Err(ContractError::OrderTaken);
     }
 
     // If `desiredTaker` is set, only the desiredTaker can accept the order.
@@ -122,21 +139,13 @@ pub fn execute_take_swap(
         return Err(ContractError::InvalidTakerAddress);
     }
 
-    // Update order state
-    // Mark that the order has been occupied
-    let new_order = AtomicSwapOrder {
-        id: order.id.clone(),
-        maker: order.maker.clone(),
-        status: order.status.clone(),
-        path: order.path.clone(),
-        taker: Some(msg.clone()),
-        cancel_timestamp: order.cancel_timestamp.clone(),
-        complete_timestamp: order.complete_timestamp.clone(),
-    };
+    order.taker = Some(msg.clone());
 
     let ibc_packet = AtomicSwapPacketData {
         r#type: SwapMessageType::TakeSwap,
         data: to_binary(&msg)?,
+        order_id: None,
+        path: None,
         memo: String::new(),
     };
 
@@ -146,12 +155,14 @@ pub fn execute_take_swap(
         timeout: IbcTimeout::from(Timestamp::from_nanos(msg.timeout_timestamp)),
     };
 
-    SWAP_ORDERS.save(deps.storage, &order.id, &new_order)?;
+    // Save order
+    set_atomic_order(deps.storage, &order.id, &order)?;
+    //SWAP_ORDERS.save(deps.storage, &order.id, &order)?;
 
     let res = Response::new()
         .add_message(ibc_msg)
         .add_attribute("action", "take_swap")
-        .add_attribute("id", new_order.id.clone());
+        .add_attribute("order_id", order.id.clone());
     return Ok(res);
 }
 
@@ -164,8 +175,7 @@ pub fn execute_cancel_swap(
     msg: CancelSwapMsg,
 ) -> Result<Response, ContractError> {
     let sender = info.sender.to_string();
-    let order = SWAP_ORDERS.load(deps.storage, &msg.order_id);
-    let order = order.unwrap();
+    let order = get_atomic_order(deps.storage, &msg.order_id)?;
 
     if sender != order.maker.maker_address {
         return Err(ContractError::InvalidSender);
@@ -185,6 +195,8 @@ pub fn execute_cancel_swap(
         r#type: SwapMessageType::CancelSwap,
         data: to_binary(&msg)?,
         memo: String::new(),
+        order_id: None,
+        path: None
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -196,7 +208,7 @@ pub fn execute_cancel_swap(
     let res = Response::new()
         .add_message(ibc_msg)
         .add_attribute("action", "cancel_swap")
-        .add_attribute("id", order.id.clone());
+        .add_attribute("order_id", order.id.clone());
     return Ok(res);
 }
 
@@ -229,7 +241,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
 }
 
 fn query_details(deps: Deps, id: String) -> StdResult<DetailsResponse> {
-    let swap_order = SWAP_ORDERS.load(deps.storage, &id)?;
+    let swap_order = get_atomic_order(deps.storage, &id)?;
 
     let details = DetailsResponse {
         id,
@@ -257,7 +269,7 @@ fn query_list(
     let swap_orders = SWAP_ORDERS
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
-        .map(|item: Result<(String, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
+        .map(|item: Result<(u64, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
         .collect::<Vec<AtomicSwapOrder>>();
 
     Ok(ListResponse { swaps: swap_orders })
@@ -274,7 +286,7 @@ fn query_list_by_desired_taker(
     let swap_orders = SWAP_ORDERS
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
-        .map(|item: Result<(String, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
+        .map(|item: Result<(u64, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
         .filter(|swap_order| swap_order.maker.desired_taker == desired_taker)
         .collect::<Vec<AtomicSwapOrder>>();
 
@@ -292,7 +304,7 @@ fn query_list_by_maker(
     let swap_orders = SWAP_ORDERS
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
-        .map(|item: Result<(String, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
+        .map(|item: Result<(u64, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
         .filter(|swap_order| swap_order.maker.maker_address == maker)
         .collect::<Vec<AtomicSwapOrder>>();
 
@@ -310,7 +322,7 @@ fn query_list_by_taker(
     let swap_orders = SWAP_ORDERS
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
-        .map(|item: Result<(String, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
+        .map(|item: Result<(u64, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
         .filter(|swap_order| {
             swap_order.taker.is_some() && swap_order.taker.clone().unwrap().taker_address == taker
         })

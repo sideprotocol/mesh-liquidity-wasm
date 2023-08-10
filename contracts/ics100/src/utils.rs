@@ -176,37 +176,9 @@ pub(crate) fn decode_make_swap_msg(data: &Binary) -> MakeSwapMsg {
 }
 
 pub(crate) fn send_tokens(to: &Addr, amount: Coin) -> StdResult<Vec<SubMsg>> {
-    // if amount.is_empty() {
-    //     Ok(vec![])
-    // } else {
-    //     match amount {
-    //         Balance::Native(coins) => {
-    //             let msg = BankMsg::Send {
-    //                 to_address: to.into(),
-    //                 amount: coins.into_vec(),
-    //             };
-    //             Ok(vec![SubMsg::new(msg)])
-    //         }
-    //         Balance::Cw20(coin) => {
-    //             let msg = Cw20ExecuteMsg::Transfer {
-    //                 recipient: to.into(),
-    //                 amount: coin.amount,
-    //             };
-    //             let exec = WasmMsg::Execute {
-    //                 contract_addr: coin.address.into(),
-    //                 msg: to_binary(&msg)?,
-    //                 funds: vec![],
-    //             };
-    //             Ok(vec![SubMsg::new(exec)])
-    //         }
-    //     }
-    // }
     let msg = BankMsg::Send {
         to_address: to.into(),
         amount: vec![amount],
     };
     Ok(vec![SubMsg::new(msg)])
 }
-
-
-// Add function to transfer cw20 tokens
