@@ -154,7 +154,7 @@ pub(crate) fn on_received_cancel(
     _packet: &IbcPacket,
     msg: CancelSwapMsg,
 ) -> Result<IbcReceiveResponse, ContractError> {
-    let order_id = msg.order_id;
+    let order_id = msg.order_id.clone();
     let mut swap_order = get_atomic_order(deps.storage, &order_id)?;
 
     if swap_order.maker.maker_address != msg.maker_address {

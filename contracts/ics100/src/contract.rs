@@ -33,7 +33,7 @@ pub fn instantiate(
     _msg: InstantiateMsg,
 ) -> StdResult<Response> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
-    COUNT.save(deps.storage, &0u64);
+    COUNT.save(deps.storage, &0u64)?;
     Ok(Response::default())
 }
 
@@ -269,7 +269,7 @@ fn query_list(
     let swap_orders = SWAP_ORDERS
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
-        .map(|item: Result<(String, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
+        .map(|item: Result<(u64, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
         .collect::<Vec<AtomicSwapOrder>>();
 
     Ok(ListResponse { swaps: swap_orders })
@@ -286,7 +286,7 @@ fn query_list_by_desired_taker(
     let swap_orders = SWAP_ORDERS
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
-        .map(|item: Result<(String, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
+        .map(|item: Result<(u64, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
         .filter(|swap_order| swap_order.maker.desired_taker == desired_taker)
         .collect::<Vec<AtomicSwapOrder>>();
 
@@ -304,7 +304,7 @@ fn query_list_by_maker(
     let swap_orders = SWAP_ORDERS
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
-        .map(|item: Result<(String, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
+        .map(|item: Result<(u64, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
         .filter(|swap_order| swap_order.maker.maker_address == maker)
         .collect::<Vec<AtomicSwapOrder>>();
 
@@ -322,7 +322,7 @@ fn query_list_by_taker(
     let swap_orders = SWAP_ORDERS
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
-        .map(|item: Result<(String, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
+        .map(|item: Result<(u64, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
         .filter(|swap_order| {
             swap_order.taker.is_some() && swap_order.taker.clone().unwrap().taker_address == taker
         })
