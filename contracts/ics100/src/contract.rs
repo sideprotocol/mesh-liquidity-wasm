@@ -16,7 +16,7 @@ use crate::state::{
     AtomicSwapOrder,
     Status,
     // CHANNEL_INFO,
-    SWAP_ORDERS,
+    SWAP_ORDERS, set_atomic_order, get_atomic_order, COUNT,
 };
 use crate::utils::extract_source_channel_for_taker_msg;
 use cw_storage_plus::Bound;
@@ -33,7 +33,7 @@ pub fn instantiate(
     _msg: InstantiateMsg,
 ) -> StdResult<Response> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
-    // No setup
+    COUNT.save(deps.storage, &0u64);
     Ok(Response::default())
 }
 
@@ -116,7 +116,7 @@ pub fn execute_take_swap(
         ))));
     }
 
-    let mut order = SWAP_ORDERS.load(deps.storage, &msg.order_id)?;
+    let mut order = get_atomic_order(deps.storage, &msg.order_id)?;
 
     if order.status != Status::Initial && order.status != Status::Sync {
         return Err(ContractError::OrderTaken);
@@ -155,7 +155,9 @@ pub fn execute_take_swap(
         timeout: IbcTimeout::from(Timestamp::from_nanos(msg.timeout_timestamp)),
     };
 
-    SWAP_ORDERS.save(deps.storage, &order.id, &order)?;
+    // Save order
+    set_atomic_order(deps.storage, &order.id, &order)?;
+    //SWAP_ORDERS.save(deps.storage, &order.id, &order)?;
 
     let res = Response::new()
         .add_message(ibc_msg)
@@ -173,8 +175,7 @@ pub fn execute_cancel_swap(
     msg: CancelSwapMsg,
 ) -> Result<Response, ContractError> {
     let sender = info.sender.to_string();
-    let order = SWAP_ORDERS.load(deps.storage, &msg.order_id);
-    let order = order.unwrap();
+    let order = get_atomic_order(deps.storage, &msg.order_id)?;
 
     if sender != order.maker.maker_address {
         return Err(ContractError::InvalidSender);
@@ -240,7 +241,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
 }
 
 fn query_details(deps: Deps, id: String) -> StdResult<DetailsResponse> {
-    let swap_order = SWAP_ORDERS.load(deps.storage, &id)?;
+    let swap_order = get_atomic_order(deps.storage, &id)?;
 
     let details = DetailsResponse {
         id,
