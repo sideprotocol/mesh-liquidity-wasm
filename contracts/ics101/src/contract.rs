@@ -24,7 +24,7 @@ use crate::msg::{
     MsgSwapRequest, SwapMsgType, MsgMakePoolRequest, MsgTakePoolRequest, MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, QueryMsg, QueryConfigResponse, InterchainPoolResponse, InterchainListResponse, OrderListResponse, PoolListResponse, TokenInstantiateMsg, Cw20HookMsg, MsgCancelPoolRequest, MsgCancelMultiAssetDepositRequest,
 };
 use crate::state::{POOLS, MULTI_ASSET_DEPOSIT_ORDERS, CONFIG, POOL_TOKENS_LIST, Config, TEMP, ACTIVE_ORDERS};
-use crate::types::{InterchainSwapPacketData, StateChange, InterchainMessageType, MultiAssetDepositOrder, OrderStatus};
+use crate::types::{IBCSwapPacketData, StateChange, SwapMessageType, MultiAssetDepositOrder, OrderStatus};
 use crate::utils::{get_coins_from_deposits, get_pool_id_with_tokens, INSTANTIATE_TOKEN_REPLY_ID, get_order_id};
 
 // Version info, for migration info
@@ -178,7 +178,7 @@ fn make_pool(
     tokens[0] = msg.liquidity[0].balance.clone();
     tokens[1] = msg.liquidity[1].balance.clone();
 
-    let pool_id = get_pool_id_with_tokens(&tokens, msg.source_chain_id.clone(), msg.destination_chain_id.clone());
+    let pool_id = get_pool_id_with_tokens(&tokens, env.block.chain_id.clone(), "uni-6".to_string());
 
     TEMP.save(deps.storage, &pool_id)?;
     // load pool throw error if not found
@@ -208,15 +208,15 @@ fn make_pool(
     let interchain_pool: InterchainLiquidityPool = InterchainLiquidityPool {
         id: pool_id.clone(),
         source_creator: msg.creator.clone(),
-        destination_creator: msg.counterparty_creator.clone(),
+        destination_creator: msg.counter_party_creator.clone(),
         assets: msg.liquidity.clone(),
         supply: supply,
         status: PoolStatus::Initialized,
         counter_party_port: msg.source_port.clone(),
         counter_party_channel: msg.source_channel.clone(),
         swap_fee: msg.swap_fee,
-        source_chain_id: msg.source_chain_id.clone(),
-        destination_chain_id: msg.destination_chain_id.clone(),
+        source_chain_id: env.block.chain_id.clone(),
+        destination_chain_id: "".to_string(),//msg.destination_chain_id.clone(),
         pool_price: 0
     };
     POOLS.save(deps.storage, &pool_id, &interchain_pool)?;
@@ -257,19 +257,20 @@ fn make_pool(
     }
 
     let state_change_data = to_binary(&StateChange {
-        in_tokens: None,
-        out_tokens: None,
-        pool_tokens: None,
+        in_tokens: [].into(),
+        out_tokens: [].into(),
+        pool_tokens: [].into(),
         pool_id: Some(pool_id.clone()),
-        multi_deposit_order_id: None,
-        source_chain_id: None,
+        multi_deposit_order_id: Some("".to_string()),
+        source_chain_id: Some(env.block.chain_id),
     })?;
 
     let pool_data = to_binary(&msg)?;
-    let ibc_packet_data = InterchainSwapPacketData {
-        r#type: InterchainMessageType::MakePool,
+    let ibc_packet_data = IBCSwapPacketData {
         data: pool_data.clone(),
+        memo: Some("".to_string()),
         state_change: Some(state_change_data),
+        r#type: SwapMessageType::MakePool,
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -369,10 +370,11 @@ fn take_pool(
     }
 
     let pool_data = to_binary(&msg).unwrap();
-    let ibc_packet_data = InterchainSwapPacketData {
-        r#type: InterchainMessageType::TakePool,
+    let ibc_packet_data = IBCSwapPacketData {
+        r#type: SwapMessageType::TakePool,
         data: pool_data.clone(),
         state_change: None,
+        memo: Some("".to_string())
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -420,10 +422,11 @@ fn cancel_pool(
     }
     
     let pool_data = to_binary(&msg).unwrap();
-    let ibc_packet_data = InterchainSwapPacketData {
-        r#type: InterchainMessageType::CancelPool,
+    let ibc_packet_data = IBCSwapPacketData {
+        r#type: SwapMessageType::CancelPool,
         data: pool_data.clone(),
         state_change: None,
+        memo: Some("".to_string())
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -498,18 +501,19 @@ pub fn single_asset_deposit(
 
     let msg_data = to_binary(&msg).unwrap();
     let state_change_data = to_binary(&StateChange {
-        in_tokens: None,
-        out_tokens: None,
-        pool_tokens: Some(vec![pool_token]),
-        pool_id: None,
-        multi_deposit_order_id: None,
-        source_chain_id: None,
+        in_tokens: [].into(),
+        out_tokens: [].into(),
+        pool_tokens: vec![Some(pool_token)],
+        pool_id: Some("".to_string()),
+        multi_deposit_order_id: Some("".to_string()),
+        source_chain_id: Some("".to_string()),
     })?;
     // Construct the IBC swap packet.
-    let packet_data = InterchainSwapPacketData {
-        r#type: InterchainMessageType::SingleAssetDeposit,
+    let packet_data = IBCSwapPacketData {
+        r#type: SwapMessageType::SingleAssetDeposit,
         data: msg_data, // Use proper serialization for the `data` field.
         state_change: Some(state_change_data),
+        memo: Some("".to_string())
     };
 
     // Send the IBC swap packet.
@@ -621,17 +625,18 @@ fn make_multi_asset_deposit(
 
     // Construct the IBC packet
     let state_change_data = to_binary(&StateChange {
-        in_tokens: None,
-        out_tokens: None,
-        pool_tokens: Some(pool_tokens),
-        pool_id: None,
+        in_tokens: [].into(),
+        out_tokens: [].into(),
+        pool_tokens: pool_tokens,
+        pool_id: Some("".to_string()),
         multi_deposit_order_id: Some(multi_asset_order.id),
-        source_chain_id: None,
+        source_chain_id: Some("".to_string()),
     })?;
-    let packet_data = InterchainSwapPacketData {
-        r#type: InterchainMessageType::MakeMultiDeposit,
+    let packet_data = IBCSwapPacketData {
+        r#type: SwapMessageType::MakeMultiDeposit,
         data: to_binary(&msg.clone())?,
         state_change: Some(state_change_data),
+        memo: Some("".to_string())
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -686,10 +691,11 @@ fn cancel_multi_asset_deposit(
         return Err(ContractError::ErrOrderAlreadyCompleted);
     }
 
-    let packet_data = InterchainSwapPacketData {
-        r#type: InterchainMessageType::CancelMultiDeposit,
+    let packet_data = IBCSwapPacketData {
+        r#type: SwapMessageType::CancelMultiDeposit,
         data: to_binary(&msg.clone())?,
         state_change: None,
+        memo: Some("".to_string())
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -773,17 +779,18 @@ fn take_multi_asset_deposit(
 
     // Construct the IBC packet
     let state_change_data = to_binary(&StateChange {
-        in_tokens: None,
-        out_tokens: None,
-        pool_tokens: Some(pool_tokens),
-        pool_id: None,
-        multi_deposit_order_id: None,
-        source_chain_id: None,
+        in_tokens: [].into(),
+        out_tokens: [].into(),
+        pool_tokens: pool_tokens,
+        pool_id: Some("".to_string()),
+        multi_deposit_order_id: Some("".to_string()),
+        source_chain_id: Some("".to_string()),
     })?;
-    let packet_data = InterchainSwapPacketData {
-        r#type: InterchainMessageType::TakeMultiDeposit,
+    let packet_data = IBCSwapPacketData {
+        r#type: SwapMessageType::TakeMultiDeposit,
         data: to_binary(&msg.clone())?,
         state_change: Some(state_change_data),
+        memo: Some("".to_string())
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -873,22 +880,23 @@ fn multi_asset_withdraw(
     }
 
     let state_change_data = to_binary(&StateChange {
-        in_tokens: Some(vec![
-            msg.pool_token.clone()
-         ]),
-        out_tokens: Some(vec![source_out, destination_out]),
-        pool_tokens: Some(vec![
-            msg.pool_token.clone()
-        ]),
-        pool_id: None,
-        multi_deposit_order_id: None,
-        source_chain_id: None,
+        in_tokens: vec![
+            Some(msg.pool_token.clone())
+         ],
+        out_tokens: vec![Some(source_out), Some(destination_out)],
+        pool_tokens: vec![
+            Some(msg.pool_token.clone())
+        ],
+        pool_id: Some("".to_string()),
+        multi_deposit_order_id: Some("".to_string()),
+        source_chain_id: Some("".to_string()),
     })?;
 
-    let packet = InterchainSwapPacketData {
-        r#type: InterchainMessageType::MultiWithdraw,
+    let packet = IBCSwapPacketData {
+        r#type: SwapMessageType::MultiWithdraw,
         data: to_binary(&msg)?,
         state_change: Some(state_change_data),
+        memo: Some("".to_string())
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -956,15 +964,15 @@ fn swap(
     // Construct the IBC data packet
     let swap_data = to_binary(&msg)?;
     let token_out: Coin;
-    let msg_type: InterchainMessageType;
+    let msg_type: SwapMessageType;
 
     match msg.swap_type {
         SwapMsgType::LEFT => {
-            msg_type = InterchainMessageType::LeftSwap;
+            msg_type = SwapMessageType::LeftSwap;
             token_out = amm.compute_swap(msg.token_in.clone(), &msg.token_out.denom)?;
         }
         SwapMsgType::RIGHT => {
-            msg_type = InterchainMessageType::RightSwap;
+            msg_type = SwapMessageType::RightSwap;
             token_out = amm.compute_offer_amount(msg.token_in.clone(), msg.token_out.clone())?;
         }
     }
@@ -986,17 +994,18 @@ fn swap(
     }
 
     let state_change_data = to_binary(&StateChange {
-        in_tokens: None,
-        out_tokens: Some(vec![token_out]),
-        pool_tokens: None,
-        pool_id: None,
-        multi_deposit_order_id: None,
-        source_chain_id: None,
+        in_tokens: [].into(),
+        out_tokens: vec![Some(token_out)],
+        pool_tokens: [].into(),
+        pool_id: Some("".to_string()),
+        multi_deposit_order_id: Some("".to_string()),
+        source_chain_id: Some("".to_string()),
     })?;
-    let packet = InterchainSwapPacketData {
+    let packet = IBCSwapPacketData {
         r#type: msg_type,
         data: swap_data,
         state_change: Some(state_change_data),
+        memo: Some("".to_string())
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -1283,6 +1292,8 @@ fn query_rate(deps: Deps, pool_id: String, amount: Uint128) -> StdResult<Vec<Coi
 
 #[cfg(test)]
 mod tests {
+    use crate::{market::PoolAsset, msg::TimeoutHeight};
+
     use super::*;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
 
@@ -1295,5 +1306,34 @@ mod tests {
         let info = mock_info("anyone", &[]);
         let res = instantiate(deps.as_mut(), mock_env(), info, instantiate_msg).unwrap();
         assert_eq!(0, res.messages.len());
+
+        let pool_msg: MsgMakePoolRequest = MsgMakePoolRequest {
+            source_port: "1".to_owned(), source_channel: "1".to_owned(),
+            //counter_party_channel: "1".to_owned(),
+            creator: "1".to_owned(), counter_party_creator: "1".to_owned(), liquidity: [
+                PoolAsset {
+                  side: PoolSide::SOURCE,
+                  balance: Coin {denom: "uosmo".to_string(), amount: Uint128::from(5000u128)},
+                  weight: 50,
+                  decimal: 6
+                },
+                PoolAsset {
+                    side: PoolSide::DESTINATION,
+                    balance: Coin {denom: "aside".to_string(), amount: Uint128::from(5000u128)},
+                    weight: 50,
+                    decimal: 6
+                  },
+              ].to_vec(), swap_fee: 25, timeout_height: TimeoutHeight { revision_height: 1, revision_number: 1 }, timeout_time_stamp: 121221 };
+        let pool_data = to_binary(&pool_msg).unwrap();
+        let ibc_packet_data = IBCSwapPacketData {
+            r#type: SwapMessageType::MakePool,
+            data: pool_data.clone(),
+            state_change: None,
+            memo: Some("".to_string())
+        };
+
+        let res = to_binary(&ibc_packet_data).unwrap();
+
+        assert_eq!(res, vec![]);
     }
 }

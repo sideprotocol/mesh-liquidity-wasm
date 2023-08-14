@@ -5,55 +5,57 @@ use cosmwasm_std::{Binary, Coin, Decimal};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct StateChange {
-    #[serde(rename = "In")]
-    pub in_tokens: Option<Vec<Coin>>,
-    #[serde(rename = "Out")]
-    pub out_tokens: Option<Vec<Coin>>,
-    #[serde(rename = "PoolTokens")]
-    pub pool_tokens: Option<Vec<Coin>>,
-    #[serde(rename = "PoolId")]
+    #[serde(rename = "in")]
+    pub in_tokens: Vec<Option<Coin>>,
+    #[serde(rename = "out")]
+    pub out_tokens: Vec<Option<Coin>>,
+    #[serde(rename = "poolTokens")]
+    pub pool_tokens: Vec<Option<Coin>>,
+    #[serde(rename = "poolId")]
     pub pool_id: Option<String>,
-    #[serde(rename = "MultiDepositOrderId")]
+    #[serde(rename = "multiDepositOrderId")]
     pub multi_deposit_order_id: Option<String>,
-    #[serde(rename = "SourceChainId")]
+    #[serde(rename = "sourceChainId")]
     pub source_chain_id: Option<String>,
     // #[serde(rename = "Shares")]
     // pub shares: Option<Uint128>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct InterchainSwapPacketData {
-    #[serde(rename = "Type")]
-    pub r#type: InterchainMessageType,
-    #[serde(rename = "Data")]
+pub struct IBCSwapPacketData {
+    #[serde(rename = "type")]
+    pub r#type: SwapMessageType,
+    #[serde(rename = "data")]
     pub data: Binary,
-    #[serde(rename = "StateChange")]
+    #[serde(rename = "stateChange")]
     pub state_change: Option<Binary>,
+    #[serde(rename = "memo")]
+    pub memo: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub enum InterchainMessageType {
-    #[serde(rename = "UNSPECIFIED")]
+pub enum SwapMessageType {
+    #[serde(rename = "TYPE_UNSPECIFIED")]
     Unspecified = 0,
-    #[serde(rename = "MAKE_POOL")]
+    #[serde(rename = "TYPE_MAKE_POOL")]
     MakePool = 1,
-    #[serde(rename = "TAKE_POOL")]
+    #[serde(rename = "TYPE_TAKE_POOL")]
     TakePool = 2,
-    #[serde(rename = "CANCEL_POOL")]
+    #[serde(rename = "TYPE_CANCEL_POOL")]
     CancelPool = 3,
-    #[serde(rename = "SINGLE_ASSET_DEPOSIT")]
+    #[serde(rename = "TYPE_SINGLE_ASSET_DEPOSIT")]
     SingleAssetDeposit = 4,
-    #[serde(rename = "MAKE_MULTI_DEPOSIT")]
+    #[serde(rename = "TYPE_MAKE_MULTI_DEPOSIT")]
     MakeMultiDeposit = 5,
-    #[serde(rename = "CANCEL_MULTI_DEPOSIT")]
+    #[serde(rename = "TYPE_CANCEL_MULTI_DEPOSIT")]
     CancelMultiDeposit = 6,
-    #[serde(rename = "TAKE_MULTI_DEPOSIT")]
+    #[serde(rename = "TYPE_TAKE_MULTI_DEPOSIT")]
     TakeMultiDeposit = 7,
-    #[serde(rename = "MULTI_WITHDRAW")]
+    #[serde(rename = "TYPE_MULTI_WITHDRAW")]
     MultiWithdraw = 8,
-    #[serde(rename = "LEFT_SWAP")]
+    #[serde(rename = "TYPE_LEFT_SWAP")]
     LeftSwap = 9,
-    #[serde(rename = "RIGHT_SWAP")]
+    #[serde(rename = "TYPE_RIGHT_SWAP")]
     RightSwap = 10,
 }
 

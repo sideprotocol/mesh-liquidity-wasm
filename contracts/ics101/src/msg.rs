@@ -40,19 +40,25 @@ pub enum Cw20HookMsg {
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct TimeoutHeight {
+    pub revision_number: u64,
+    pub revision_height: u64
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct MsgMakePoolRequest {
     pub source_port: String,
     pub source_channel: String,
-    pub source_chain_id: String,
-    pub destination_chain_id: String,
-    pub counterparty_channel: String,
+    // pub source_chain_id: String,
+    // pub destination_chain_id: String,
+    // pub counter_party_channel: String,
     pub creator: String,
-    pub counterparty_creator: String,
+    pub counter_party_creator: String,
     pub liquidity:  Vec<PoolAsset>,
     pub swap_fee: u32,
-    pub timeout_height: u64,
-    pub timeout_timestamp: u64
+    pub timeout_height: TimeoutHeight,
+    pub timeout_time_stamp: u64
 }
 
 impl MsgMakePoolRequest {

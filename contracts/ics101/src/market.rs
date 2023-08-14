@@ -181,7 +181,7 @@ impl InterchainMarketMaker {
     }
 
     // P_issued = P_supply * Wt * Dt/Bt
-    pub fn deposit_multi_asset(&self, tokens: &[Coin]) -> StdResult<Vec<Coin>> {
+    pub fn deposit_multi_asset(&self, tokens: &[Coin]) -> StdResult<Vec<Option<Coin>>> {
         let mut out_tokens = vec![];
         for token in tokens {
             let asset = self.pool.clone().find_asset_by_denom(&token.denom)?;
@@ -205,7 +205,7 @@ impl InterchainMarketMaker {
                 denom: self.pool.supply.denom.clone(),
                 amount: issue_amount.to_uint_ceil()
             };
-            out_tokens.push(output_token)
+            out_tokens.push(Some(output_token))
         }
         return Ok(out_tokens)
     }

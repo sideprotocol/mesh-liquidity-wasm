@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     error::ContractError,
-    types::{InterchainSwapPacketData, InterchainMessageType, StateChange, MultiAssetDepositOrder, OrderStatus},
+    types::{IBCSwapPacketData, SwapMessageType, StateChange, MultiAssetDepositOrder, OrderStatus},
     state::{POOLS, CONFIG, MULTI_ASSET_DEPOSIT_ORDERS, POOL_TOKENS_LIST, ACTIVE_ORDERS},
     utils::{
         get_pool_id_with_tokens, get_coins_from_deposits, mint_tokens_cw20, send_tokens_coin, send_tokens_cw20, burn_tokens_cw20,
@@ -41,10 +41,10 @@ pub(crate) fn do_ibc_packet_receive(
     env: Env,
     packet: &IbcPacket,
 ) -> Result<IbcReceiveResponse, ContractError> {
-    let packet_data: InterchainSwapPacketData = from_slice(&packet.data)?;
+    let packet_data: IBCSwapPacketData = from_slice(&packet.data)?;
 
     match packet_data.r#type {
-        InterchainMessageType::Unspecified => {
+        SwapMessageType::Unspecified => {
             let res = IbcReceiveResponse::new()
                 .set_ack(ack_success())
                 .add_attribute("action", "receive")
@@ -52,49 +52,50 @@ pub(crate) fn do_ibc_packet_receive(
             Ok(res)
         }
         // Save pool data
-        InterchainMessageType::MakePool => {
+        SwapMessageType::MakePool => {
             let msg: MsgMakePoolRequest = from_slice(&packet_data.data.clone())?;
-            on_received_make_pool(deps, env, packet, msg)
+            let state_change_data: StateChange = from_slice(&packet_data.state_change.unwrap())?;
+            on_received_make_pool(deps, env, packet, msg, state_change_data)
         }
-        InterchainMessageType::TakePool => {
+        SwapMessageType::TakePool => {
             let msg: MsgTakePoolRequest = from_slice(&packet_data.data.clone())?;
             on_received_take_pool(deps, env, packet, msg)
         }
-        InterchainMessageType::CancelPool => {
+        SwapMessageType::CancelPool => {
             let msg: MsgCancelPoolRequest = from_slice(&packet_data.data.clone())?;
             on_received_cancel_pool(deps, env, packet, msg)
         }
-        InterchainMessageType::SingleAssetDeposit => {
+        SwapMessageType::SingleAssetDeposit => {
             let msg: MsgSingleAssetDepositRequest = from_slice(&packet_data.data.clone())?;
             let state_change_data: StateChange = from_slice(&packet_data.state_change.unwrap())?;
             on_received_single_deposit(deps, env, packet, msg, state_change_data)
         }
-        InterchainMessageType::MakeMultiDeposit => {
+        SwapMessageType::MakeMultiDeposit => {
             let msg: MsgMakeMultiAssetDepositRequest = from_slice(&packet_data.data.clone())?;
             let state_change_data: StateChange = from_slice(&packet_data.state_change.unwrap())?;
             on_received_make_multi_deposit(deps, env, packet, msg, state_change_data)
         }
-        InterchainMessageType::TakeMultiDeposit => {
+        SwapMessageType::TakeMultiDeposit => {
             let msg: MsgTakeMultiAssetDepositRequest = from_slice(&packet_data.data.clone())?;
             let state_change_data: StateChange = from_slice(&packet_data.state_change.unwrap())?;
             on_received_take_multi_deposit(deps, env, packet, msg, state_change_data)
         }
-        InterchainMessageType::CancelMultiDeposit => {
+        SwapMessageType::CancelMultiDeposit => {
             let msg: MsgCancelMultiAssetDepositRequest = from_slice(&packet_data.data.clone())?;
             let state_change_data: StateChange = from_slice(&packet_data.state_change.unwrap())?;
             on_received_cancel_multi_deposit(deps, env, packet, msg, state_change_data)
         }
-        InterchainMessageType::MultiWithdraw => {
+        SwapMessageType::MultiWithdraw => {
             let msg: MsgMultiAssetWithdrawRequest = from_slice(&packet_data.data.clone())?;
             let state_change_data: StateChange = from_slice(&packet_data.state_change.unwrap())?;
             on_received_multi_withdraw(deps, env, packet, msg, state_change_data)
         }
-        InterchainMessageType::LeftSwap => {
+        SwapMessageType::LeftSwap => {
             let msg: MsgSwapRequest = from_binary(&packet_data.data.clone())?;
             let state_change_data: StateChange = from_slice(&packet_data.state_change.unwrap())?;
             on_received_swap(deps, env, packet, msg, state_change_data)
         }
-        InterchainMessageType::RightSwap => {
+        SwapMessageType::RightSwap => {
             let msg: MsgSwapRequest = from_binary(&packet_data.data.clone())?;
             let state_change_data: StateChange = from_slice(&packet_data.state_change.unwrap())?;
             on_received_swap(deps, env, packet, msg, state_change_data)
@@ -104,9 +105,10 @@ pub(crate) fn do_ibc_packet_receive(
 
 pub(crate) fn on_received_make_pool(
     deps: DepsMut,
-    _env: Env,
-    _packet: &IbcPacket,
+    env: Env,
+    packet: &IbcPacket,
     msg: MsgMakePoolRequest,
+    state_change: StateChange
 ) -> Result<IbcReceiveResponse, ContractError> {
     // get pool asset from tokens and weight
     if let Err(err) = msg.validate_basic() {
@@ -120,7 +122,8 @@ pub(crate) fn on_received_make_pool(
     tokens[0] = msg.liquidity[0].balance.clone();
     tokens[1] = msg.liquidity[1].balance.clone();
 
-    let pool_id = get_pool_id_with_tokens(&tokens, msg.source_chain_id.clone(), msg.destination_chain_id.clone());
+    //let pool_id = get_pool_id_with_tokens(&tokens, "osmo-test-5".to_string(), "uni-6".to_string());
+    let pool_id = state_change.pool_id.unwrap();
 
     //load pool throw error if found
     let interchain_pool_temp = POOLS.may_load(deps.storage, &pool_id.clone())?;
@@ -144,15 +147,15 @@ pub(crate) fn on_received_make_pool(
     let interchain_pool: InterchainLiquidityPool = InterchainLiquidityPool {
         id: pool_id.clone(),
         source_creator: msg.creator,
-        destination_creator: msg.counterparty_creator,
+        destination_creator: msg.counter_party_creator,
         assets: liquidity,
         supply: supply,
         status: Initialized,
         counter_party_port: msg.source_port,
-        counter_party_channel: msg.counterparty_channel,
+        counter_party_channel: packet.src.channel_id.clone(),
         swap_fee: msg.swap_fee,
-        source_chain_id: msg.source_chain_id,
-        destination_chain_id: msg.destination_chain_id.clone(),
+        source_chain_id: state_change.source_chain_id.unwrap(),
+        destination_chain_id: env.block.chain_id,
         pool_price: 0
     };
 
@@ -201,7 +204,7 @@ pub(crate) fn on_received_take_pool(
     let pool_tokens = amm.deposit_multi_asset(&tokens).map_err(|err| StdError::generic_err(format!("Failed to deposit multi asset: {}", err)))?;
     let mut new_shares = Uint128::from(0u128);
     for pool in pool_tokens {
-        new_shares = new_shares + pool.amount;
+        new_shares = new_shares + pool.unwrap().amount;
     }
     // mint new_shares in take receive
     let sub_message;
@@ -283,7 +286,7 @@ pub(crate) fn on_received_single_deposit(
             "Pool not found"
         ))));
     }
-    let pool_tokens = &state_change.pool_tokens.unwrap().clone()[0];
+    let pool_tokens = &state_change.pool_tokens.clone()[0].clone().unwrap();
     // increase lp token mint amount
     interchain_pool.add_asset(msg.token.clone()).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;
     interchain_pool.add_supply(pool_tokens.clone()).map_err(|err| StdError::generic_err(format!("Failed to add supply: {}", err)))?;
@@ -386,10 +389,10 @@ pub(crate) fn on_received_take_multi_deposit(
         return Err(ContractError::ErrOrderNotFound);
     }
 
-    let pool_tokens = state_change.pool_tokens.unwrap();
+    let pool_tokens = state_change.pool_tokens;
     let mut new_shares = Uint128::from(0u128);
     for pool in pool_tokens {
-        new_shares = new_shares + pool.amount;
+        new_shares = new_shares + pool.unwrap().amount;
     }
 
     let sub_message;
@@ -485,23 +488,23 @@ pub(crate) fn on_received_multi_withdraw(
         ))));
     }
 
-    let out_assets = state_change.out_tokens.unwrap();
-    let pool_tokens = state_change.pool_tokens.unwrap();
+    let out_assets = state_change.out_tokens;
+    let pool_tokens = state_change.pool_tokens;
     let token = interchain_pool.find_asset_by_side(PoolSide::SOURCE)
     .map_err(|err| StdError::generic_err(format!("Failed to find asset: {}", err)))?;
     let mut sub_messages = vec![];
 
     // Update pool status by subtracting the supplied pool coin and output token
     for pool_asset in out_assets {
-        if token.balance.denom == pool_asset.denom {
+        if token.balance.denom == pool_asset.clone().unwrap().denom {
             // Unlock tokens for this chain
-            sub_messages = send_tokens_coin(&Addr::unchecked(msg.counterparty_receiver.clone()), pool_asset.clone())?;
+            sub_messages = send_tokens_coin(&Addr::unchecked(msg.counterparty_receiver.clone()), pool_asset.clone().unwrap())?;
         }
-        interchain_pool.subtract_asset(pool_asset.clone()).map_err(|err| StdError::generic_err(format!("Failed to subtract asset: {}", err)))?;
+        interchain_pool.subtract_asset(pool_asset.clone().unwrap()).map_err(|err| StdError::generic_err(format!("Failed to subtract asset: {}", err)))?;
     }
 
     for pool_token in pool_tokens {
-        interchain_pool.subtract_supply(pool_token).map_err(|err| StdError::generic_err(format!("Failed to subtract supply: {}", err)))?;
+        interchain_pool.subtract_supply(pool_token.unwrap()).map_err(|err| StdError::generic_err(format!("Failed to subtract supply: {}", err)))?;
     }
 
 	// Save pool
@@ -535,20 +538,20 @@ pub(crate) fn on_received_swap(
         ))));
     }
 
-    let token_out = state_change.out_tokens.unwrap();
+    let token_out = state_change.out_tokens;
 
     // send tokens
-    let sub_messages = send_tokens_coin(&Addr::unchecked(msg.recipient), token_out.get(0).unwrap().clone())?;
+    let sub_messages = send_tokens_coin(&Addr::unchecked(msg.recipient), token_out.get(0).unwrap().clone().unwrap())?;
 
     // Update pool status by subtracting output token and adding input token
     match msg.swap_type {
         crate::msg::SwapMsgType::LEFT => {
             interchain_pool.add_asset(msg.token_in).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;
-            interchain_pool.subtract_asset(token_out.get(0).unwrap().clone()).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;        
+            interchain_pool.subtract_asset(token_out.get(0).unwrap().clone().unwrap()).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;        
         }
         crate::msg::SwapMsgType::RIGHT => {
             // token_out here is offer amount that is needed to get msg.token_out
-            interchain_pool.add_asset(token_out.get(0).unwrap().clone()).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;
+            interchain_pool.add_asset(token_out.get(0).unwrap().clone().unwrap()).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;
             interchain_pool.subtract_asset(msg.token_out).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;        
         }
     }
@@ -570,15 +573,15 @@ pub(crate) fn on_packet_success(
     deps: DepsMut,
     packet: IbcPacket,
 ) -> Result<IbcBasicResponse, ContractError> {
-    let packet_data: InterchainSwapPacketData = from_binary(&packet.data)?;
+    let packet_data: IBCSwapPacketData = from_binary(&packet.data)?;
     // similar event messages like ibctransfer module
     let attributes = vec![attr("success", "true")];
 
     match packet_data.r#type {
         // This is the step 4 (Acknowledge Make Packet) of the atomic swap: https://github.com/liangping/ibc/blob/atomic-swap/spec/app/ics-100-atomic-swap/ibcswap.png
         // This logic is executed when Taker chain acknowledge the make swap packet.
-        InterchainMessageType::Unspecified => Ok(IbcBasicResponse::new()),
-        InterchainMessageType::MakePool => {
+        SwapMessageType::Unspecified => Ok(IbcBasicResponse::new()),
+        SwapMessageType::MakePool => {
             let state_change: StateChange = from_slice(&packet_data.state_change.unwrap())?;
             // pool is already saved when makePool is called.
             // mint lp tokens 
@@ -588,7 +591,7 @@ pub(crate) fn on_packet_success(
             .add_attribute("action", "make_pool_acknowledged")
             .add_attributes(attributes))
         }
-        InterchainMessageType::TakePool => {
+        SwapMessageType::TakePool => {
             let msg: MsgTakePoolRequest = from_binary(&packet_data.data.clone())?;
             // load pool throw error if found
             let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id)?;
@@ -618,7 +621,7 @@ pub(crate) fn on_packet_success(
 
             let mut new_shares = Uint128::from(0u128);
             for pool in pool_tokens {
-                new_shares = new_shares + pool.amount;
+                new_shares = new_shares + pool.unwrap().amount;
             }
 
             interchain_pool.add_supply(Coin {denom: msg.pool_id.clone(), amount: new_shares})
@@ -632,7 +635,7 @@ pub(crate) fn on_packet_success(
             .add_attribute("action", "take_pool_acknowledged")
             .add_attributes(attributes))
         }
-        InterchainMessageType::CancelPool => {
+        SwapMessageType::CancelPool => {
             let msg: MsgCancelPoolRequest = from_binary(&packet_data.data.clone())?;
             // load pool throw error if found
             let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id)?;
@@ -660,7 +663,7 @@ pub(crate) fn on_packet_success(
             .add_attribute("action", "cancel_pool_acknowledged")
             .add_attributes(attributes))
         }
-        InterchainMessageType::SingleAssetDeposit => {
+        SwapMessageType::SingleAssetDeposit => {
             let msg: MsgSingleAssetDepositRequest = from_binary(&packet_data.data.clone())?;
             let state_change: StateChange = from_slice(&packet_data.state_change.unwrap())?;
 
@@ -679,7 +682,7 @@ pub(crate) fn on_packet_success(
             let sub_message;
             // Mint tokens (cw20) to the sender
             if let Some(lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id.clone())? {
-                sub_message = mint_tokens_cw20(msg.sender, lp_token, state_change.pool_tokens.as_ref().unwrap()[0].amount)?;
+                sub_message = mint_tokens_cw20(msg.sender, lp_token, state_change.pool_tokens[0].clone().unwrap().amount)?;
             } else {
                 // throw error token not found, initialization is done in make_pool and
                 // take_pool
@@ -689,7 +692,7 @@ pub(crate) fn on_packet_success(
             }
             // update pool status
             interchain_pool.add_asset(msg.token).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;
-            interchain_pool.add_supply(state_change.pool_tokens.unwrap()[0].clone()).map_err(|err| StdError::generic_err(format!("Failed to add supply: {}", err)))?;
+            interchain_pool.add_supply(state_change.clone().pool_tokens[0].clone().unwrap()).map_err(|err| StdError::generic_err(format!("Failed to add supply: {}", err)))?;
 
             POOLS.save(deps.storage, &msg.pool_id, &interchain_pool)?;
 
@@ -698,14 +701,14 @@ pub(crate) fn on_packet_success(
             .add_attribute("action", "single_asset_deposit_acknowledged")
             .add_attributes(attributes).add_submessages(sub_message))
         }
-        InterchainMessageType::MakeMultiDeposit => {
+        SwapMessageType::MakeMultiDeposit => {
             let msg: MsgMakeMultiAssetDepositRequest = from_binary(&packet_data.data.clone())?;
             Ok(IbcBasicResponse::new()
             .add_attribute("pool_id", msg.pool_id)
             .add_attribute("action", "make_multi_deposit_acknowledged")
             .add_attributes(attributes))
         }
-        InterchainMessageType::TakeMultiDeposit => {
+        SwapMessageType::TakeMultiDeposit => {
             let msg: MsgTakeMultiAssetDepositRequest = from_binary(&packet_data.data.clone())?;
             let state_change: StateChange = from_slice(&packet_data.state_change.unwrap())?;
             // Mint tokens in take only i.e after receiving all the assets
@@ -735,10 +738,10 @@ pub(crate) fn on_packet_success(
                 return Err(ContractError::ErrOrderNotFound);
             }
 
-            let pool_tokens = state_change.pool_tokens.unwrap();
+            let pool_tokens = state_change.pool_tokens;
             let mut new_shares = Uint128::from(0u128);
             for pool in pool_tokens {
-                new_shares = new_shares + pool.amount;
+                new_shares = new_shares + pool.unwrap().amount;
             }
         
             // Mint tokens (cw20) to the sender
@@ -766,7 +769,7 @@ pub(crate) fn on_packet_success(
             .add_attribute("action", "take_multi_deposit_acknowledged")
             .add_attributes(attributes))
         }
-        InterchainMessageType::CancelMultiDeposit => {
+        SwapMessageType::CancelMultiDeposit => {
             let msg: MsgCancelMultiAssetDepositRequest = from_binary(&packet_data.data.clone())?;
             // load pool throw error if found
             let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id.clone())?;
@@ -810,7 +813,7 @@ pub(crate) fn on_packet_success(
             .add_attribute("action", "cancel_multi_deposit_acknowledged")
             .add_attributes(attributes))
         }
-        InterchainMessageType::MultiWithdraw => {
+        SwapMessageType::MultiWithdraw => {
             // Unlock tokens for user
             let msg: MsgMultiAssetWithdrawRequest = from_binary(&packet_data.data.clone())?;
             //let state_change = packet_data.state_change.unwrap();
@@ -827,23 +830,23 @@ pub(crate) fn on_packet_success(
                 ))));
             }
 
-            let out_assets = state_change.out_tokens.unwrap();
-            let pool_tokens = state_change.pool_tokens.unwrap();
+            let out_assets = state_change.out_tokens;
+            let pool_tokens = state_change.pool_tokens;
             let token = interchain_pool.find_asset_by_side(PoolSide::SOURCE)
             .map_err(|err| StdError::generic_err(format!("Failed to find asset: {}", err)))?;
             let mut sub_messages = vec![];
 
             // Update pool status by subtracting the supplied pool coin and output token
             for pool_asset in out_assets {
-                if token.balance.denom == pool_asset.denom {
+                if token.balance.denom == pool_asset.clone().unwrap().denom {
                     // Unlock tokens for this chain
-                    sub_messages = send_tokens_coin(&Addr::unchecked(msg.receiver.clone()), pool_asset.clone())?;
+                    sub_messages = send_tokens_coin(&Addr::unchecked(msg.receiver.clone()), pool_asset.clone().unwrap())?;
                 }
-                interchain_pool.subtract_asset(pool_asset.clone()).map_err(|err| StdError::generic_err(format!("Failed to subtract asset: {}", err)))?;
+                interchain_pool.subtract_asset(pool_asset.clone().unwrap()).map_err(|err| StdError::generic_err(format!("Failed to subtract asset: {}", err)))?;
             }
 
             for pool_token in pool_tokens {
-                interchain_pool.subtract_supply(pool_token).map_err(|err| StdError::generic_err(format!("Failed to subtract supply: {}", err)))?;
+                interchain_pool.subtract_supply(pool_token.unwrap()).map_err(|err| StdError::generic_err(format!("Failed to subtract supply: {}", err)))?;
             }
 
             // Burn tokens (cw20) to the sender
@@ -864,7 +867,7 @@ pub(crate) fn on_packet_success(
             .add_attribute("action", "multi_asset_withdraw_acknowledged")
             .add_attributes(attributes).add_submessages(sub_messages))
         }
-        InterchainMessageType::LeftSwap => {
+        SwapMessageType::LeftSwap => {
             let msg: MsgSwapRequest = from_binary(&packet_data.data.clone())?;
             let state_change: StateChange = from_slice(&packet_data.state_change.unwrap())?;
 
@@ -879,11 +882,11 @@ pub(crate) fn on_packet_success(
                 ))));
             }
 
-            let token_out = state_change.out_tokens.unwrap();
+            let token_out = state_change.out_tokens;
 
             // Update pool status by subtracting output token and adding input token
             interchain_pool.add_asset(msg.token_in).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;
-            interchain_pool.subtract_asset(token_out.get(0).unwrap().clone()).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;        
+            interchain_pool.subtract_asset(token_out.get(0).unwrap().clone().unwrap()).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;        
         
             POOLS.save(deps.storage, &msg.pool_id, &interchain_pool)?;
 
@@ -892,7 +895,7 @@ pub(crate) fn on_packet_success(
             .add_attribute("action", "swap_asset_acknowledged")
             .add_attributes(attributes))
         }
-        InterchainMessageType::RightSwap => {
+        SwapMessageType::RightSwap => {
             let msg: MsgSwapRequest = from_binary(&packet_data.data.clone())?;
             let state_change: StateChange = from_slice(&packet_data.state_change.unwrap())?;
 
@@ -907,10 +910,10 @@ pub(crate) fn on_packet_success(
                 ))));
             }
 
-            let token_out = state_change.out_tokens.unwrap();
+            let token_out = state_change.out_tokens;
             // Update pool status by subtracting output token and adding input token      
             // token_out here is offer amount that is needed to get msg.token_out
-            interchain_pool.add_asset(token_out.get(0).unwrap().clone()).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;
+            interchain_pool.add_asset(token_out.get(0).unwrap().clone().unwrap()).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;
             interchain_pool.subtract_asset(msg.token_out).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;        
         
             POOLS.save(deps.storage, &msg.pool_id, &interchain_pool)?;
@@ -927,7 +930,7 @@ pub(crate) fn on_packet_failure(
     packet: IbcPacket,
     err: String,
 ) -> Result<IbcBasicResponse, ContractError> {
-    let packet_data: InterchainSwapPacketData = from_binary(&packet.data)?;
+    let packet_data: IBCSwapPacketData = from_binary(&packet.data)?;
     let submsg = refund_packet_token(deps, packet_data)?;
 
     let res = IbcBasicResponse::new()
@@ -941,18 +944,18 @@ pub(crate) fn on_packet_failure(
 
 pub(crate) fn refund_packet_token(
     deps: DepsMut,
-    packet: InterchainSwapPacketData,
+    packet: IBCSwapPacketData,
 ) -> Result<Vec<SubMsg>, ContractError> {
     match packet.r#type {
-        InterchainMessageType::Unspecified => Ok(vec![]),
-        InterchainMessageType::MakePool => {
+        SwapMessageType::Unspecified => Ok(vec![]),
+        SwapMessageType::MakePool => {
             // remove from map and refund make tokens
             let msg: MsgMakePoolRequest = from_binary(&packet.data.clone())?;
             let mut tokens: [Coin; 2] = Default::default();
             tokens[0] = msg.liquidity[0].balance.clone();
             tokens[1] = msg.liquidity[1].balance.clone();
 
-            let pool_id = get_pool_id_with_tokens(&tokens, msg.source_chain_id, msg.destination_chain_id);
+            let pool_id = get_pool_id_with_tokens(&tokens, "osmo-test-5".to_string(), "uni-6".to_string());
             let sub_messages = send_tokens_coin(&Addr::unchecked(msg.creator), tokens[0].clone())?;
 
             POOLS.remove(deps.storage, &pool_id);
@@ -960,7 +963,7 @@ pub(crate) fn refund_packet_token(
 
             Ok(sub_messages)
         }
-        InterchainMessageType::TakePool => {
+        SwapMessageType::TakePool => {
             let msg: MsgTakePoolRequest = from_binary(&packet.data.clone())?;
             // load pool throw error if found
             let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id)?;
@@ -981,17 +984,17 @@ pub(crate) fn refund_packet_token(
 
             Ok(sub_messages)
         }
-        InterchainMessageType::CancelPool => {
+        SwapMessageType::CancelPool => {
             // do nothing
             Ok(vec![])
         }
-        InterchainMessageType::SingleAssetDeposit => {
+        SwapMessageType::SingleAssetDeposit => {
             let msg: MsgSingleAssetDepositRequest = from_binary(&packet.data.clone())?;
             let sub_messages = send_tokens_coin(&Addr::unchecked(msg.sender), msg.token)?;
 
             Ok(sub_messages)
         }
-        InterchainMessageType::MakeMultiDeposit => {
+        SwapMessageType::MakeMultiDeposit => {
             let msg: MsgMakeMultiAssetDepositRequest = from_binary(&packet.data.clone())?;
             let sub_messages = send_tokens_coin(&Addr::unchecked(msg.deposits[0].clone().sender), msg.deposits.get(0).unwrap().clone().balance)?;
             let ac_key = msg.deposits[0].sender.clone() + "-" + &msg.pool_id.clone() + "-" + &msg.deposits[1].sender.clone();
@@ -1009,7 +1012,7 @@ pub(crate) fn refund_packet_token(
             CONFIG.save(deps.storage, &config)?;
             Ok(sub_messages)
         }
-        InterchainMessageType::TakeMultiDeposit => {
+        SwapMessageType::TakeMultiDeposit => {
             let msg: MsgTakeMultiAssetDepositRequest = from_binary(&packet.data.clone())?;
 
             let key = msg.pool_id.clone() + "-" + &msg.order_id.clone().to_string();
@@ -1026,11 +1029,11 @@ pub(crate) fn refund_packet_token(
 
             Ok(sub_messages)
         }
-        InterchainMessageType::CancelMultiDeposit => {
+        SwapMessageType::CancelMultiDeposit => {
             // do nothing
             Ok(vec![])
         }
-        InterchainMessageType::MultiWithdraw => {
+        SwapMessageType::MultiWithdraw => {
             let msg: MsgMultiAssetWithdrawRequest = from_binary(&packet.data.clone())?;
             // Send tokens (cw20) to the sender
             let lp_token = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id.clone())?.unwrap();
@@ -1038,16 +1041,16 @@ pub(crate) fn refund_packet_token(
           
             Ok(sub_message)
         }
-        InterchainMessageType::LeftSwap => {
+        SwapMessageType::LeftSwap => {
             let msg: MsgSwapRequest = from_binary(&packet.data.clone())?;
             let sub_messages = send_tokens_coin(&Addr::unchecked(msg.sender), msg.token_in)?;
             Ok(sub_messages)
         },
-        InterchainMessageType::RightSwap => {
+        SwapMessageType::RightSwap => {
             //let state_change = packet.state_change.unwrap();
             let state_change: StateChange = from_slice(&packet.state_change.unwrap())?;
             let msg: MsgSwapRequest = from_binary(&packet.data.clone())?;
-            let sub_messages = send_tokens_coin(&Addr::unchecked(msg.sender), state_change.out_tokens.clone().unwrap().get(0).unwrap().clone())?;
+            let sub_messages = send_tokens_coin(&Addr::unchecked(msg.sender), state_change.out_tokens.clone().get(0).unwrap().clone().unwrap())?;
             Ok(sub_messages)
         }
     }
