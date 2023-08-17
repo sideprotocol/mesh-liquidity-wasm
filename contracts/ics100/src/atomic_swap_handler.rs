@@ -106,7 +106,7 @@ pub(crate) fn on_received_make(
 
 pub(crate) fn on_received_take(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     _packet: &IbcPacket,
     msg: TakeSwapMsg,
 ) -> Result<IbcReceiveResponse, ContractError> {
@@ -134,7 +134,7 @@ pub(crate) fn on_received_take(
 
     swap_order.status = Status::Complete;
     swap_order.taker = Some(msg.clone());
-    swap_order.complete_timestamp = Some(Timestamp::from_nanos(msg.create_timestamp));
+    swap_order.complete_timestamp = Some(Timestamp::from_nanos(env.block.time.nanos()));
 
     set_atomic_order(deps.storage, &msg.order_id, &swap_order)?;
     move_order_to_bottom(deps.storage, &msg.order_id)?;
@@ -150,7 +150,7 @@ pub(crate) fn on_received_take(
 
 pub(crate) fn on_received_cancel(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     _packet: &IbcPacket,
     msg: CancelSwapMsg,
 ) -> Result<IbcReceiveResponse, ContractError> {
@@ -170,7 +170,7 @@ pub(crate) fn on_received_cancel(
     }
 
     swap_order.status = Status::Cancel;
-    swap_order.cancel_timestamp = Some(Timestamp::from_nanos(msg.create_timestamp));
+    swap_order.cancel_timestamp = Some(Timestamp::from_nanos(env.block.time.nanos()));
     set_atomic_order(deps.storage, &msg.order_id, &swap_order)?;
 
     let res = IbcReceiveResponse::new()
@@ -185,6 +185,7 @@ pub(crate) fn on_received_cancel(
 pub(crate) fn on_packet_success(
     deps: DepsMut,
     packet: IbcPacket,
+    env: Env
 ) -> Result<IbcBasicResponse, ContractError> {
     let packet_data: AtomicSwapPacketData = from_binary(&packet.data)?;
 
@@ -238,7 +239,7 @@ pub(crate) fn on_packet_success(
 
             swap_order.status = Status::Complete;
             swap_order.taker = Some(msg.clone());
-            swap_order.complete_timestamp = Some(Timestamp::from_nanos(msg.create_timestamp));
+            swap_order.complete_timestamp = Some(Timestamp::from_nanos(env.block.time.nanos()));
 
             set_atomic_order(deps.storage, &order_id, &swap_order)?;
             move_order_to_bottom(deps.storage, &msg.order_id)?;
@@ -260,7 +261,7 @@ pub(crate) fn on_packet_success(
             let submsg = send_tokens(&maker_address, maker_msg.sell_token)?;
 
             swap_order.status = Status::Cancel;
-            swap_order.cancel_timestamp = Some(Timestamp::from_nanos(msg.create_timestamp));
+            swap_order.cancel_timestamp = Some(Timestamp::from_nanos(env.block.time.nanos()));
 
             set_atomic_order(deps.storage, &order_id, &swap_order)?;
 

@@ -21,7 +21,6 @@ pub fn generate_order_id(order_path: &str, msg: MakeSwapMsg) -> StdResult<String
         maker_address: msg.maker_address.clone(),
         maker_receiving_address: msg.maker_receiving_address.clone(),
         desired_taker: msg.desired_taker.clone(),
-        create_timestamp: msg.create_timestamp.clone().to_string(),
         timeout_height: HeightOutput {
             revision_number: msg.timeout_height.revision_number.clone().to_string(),
             revision_height: msg.timeout_height.revision_height.clone().to_string(),
@@ -127,7 +126,6 @@ pub(crate) fn decode_take_swap_msg(data: &Binary) -> TakeSwapMsg {
                         .unwrap(),
                 },
                 timeout_timestamp: msg_output.timeout_timestamp.parse().unwrap(),
-                create_timestamp: msg_output.create_timestamp.parse().unwrap(),
             }
         }
     }
@@ -152,7 +150,6 @@ pub(crate) fn decode_make_swap_msg(data: &Binary) -> MakeSwapMsg {
                 maker_address: msg_output.maker_address.clone(),
                 maker_receiving_address: msg_output.maker_receiving_address.clone(),
                 desired_taker: msg_output.desired_taker.clone(),
-                create_timestamp: msg_output.create_timestamp.parse().unwrap(),
                 timeout_height: Height {
                     revision_number: msg_output
                         .timeout_height
