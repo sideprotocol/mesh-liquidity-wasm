@@ -99,13 +99,13 @@ pub fn ibc_packet_receive(
 // check if success or failure and update balance, or return funds
 pub fn ibc_packet_ack(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     msg: IbcPacketAckMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
     if let Some(error) = try_get_ack_error(&msg.acknowledgement) {
         on_packet_failure(deps, msg.original_packet, error)
     } else {
-        on_packet_success(deps, msg.original_packet)
+        on_packet_success(deps, msg.original_packet, env)
     }
 }
 

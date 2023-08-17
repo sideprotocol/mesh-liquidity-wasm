@@ -377,7 +377,6 @@ mod tests {
             maker_address: "maker0001".to_string(),
             maker_receiving_address: "makerrcpt0001".to_string(),
             desired_taker: "".to_string(),
-            create_timestamp: 0,
             expiration_timestamp: env.block.time.plus_seconds(100).nanos(),
             timeout_height: Height {
                 revision_number: 0,
@@ -422,7 +421,6 @@ mod tests {
             maker_address: "wasm1kj2t5txvwznrdx32v6xsw46yqztsyahqwxwlve".to_string(),
             maker_receiving_address: "wasm1kj2t5txvwznrdx32v6xsw46yqztsyahqwxwlve".to_string(),
             desired_taker: "".to_string(),
-            create_timestamp: 1683279635,
             expiration_timestamp: 1693399749000000000,
             timeout_height: Height {
                 revision_number: 0,
@@ -468,7 +466,6 @@ mod tests {
                 revision_height: 0,
             },
             timeout_timestamp: 1693399799000000000,
-            create_timestamp: 1684328527,
         };
 
         let create_bytes = to_binary(&create.clone()).unwrap();
@@ -508,7 +505,6 @@ mod tests {
                             .unwrap(),
                     },
                     timeout_timestamp: msg_output.timeout_timestamp.parse().unwrap(),
-                    create_timestamp: msg_output.create_timestamp.parse().unwrap(),
                 }
             }
         }

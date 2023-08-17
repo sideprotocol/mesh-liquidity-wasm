@@ -74,7 +74,6 @@ pub struct MakeSwapMsg {
 	/// only the desired_taker is allowed to take this order
 	/// this is address on destination chain
     pub desired_taker: String,
-    pub create_timestamp: i64,
 
     pub timeout_height: Height,
     pub timeout_timestamp: u64,
@@ -84,7 +83,7 @@ pub struct MakeSwapMsg {
 
 impl fmt::Display for MakeSwapMsg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{{\"source_port\":\"{}\",\"source_channel\":\"{}\",\"sell_token\":{{\"denom\":\"{}\",\"amount\":\"{}\"}},\"buy_token\":{{\"denom\":\"{}\",\"amount\":\"{}\"}},\"maker_address\":\"{}\",\"maker_receiving_address\":\"{}\",\"desired_taker\":\"{}\",\"create_timestamp\":\"{}\",\"timeout_height\":{{\"revision_number\":\"{}\",\"revision_height\":\"{}\"}},\"timeout_timestamp\":\"{}\",\"expiration_timestamp\":\"{}\"}}",
+        write!(f, "{{\"source_port\":\"{}\",\"source_channel\":\"{}\",\"sell_token\":{{\"denom\":\"{}\",\"amount\":\"{}\"}},\"buy_token\":{{\"denom\":\"{}\",\"amount\":\"{}\"}},\"maker_address\":\"{}\",\"maker_receiving_address\":\"{}\",\"desired_taker\":\"{}\",\"timeout_height\":{{\"revision_number\":\"{}\",\"revision_height\":\"{}\"}},\"timeout_timestamp\":\"{}\",\"expiration_timestamp\":\"{}\"}}",
             self.source_port,
             self.source_channel,
             self.sell_token.denom,
@@ -94,7 +93,6 @@ impl fmt::Display for MakeSwapMsg {
             self.maker_address,
             self.maker_receiving_address,
             self.desired_taker,
-            self.create_timestamp,
             self.timeout_height.revision_number,
             self.timeout_height.revision_height,
             self.timeout_timestamp,
@@ -112,7 +110,6 @@ pub struct MakeSwapMsgOutput {
     pub maker_address: String,
     pub maker_receiving_address: String,
     pub desired_taker: String,
-    pub create_timestamp: String,
     pub timeout_height: HeightOutput,
     pub timeout_timestamp: String,
     pub expiration_timestamp: String,
@@ -142,7 +139,6 @@ pub struct TakeSwapMsg {
     /// Timeout timestamp in absolute nanoseconds since unix epoch.
 	/// The timeout is disabled when set to 0.
     pub timeout_timestamp: u64,
-    pub create_timestamp: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug, JsonSchema)]
@@ -153,7 +149,6 @@ pub struct TakeSwapMsgOutput {
     pub taker_receiving_address: String,
     pub timeout_height: HeightOutput,
     pub timeout_timestamp: String,
-    pub create_timestamp: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug, JsonSchema)]
@@ -165,8 +160,6 @@ pub struct CancelSwapMsg {
     pub timeout_height: HeightOutput,
 
     pub timeout_timestamp: String,
-
-    pub create_timestamp: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
