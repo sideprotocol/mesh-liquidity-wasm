@@ -495,7 +495,6 @@
       }
     },
     "PoolSide": {
-      "description": "Number of LP tokens to mint when liquidity is provided for the first time to the pool. This does not include the token decimals.",
       "type": "string",
       "enum": [
         "SOURCE",

@@ -6,13 +6,13 @@ use cosmwasm_std::{Coin, Decimal, StdError, StdResult, Uint128, Decimal256, Uint
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{math::{calc_minted_shares_given_single_asset_in, solve_constant_function_invariant}, types::WeightedAsset, utils::{decimal2decimal256, adjust_precision} };
+use crate::{math::{calc_minted_shares_given_single_asset_in, solve_constant_function_invariant}, types::WeightedAsset, utils::{MULTIPLIER, decimal2decimal256, adjust_precision} };
 
 pub const FEE_PRECISION: u16 = 10000;
 pub const FIXED_PRECISION: u8 = 12;
 /// Number of LP tokens to mint when liquidity is provided for the first time to the pool.
 /// This does not include the token decimals.
-// const INIT_LP_TOKENS: u128 = 100;
+const INIT_LP_TOKENS: u128 = 100;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub enum PoolSide {
@@ -180,34 +180,83 @@ impl InterchainMarketMaker {
         Ok(output_token)
     }
 
-    // P_issued = P_supply * Wt * Dt/Bt
-    pub fn deposit_multi_asset(&self, tokens: &[Coin]) -> StdResult<Vec<Coin>> {
-        let mut out_tokens = vec![];
-        for token in tokens {
-            let asset = self.pool.clone().find_asset_by_denom(&token.denom)?;
-            let mut total_asset_amount = Uint128::from(0u128);
-            let mut issue_amount;
-            if self.pool.status == PoolStatus::Initialized && self.pool.supply.amount.is_zero() {
-                for asset in &self.pool.assets {
-                    let dec_asset_amount = adjust_precision(asset.balance.amount, asset.decimal.try_into().unwrap(), 18)?;
-                    total_asset_amount = total_asset_amount + dec_asset_amount;
-                }
-                let mult_amount = total_asset_amount.checked_mul(asset.weight.into())?;
-                issue_amount = Decimal::from_ratio(mult_amount, Uint128::from(100u128));
-            } else {
-                let ratio = Decimal::from_ratio(token.amount, asset.balance.amount);
-                issue_amount = Decimal::from_ratio(self.pool.supply.amount, Uint128::from(100u128));
-                issue_amount = issue_amount.checked_mul(ratio)?;
-                issue_amount = issue_amount.checked_mul(Decimal::from_str(&asset.weight.to_string())?)?;
-            }
 
-            let output_token = Coin {
-                denom: self.pool.supply.denom.clone(),
-                amount: issue_amount.to_uint_ceil()
-            };
-            out_tokens.push(output_token)
+    /// --------- x --------- x --------- x --------- x --------- x --------- x --------- x --------- x --------- x ---------
+    /// MaximalExactRatioJoin calculates the maximal amount of tokens that can be joined whilst maintaining pool asset's ratio
+    /// returning the number of shares that'd be and how many coins would be left over.
+    ///
+    ///	e.g) suppose we have a pool of 10 foo tokens and 10 bar tokens, with the total amount of 100 shares.
+    ///		 if `tokensIn` provided is 1 foo token and 2 bar tokens, `MaximalExactRatioJoin`
+    ///		 would be returning (10 shares, 1 bar token, nil)
+    ///
+    /// This can be used when `tokensIn` are not guaranteed the same ratio as assets in the pool.
+    /// Calculation for this is done in the following steps.
+    ///  1. iterate through all the tokens provided as an argument, calculate how much ratio it accounts for the asset in the pool
+    ///  2. get the minimal share ratio that would work as the benchmark for all tokens.
+    ///  3. calculate the number of shares that could be joined (total share * min share ratio), return the remaining coins
+    pub fn deposit_multi_asset(&self, tokens: &[Coin]) -> StdResult<(Uint128, Vec<Coin>, Vec<Coin>)> {
+        let mut min_share = Decimal::MAX;
+        let mut max_share = Decimal::zero();
+        let mut asset_shares = vec![];
+        // TODO: query lp token from lp token list map
+        // let lp_token = "MOCK".to_string();
+        if self.pool.status == PoolStatus::Initialized && self.pool.supply.amount.is_zero() {
+            // TODO: add query precision from cw20
+            // let num_decimals = MULTIPLIER; //query_token_precision(lp_token)?;
+            // let decimals = 10u128.pow(num_decimals as u32);
+            let num_shares = Uint128::from(INIT_LP_TOKENS * MULTIPLIER);
+            return Ok((num_shares, tokens.to_vec(), vec![]))
+        } else {
+            for token in tokens {
+                let asset = self.pool.clone().find_asset_by_denom(&token.denom)?;
+                 // denom will never be 0 as long as total_share > 0
+                let share_ratio = Decimal::from_ratio(token.amount.clone(), asset.balance.amount);
+                
+                min_share = min_share.min(share_ratio);
+                max_share = max_share.max(share_ratio);
+                asset_shares.push(share_ratio);
+            }
         }
-        return Ok(out_tokens)
+
+        let new_shares = min_share * self.pool.supply.amount.clone();
+        let mut rem_assets = vec![];
+        let mut added_assets = vec![];
+
+        if min_share.ne(&max_share) {
+            // assets aren't balanced and we have to calculate remCoins
+            let mut i = 0;
+            for token in tokens {
+                let asset = self.pool.clone().find_asset_by_denom(&token.denom)?;
+                // account for unused amounts
+                let used_amount = min_share * asset.balance.amount;
+                let new_amount = token.amount - used_amount;
+
+                added_assets.push(Coin {
+                    denom: token.denom.clone(),
+                    amount: used_amount
+                });
+                // if coinShareRatios[i] == minShareRatio, no remainder
+                if asset_shares[i].eq(&min_share) {
+                    i += 1;
+                    continue;
+                }
+                i += 1;
+
+                // if coinShareRatios[i] == minShareRatio, no remainder
+                if !new_amount.is_zero() {
+                    rem_assets.push(Coin {
+                        denom: token.denom.clone(),
+                        amount: new_amount,
+                    });
+                }
+            }
+        }
+
+        if rem_assets.is_empty() {
+            return Ok((new_shares, tokens.to_vec(), rem_assets));
+        }
+
+        Ok((new_shares, added_assets, rem_assets))
     }
 
     pub fn multi_asset_withdraw(&self, redeem: Coin) -> StdResult<Vec<Coin>> {

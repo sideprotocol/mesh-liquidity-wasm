@@ -23,7 +23,9 @@ pub struct Config {
     // Counter to keep track of multiassetdeposit orders
     pub counter: u64,
     // Token code id  (Cw20)
-    pub token_code_id: u64
+    pub token_code_id: u64,
+    // Admin address
+    pub admin: String
 }
 
 // Each pool has it's pool token (cw20)

@@ -37,14 +37,15 @@ const MAXIMUM_SLIPPAGE: u64 = 10000;
 pub fn instantiate(
     deps: DepsMut,
     _env: Env,
-    _info: MessageInfo,
+    info: MessageInfo,
     msg: InstantiateMsg,
 ) -> StdResult<Response> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     
     let config = Config {
         counter: 0,
-        token_code_id: msg.token_code_id
+        token_code_id: msg.token_code_id,
+        admin: info.sender.to_string(),
     };
 
     CONFIG.save(deps.storage, &config)?;
@@ -256,20 +257,11 @@ fn make_pool(
         }];
     }
 
-    let state_change_data = to_binary(&StateChange {
-        in_tokens: None,
-        out_tokens: None,
-        pool_tokens: None,
-        pool_id: Some(pool_id.clone()),
-        multi_deposit_order_id: None,
-        source_chain_id: None,
-    })?;
-
     let pool_data = to_binary(&msg)?;
     let ibc_packet_data = InterchainSwapPacketData {
         r#type: InterchainMessageType::MakePool,
         data: pool_data.clone(),
-        state_change: Some(state_change_data),
+        state_change: None,
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -283,11 +275,10 @@ fn make_pool(
     };
 
     let res = Response::default()
-        .add_attribute("pool_id", pool_id.clone())
-        .add_attribute("action", "make_pool")
         .add_attribute("ics101-lp-instantiate", pool_id.clone())
         .add_submessages(sub_msg)
-        .add_message(ibc_msg);
+        .add_message(ibc_msg)
+        .add_attribute("action", "make_pool");
     Ok(res)
 }
 
@@ -388,8 +379,7 @@ fn take_pool(
     let res = Response::default()
         .add_submessages(sub_msg)
         .add_message(ibc_msg)
-        .add_attribute("pool_id", msg.pool_id.clone())
-        .add_attribute("action", "take_pool");
+        .add_attribute("action", "make_pool");
     Ok(res)
 }
 
@@ -400,6 +390,7 @@ fn cancel_pool(
     msg: MsgCancelPoolRequest,
 ) -> Result<Response, ContractError> {
     // load pool throw error if not found
+    let config = CONFIG.load(deps.storage)?;
     let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id)?;
     let interchain_pool;
     if let Some(pool) = interchain_pool_temp {
@@ -414,8 +405,8 @@ fn cancel_pool(
         return Err(ContractError::InvalidStatus);
     }
 
-    // order can only be cancelled by creator
-    if interchain_pool.source_creator != info.sender {
+    // order can only be cancelled by creator or admin
+    if !((interchain_pool.source_creator == info.sender) || (info.sender == config.admin)) {
         return Err(ContractError::InvalidSender);
     }
     
@@ -438,8 +429,7 @@ fn cancel_pool(
 
     let res = Response::default()
         .add_message(ibc_msg)
-        .add_attribute("pool_id", msg.pool_id.clone())
-        .add_attribute("action", "take_pool");
+        .add_attribute("action", "cancel_pool");
     Ok(res)
 }
 
@@ -504,6 +494,7 @@ pub fn single_asset_deposit(
         pool_id: None,
         multi_deposit_order_id: None,
         source_chain_id: None,
+        shares: None
     })?;
     // Construct the IBC swap packet.
     let packet_data = InterchainSwapPacketData {
@@ -525,7 +516,6 @@ pub fn single_asset_deposit(
 
     let res = Response::default()
         .add_message(ibc_msg)
-        .add_attribute("pool_id", msg.pool_id.clone())
         .add_attribute("action", "single_asset_deposit");
     Ok(res)
 }
@@ -581,7 +571,7 @@ fn make_multi_asset_deposit(
     };
 
     // Deposit the assets into the interchain market maker
-    let pool_tokens = amm.deposit_multi_asset(&vec![
+    let (_shares, added_assets, _rem_assets) = amm.deposit_multi_asset(&vec![
         msg.deposits[0].balance.clone(),
         msg.deposits[1].balance.clone(),
     ])?;
@@ -621,12 +611,13 @@ fn make_multi_asset_deposit(
 
     // Construct the IBC packet
     let state_change_data = to_binary(&StateChange {
-        in_tokens: None,
+        in_tokens: Some(added_assets),
         out_tokens: None,
-        pool_tokens: Some(pool_tokens),
+        pool_tokens: None,
         pool_id: None,
         multi_deposit_order_id: Some(multi_asset_order.id),
         source_chain_id: None,
+        shares: None
     })?;
     let packet_data = InterchainSwapPacketData {
         r#type: InterchainMessageType::MakeMultiDeposit,
@@ -646,7 +637,6 @@ fn make_multi_asset_deposit(
 
     let res = Response::default()
         .add_message(ibc_msg)
-        .add_attribute("pool_id", msg.pool_id.clone())
         .add_attribute("action", "make_multi_asset_deposit");
     Ok(res)
 }
@@ -704,7 +694,6 @@ fn cancel_multi_asset_deposit(
 
     let res = Response::default()
         .add_message(ibc_msg)
-        .add_attribute("pool_id", msg.pool_id.clone())
         .add_attribute("action", "cancel_multi_asset_deposit");
     Ok(res)
 }
@@ -769,16 +758,17 @@ fn take_multi_asset_deposit(
         fee_rate: interchain_pool.swap_fee,
     };
 
-    let pool_tokens = amm.deposit_multi_asset(&multi_asset_order.deposits)?;
+    let (new_shares, added_assets, rem_assets) = amm.deposit_multi_asset(&multi_asset_order.deposits)?;
 
     // Construct the IBC packet
     let state_change_data = to_binary(&StateChange {
         in_tokens: None,
-        out_tokens: None,
-        pool_tokens: Some(pool_tokens),
+        out_tokens: Some(rem_assets),
+        pool_tokens: Some(added_assets),
         pool_id: None,
         multi_deposit_order_id: None,
         source_chain_id: None,
+        shares: Some(new_shares)
     })?;
     let packet_data = InterchainSwapPacketData {
         r#type: InterchainMessageType::TakeMultiDeposit,
@@ -798,7 +788,6 @@ fn take_multi_asset_deposit(
 
     let res = Response::default()
         .add_message(ibc_msg)
-        .add_attribute("pool_id", msg.pool_id.clone())
         .add_attribute("action", "take_multi_asset_deposit");
     Ok(res)
 }
@@ -883,6 +872,7 @@ fn multi_asset_withdraw(
         pool_id: None,
         multi_deposit_order_id: None,
         source_chain_id: None,
+        shares: None
     })?;
 
     let packet = InterchainSwapPacketData {
@@ -904,7 +894,6 @@ fn multi_asset_withdraw(
     let res = Response::default()
         .add_submessages(sub_messages)
         .add_message(ibc_msg)
-        .add_attribute("pool_id", msg.pool_id.clone())
         .add_attribute("action", "multi_asset_withdraw");
     Ok(res)
 }
@@ -992,6 +981,7 @@ fn swap(
         pool_id: None,
         multi_deposit_order_id: None,
         source_chain_id: None,
+        shares: None
     })?;
     let packet = InterchainSwapPacketData {
         r#type: msg_type,
@@ -1011,7 +1001,6 @@ fn swap(
 
     let res = Response::default()
         .add_message(ibc_msg)
-        .add_attribute("pool_id", msg.pool_id.clone())
         .add_attribute("action", "swap");
     Ok(res)
 }

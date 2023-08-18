@@ -51,7 +51,7 @@ pub enum ContractError {
     #[error("Pool is not ready for swap!")]
     NotReadyForSwap,
 
-    #[error("Only supports channel with ibc version ics100-1, got {version}")]
+    #[error("Only supports channel with ibc version ics101-1, got {version}")]
     InvalidIbcVersion { version: String },
 
     #[error("Only supports unordered channel")]
