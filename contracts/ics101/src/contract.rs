@@ -21,7 +21,7 @@ use crate::market::{InterchainMarketMaker, PoolStatus, PoolSide, InterchainLiqui
 use crate::msg::{
     ExecuteMsg, InstantiateMsg,
     MsgMultiAssetWithdrawRequest, MsgSingleAssetDepositRequest,
-    MsgSwapRequest, SwapMsgType, MsgMakePoolRequest, MsgTakePoolRequest, MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, QueryMsg, QueryConfigResponse, InterchainPoolResponse, InterchainListResponse, OrderListResponse, PoolListResponse, TokenInstantiateMsg, Cw20HookMsg, MsgCancelPoolRequest, MsgCancelMultiAssetDepositRequest, MsgRemovePool,
+    MsgSwapRequest, SwapMsgType, MsgMakePoolRequest, MsgTakePoolRequest, MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, QueryMsg, QueryConfigResponse, InterchainPoolResponse, InterchainListResponse, OrderListResponse, PoolListResponse, TokenInstantiateMsg, Cw20HookMsg, MsgCancelPoolRequest, MsgCancelMultiAssetDepositRequest, MsgRemovePool, MigrateMsg,
 };
 use crate::state::{POOLS, MULTI_ASSET_DEPOSIT_ORDERS, CONFIG, POOL_TOKENS_LIST, Config, TEMP, ACTIVE_ORDERS};
 use crate::types::{InterchainSwapPacketData, StateChange, InterchainMessageType, MultiAssetDepositOrder, OrderStatus};
@@ -1072,6 +1072,24 @@ fn query_config(
     let config = CONFIG.load(deps.storage)?;
 
     Ok(QueryConfigResponse { counter: config.counter, token_code_id: config.token_code_id })
+}
+
+#[entry_point]
+pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
+    let ver = cw2::get_contract_version(deps.storage)?;
+    // ensure we are migrating from an allowed contract
+    if ver.contract != CONTRACT_NAME {
+        return Err(StdError::generic_err("Can only upgrade from same type").into());
+    }
+    // note: better to do proper semver compare, but string compare *usually* works
+    if ver.version >= CONTRACT_VERSION.to_string() {
+        return Err(StdError::generic_err("Cannot upgrade from a newer version").into());
+    }
+
+    // set the new version
+    cw2::set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+
+    Ok(Response::default())
 }
 
 fn query_interchain_pool(
