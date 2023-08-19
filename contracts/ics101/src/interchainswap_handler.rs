@@ -287,13 +287,6 @@ pub(crate) fn on_received_single_deposit(
     // increase lp token mint amount
     interchain_pool.add_asset(msg.token.clone()).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;
     interchain_pool.add_supply(pool_tokens.clone()).map_err(|err| StdError::generic_err(format!("Failed to add supply: {}", err)))?;
-    // update pool tokens.
-    if let Err(err) = interchain_pool.add_asset(msg.token) {
-        return Err(ContractError::Std(StdError::generic_err(format!(
-            "Failed to add asset: {}",
-            err
-        ))));
-    }
 
     // save pool.
     POOLS.save(deps.storage, &msg.pool_id, &interchain_pool)?;
