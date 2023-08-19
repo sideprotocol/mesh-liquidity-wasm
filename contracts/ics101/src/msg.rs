@@ -25,6 +25,7 @@ pub enum ExecuteMsg {
     TakeMultiAssetDeposit(MsgTakeMultiAssetDepositRequest),
     MultiAssetWithdraw(MsgMultiAssetWithdrawRequest),
     Swap(MsgSwapRequest),
+    RemovePool(MsgRemovePool),
    // Receive(Cw20ReceiveMsg)
 }
 
@@ -37,6 +38,12 @@ pub enum Cw20HookMsg {
         timeout_height: u64,
         timeout_timestamp: u64
     },
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct MsgRemovePool {
+   pub pool_id: String
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]

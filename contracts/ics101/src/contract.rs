@@ -21,7 +21,7 @@ use crate::market::{InterchainMarketMaker, PoolStatus, PoolSide, InterchainLiqui
 use crate::msg::{
     ExecuteMsg, InstantiateMsg,
     MsgMultiAssetWithdrawRequest, MsgSingleAssetDepositRequest,
-    MsgSwapRequest, SwapMsgType, MsgMakePoolRequest, MsgTakePoolRequest, MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, QueryMsg, QueryConfigResponse, InterchainPoolResponse, InterchainListResponse, OrderListResponse, PoolListResponse, TokenInstantiateMsg, Cw20HookMsg, MsgCancelPoolRequest, MsgCancelMultiAssetDepositRequest,
+    MsgSwapRequest, SwapMsgType, MsgMakePoolRequest, MsgTakePoolRequest, MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, QueryMsg, QueryConfigResponse, InterchainPoolResponse, InterchainListResponse, OrderListResponse, PoolListResponse, TokenInstantiateMsg, Cw20HookMsg, MsgCancelPoolRequest, MsgCancelMultiAssetDepositRequest, MsgRemovePool,
 };
 use crate::state::{POOLS, MULTI_ASSET_DEPOSIT_ORDERS, CONFIG, POOL_TOKENS_LIST, Config, TEMP, ACTIVE_ORDERS};
 use crate::types::{InterchainSwapPacketData, StateChange, InterchainMessageType, MultiAssetDepositOrder, OrderStatus};
@@ -119,8 +119,28 @@ pub fn execute(
         ExecuteMsg::TakeMultiAssetDeposit(msg) => take_multi_asset_deposit(deps, env, info, msg),
         ExecuteMsg::MultiAssetWithdraw(msg) => multi_asset_withdraw(deps, env, info, msg),
         ExecuteMsg::Swap(msg) => swap(deps, env, info, msg),
+        ExecuteMsg::RemovePool(msg) => remove_pool(deps, env, info, msg),
         //ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
     }
+}
+
+fn remove_pool(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    msg: MsgRemovePool,
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    if config.admin != info.sender {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "not allowed"
+        ))));
+    }
+
+    POOL_TOKENS_LIST.remove(deps.storage, &msg.pool_id);
+    POOLS.remove(deps.storage, &msg.pool_id);
+
+    Ok(Response::default())
 }
 
 /// Receives a message of type [`Cw20ReceiveMsg`] and processes it depending on the received template.
