@@ -37,14 +37,15 @@ const MAXIMUM_SLIPPAGE: u64 = 10000;
 pub fn instantiate(
     deps: DepsMut,
     _env: Env,
-    _info: MessageInfo,
+    info: MessageInfo,
     msg: InstantiateMsg,
 ) -> StdResult<Response> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     
     let config = Config {
         counter: 0,
-        token_code_id: msg.token_code_id
+        token_code_id: msg.token_code_id,
+        admin: info.sender.to_string()
     };
 
     CONFIG.save(deps.storage, &config)?;
@@ -400,6 +401,7 @@ fn cancel_pool(
     msg: MsgCancelPoolRequest,
 ) -> Result<Response, ContractError> {
     // load pool throw error if not found
+    let config = CONFIG.load(deps.storage)?;
     let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id)?;
     let interchain_pool;
     if let Some(pool) = interchain_pool_temp {
@@ -414,8 +416,8 @@ fn cancel_pool(
         return Err(ContractError::InvalidStatus);
     }
 
-    // order can only be cancelled by creator
-    if interchain_pool.source_creator != info.sender {
+    // order can only be cancelled by creator or admin
+    if !((interchain_pool.source_creator == info.sender) || (info.sender == config.admin)) {
         return Err(ContractError::InvalidSender);
     }
     
