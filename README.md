@@ -8,3 +8,5 @@ ibcswap-wasm is a Cosmwasm implementation of the ICS 100 and ICS 101 specificati
 
 - [ICS100](./docs/ics100.md)
 - [ICS101](./docs/ics101.md)
+
+- [TS-Codegen](https://github.com/CosmWasm/ts-codegen#readme)

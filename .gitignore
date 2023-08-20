@@ -4,3 +4,4 @@ Cargo.lock
 contracts/.DS_Store
 contracts/ics100/.DS_Store
 contracts/ics101/.DS_Store
+node_modules
