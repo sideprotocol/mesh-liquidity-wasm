@@ -1,0 +1,13 @@
+{
+  "name": "ibcswap-wasm-codegen",
+  "private": true,
+  "version": "0.0.0",
+  "dependencies": {
+    "@cosmwasm/ts-codegen": "^0.35.3",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.1.6"
+  },
+  "scripts": {
+    "ts-codegen": "yarn ts-node index.ts"
+  }
+}
