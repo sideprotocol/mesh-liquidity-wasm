@@ -37,6 +37,10 @@ pub fn is_valid_name(name: &str) -> bool {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct MigrateMsg {
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub enum SwapMessageType {
     #[serde(rename = "TYPE_UNSPECIFIED")]
     Unspecified = 0,

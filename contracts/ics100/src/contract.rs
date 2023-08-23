@@ -10,7 +10,7 @@ use cw2::set_contract_version;
 use crate::error::ContractError;
 use crate::msg::{
     AtomicSwapPacketData, CancelSwapMsg, DetailsResponse, ExecuteMsg, InstantiateMsg, ListResponse,
-    MakeSwapMsg, QueryMsg, SwapMessageType, TakeSwapMsg,
+    MakeSwapMsg, QueryMsg, SwapMessageType, TakeSwapMsg, MigrateMsg,
 };
 use crate::state::{
     AtomicSwapOrder,
@@ -236,6 +236,24 @@ pub fn execute_cancel_swap(
         .add_attribute("action", "cancel_swap")
         .add_attribute("order_id", order.id.clone());
     return Ok(res);
+}
+
+#[entry_point]
+pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
+    let ver = cw2::get_contract_version(deps.storage)?;
+    // ensure we are migrating from an allowed contract
+    if ver.contract != CONTRACT_NAME {
+        return Err(StdError::generic_err("Can only upgrade from same type").into());
+    }
+    // note: better to do proper semver compare, but string compare *usually* works
+    if ver.version >= CONTRACT_VERSION.to_string() {
+        return Err(StdError::generic_err("Cannot upgrade from a newer version").into());
+    }
+
+    // set the new version
+    cw2::set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+
+    Ok(Response::default())
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
