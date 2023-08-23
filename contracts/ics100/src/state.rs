@@ -42,6 +42,8 @@ pub struct AtomicSwapOrder {
     // an IBC path, define channel and port on both Maker Chain and Taker Chain
     pub path: String,
     pub taker: Option<TakeSwapMsg>,
+    // In seconds
+    pub create_timestamp: u64,
     pub cancel_timestamp: Option<Timestamp>,
     pub complete_timestamp: Option<Timestamp>,
 }

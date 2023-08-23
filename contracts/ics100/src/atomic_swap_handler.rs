@@ -65,7 +65,7 @@ pub(crate) fn do_ibc_packet_receive(
 
 pub(crate) fn on_received_make(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     packet: &IbcPacket,
     msg: MakeSwapMsg,
 ) -> Result<IbcReceiveResponse, ContractError> {
@@ -86,6 +86,7 @@ pub(crate) fn on_received_make(
         cancel_timestamp: None,
         complete_timestamp: None,
         path: path.clone(),
+        create_timestamp: env.block.time.seconds()
     };
 
     let count_check = ORDER_TO_COUNT.may_load(deps.storage, &order_id)?;
@@ -97,6 +98,7 @@ pub(crate) fn on_received_make(
 
     let res = IbcReceiveResponse::new()
         .set_ack(ack_success())
+        .add_attribute("order_id", order_id)
         .add_attribute("action", "receive")
         .add_attribute("success", "true")
         .add_attribute("action", "make_swap_received");
@@ -142,6 +144,7 @@ pub(crate) fn on_received_take(
     let res = IbcReceiveResponse::new()
         .set_ack(ack_success())
         .add_submessages(submsg)
+        .add_attribute("order_id", order_id)
         .add_attribute("action", "receive")
         .add_attribute("success", "true");
 
@@ -175,6 +178,7 @@ pub(crate) fn on_received_cancel(
 
     let res = IbcReceiveResponse::new()
         .set_ack(ack_success())
+        .add_attribute("order_id", order_id)
         .add_attribute("action", "receive")
         .add_attribute("success", "true");
 
@@ -185,7 +189,7 @@ pub(crate) fn on_received_cancel(
 pub(crate) fn on_packet_success(
     deps: DepsMut,
     packet: IbcPacket,
-    env: Env
+    env: Env,
 ) -> Result<IbcBasicResponse, ContractError> {
     let packet_data: AtomicSwapPacketData = from_binary(&packet.data)?;
 
@@ -217,6 +221,7 @@ pub(crate) fn on_packet_success(
                 taker: None,
                 cancel_timestamp: None,
                 complete_timestamp: None,
+                create_timestamp: env.block.time.seconds()
             };
 
             append_atomic_order(deps.storage, &order_id, &new_order)?;
