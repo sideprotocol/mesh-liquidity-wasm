@@ -2,7 +2,7 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     to_binary, Binary, Deps, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Order, Response,
-    StdResult, Timestamp, StdError,
+    StdResult, StdError,
 };
 
 use cw2::set_contract_version;
@@ -10,13 +10,13 @@ use cw2::set_contract_version;
 use crate::error::ContractError;
 use crate::msg::{
     AtomicSwapPacketData, CancelSwapMsg, DetailsResponse, ExecuteMsg, InstantiateMsg, ListResponse,
-    MakeSwapMsg, QueryMsg, SwapMessageType, TakeSwapMsg,
+    MakeSwapMsg, QueryMsg, SwapMessageType, TakeSwapMsg, MigrateMsg,
 };
 use crate::state::{
     AtomicSwapOrder,
     Status,
     // CHANNEL_INFO,
-    SWAP_ORDERS, set_atomic_order, get_atomic_order, COUNT,
+    SWAP_ORDERS, set_atomic_order, get_atomic_order, COUNT, move_order_to_bottom,
 };
 use crate::utils::extract_source_channel_for_taker_msg;
 use cw_storage_plus::Bound;
@@ -24,6 +24,7 @@ use cw_storage_plus::Bound;
 // Version info, for migration info
 const CONTRACT_NAME: &str = "ics100-swap";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
+const DEFAULT_TIMEOUT_TIMESTAMP_OFFSET: u64 = 600;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -48,6 +49,16 @@ pub fn execute(
         ExecuteMsg::MakeSwap(msg) => execute_make_swap(deps, env, info, msg),
         ExecuteMsg::TakeSwap(msg) => execute_take_swap(deps, env, info, msg),
         ExecuteMsg::CancelSwap(msg) => execute_cancel_swap(deps, env, info, msg),
+        // MakeBid, 
+        // - User will bid on make orders
+        // - Once make is close, delete user bid data structure
+        // TakeBid
+        // - User can choose to TakeBid
+        // - Once make is close delete user bid data structure by returning amounts of all bids
+        // or maybe let user reclaim their amounts
+        // - Reclaim amounts ? OR Integrate in make done pool ?
+        // - integrating can result in more state updates and refund amounts.
+
     }
 }
 
@@ -55,7 +66,7 @@ pub fn execute(
 // This is the step 1 (Create order & Lock Token) of the atomic swap: https://github.com/cosmos/ibc/tree/main/spec/app/ics-100-atomic-swap
 pub fn execute_make_swap(
     _deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     msg: MakeSwapMsg,
 ) -> Result<Response, ContractError> {
@@ -84,8 +95,11 @@ pub fn execute_make_swap(
     let ibc_msg = IbcMsg::SendPacket {
         channel_id: msg.source_channel.clone(),
         data: to_binary(&ibc_packet)?,
-        // timeout: msg.timeout_timestamp.into(),
-        timeout: IbcTimeout::from(Timestamp::from_nanos(msg.timeout_timestamp)),
+        timeout: IbcTimeout::from(
+            env.block
+                .time
+                .plus_seconds(DEFAULT_TIMEOUT_TIMESTAMP_OFFSET),
+        ),
     };
 
     let res = Response::new()
@@ -98,7 +112,7 @@ pub fn execute_make_swap(
 // This method lock the order (set a value to the field "Taker") and lock Token
 pub fn execute_take_swap(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     msg: TakeSwapMsg,
 ) -> Result<Response, ContractError> {
@@ -129,14 +143,17 @@ pub fn execute_take_swap(
 
     // Checks if the order has already been taken
     if let Some(_taker) = order.taker {
-        // Do Nothing
-    } else {
         return Err(ContractError::OrderTaken);
     }
 
     // If `desiredTaker` is set, only the desiredTaker can accept the order.
     if order.maker.desired_taker != "" && order.maker.desired_taker != msg.clone().taker_address {
         return Err(ContractError::InvalidTakerAddress);
+    }
+
+    if env.block.time.seconds() > order.maker.expiration_timestamp {
+        move_order_to_bottom(deps.storage, &msg.order_id)?;
+        return Err(ContractError::Expired);
     }
 
     order.taker = Some(msg.clone());
@@ -152,15 +169,19 @@ pub fn execute_take_swap(
     let ibc_msg = IbcMsg::SendPacket {
         channel_id: extract_source_channel_for_taker_msg(&order.path)?,
         data: to_binary(&ibc_packet)?,
-        timeout: IbcTimeout::from(Timestamp::from_nanos(msg.timeout_timestamp)),
+        timeout: IbcTimeout::from(
+            env.block
+                .time
+                .plus_seconds(DEFAULT_TIMEOUT_TIMESTAMP_OFFSET),
+        ),
     };
 
     // Save order
     set_atomic_order(deps.storage, &order.id, &order)?;
-    //SWAP_ORDERS.save(deps.storage, &order.id, &order)?;
 
     let res = Response::new()
         .add_message(ibc_msg)
+        .add_attribute("order_id", msg.order_id)
         .add_attribute("action", "take_swap")
         .add_attribute("order_id", order.id.clone());
     return Ok(res);
@@ -170,7 +191,7 @@ pub fn execute_take_swap(
 // It is executed on the Maker chain. Only the maker of the order can cancel the order.
 pub fn execute_cancel_swap(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     msg: CancelSwapMsg,
 ) -> Result<Response, ContractError> {
@@ -202,14 +223,37 @@ pub fn execute_cancel_swap(
     let ibc_msg = IbcMsg::SendPacket {
         channel_id: order.maker.source_channel,
         data: to_binary(&packet)?,
-        timeout: Timestamp::from_nanos(msg.timeout_timestamp.parse().unwrap()).into(),
+        timeout: IbcTimeout::from(
+            env.block
+                .time
+                .plus_seconds(DEFAULT_TIMEOUT_TIMESTAMP_OFFSET),
+        ),
     };
 
     let res = Response::new()
         .add_message(ibc_msg)
+        .add_attribute("order_id", msg.order_id)
         .add_attribute("action", "cancel_swap")
         .add_attribute("order_id", order.id.clone());
     return Ok(res);
+}
+
+#[entry_point]
+pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
+    let ver = cw2::get_contract_version(deps.storage)?;
+    // ensure we are migrating from an allowed contract
+    if ver.contract != CONTRACT_NAME {
+        return Err(StdError::generic_err("Can only upgrade from same type").into());
+    }
+    // note: better to do proper semver compare, but string compare *usually* works
+    if ver.version >= CONTRACT_VERSION.to_string() {
+        return Err(StdError::generic_err("Cannot upgrade from a newer version").into());
+    }
+
+    // set the new version
+    cw2::set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+
+    Ok(Response::default())
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
