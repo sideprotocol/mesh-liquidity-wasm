@@ -78,6 +78,8 @@ pub struct MakeSwapMsg {
 	/// only the desired_taker is allowed to take this order
 	/// this is address on destination chain
     pub desired_taker: String,
+    /// Allow makers to receive bids for the order
+    pub take_bids: bool,
 
     pub timeout_height: Height,
     pub timeout_timestamp: u64,
@@ -117,6 +119,7 @@ pub struct MakeSwapMsgOutput {
     pub timeout_height: HeightOutput,
     pub timeout_timestamp: String,
     pub expiration_timestamp: String,
+    pub take_bids: bool
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug, JsonSchema)]

@@ -27,6 +27,7 @@ pub fn generate_order_id(order_path: &str, msg: MakeSwapMsg) -> StdResult<String
         },
         timeout_timestamp: msg.timeout_timestamp.clone().to_string(),
         expiration_timestamp: msg.expiration_timestamp.clone().to_string(),
+        take_bids: msg.take_bids.clone(),
     };
 
     let binding_output = to_binary(&msg_output)?;
@@ -166,6 +167,7 @@ pub(crate) fn decode_make_swap_msg(data: &Binary) -> MakeSwapMsg {
                 },
                 timeout_timestamp: msg_output.timeout_timestamp.parse().unwrap(),
                 expiration_timestamp: msg_output.expiration_timestamp.parse().unwrap(),
+                take_bids: msg_output.take_bids,
             }
         }
     }

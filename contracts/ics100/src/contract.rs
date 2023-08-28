@@ -427,6 +427,7 @@ mod tests {
                 revision_height: 0,
             },
             timeout_timestamp: env.block.time.plus_seconds(100).nanos(),
+            take_bids: false
         };
         let err = execute(
             deps.as_mut(),
@@ -471,6 +472,7 @@ mod tests {
                 revision_height: 0,
             },
             timeout_timestamp: 1693399799000000000,
+            take_bids: false
         };
 
         let path = order_path(
