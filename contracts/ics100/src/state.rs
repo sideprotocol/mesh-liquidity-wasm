@@ -122,15 +122,26 @@ pub fn move_order_to_bottom(storage: &mut dyn Storage, order_id: &str) -> StdRes
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-pub struct Bids {
-    /// All bids `buy_token` for maker, `sell_token for taker`
-    /// Note: `sell_token` remains same for maker
-    pub list: Vec<Coin>,
-    /// Bids that will return highest number of tokens
-    pub highest_bid: Coin
+pub enum BidStatus {
+    Cancelled,
+    Executed,
+
+}
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct Bid {
+    pub bid: Coin,
+    pub status: BidStatus,
+    pub bidder: String,
 }
 // Map for order id -> Vec<Bids>
-pub const BIDS: Map<String, Bids> = Map::new("swap_order");
+// Order_id + bidder_address + BID_COUNT
+pub const BIDS: Map<String, Bid> = Map::new("swap_order");
+
+// Each order bid count
+pub const ORDER_TOTAL_COUNT: Map<&str, u64> = Map::new("order_total_count");
+
+// order_id + account address -> order_count
+pub const BID_ORDER_TO_COUNT: Map<&str, u64> = Map::new("bid_order_to_count");
 
 #[cfg(test)]
 mod tests {

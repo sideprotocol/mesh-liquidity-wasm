@@ -49,6 +49,10 @@ pub fn execute(
         ExecuteMsg::MakeSwap(msg) => execute_make_swap(deps, env, info, msg),
         ExecuteMsg::TakeSwap(msg) => execute_take_swap(deps, env, info, msg),
         ExecuteMsg::CancelSwap(msg) => execute_cancel_swap(deps, env, info, msg),
+        ExecuteMsg::MakeBid(msg) => execute_make_bid(deps, env, info, msg),
+        ExecuteMsg::TakeBid(msg) => execute_take_bid(deps, env, info, msg),
+        ExecuteMsg::CancelBid(msg) => execute_cancel_bid(deps, env, info, msg),
+
         // MakeBid, 
         // - User will bid on make orders
         // - Once make is close, delete user bid data structure

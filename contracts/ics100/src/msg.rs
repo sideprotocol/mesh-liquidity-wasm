@@ -26,6 +26,9 @@ pub enum ExecuteMsg {
     MakeSwap(MakeSwapMsg),
     TakeSwap(TakeSwapMsg),
     CancelSwap(CancelSwapMsg),
+    MakeBid(MakeBidMsg),
+    TakeBid(TakeBidMsg),
+    CancelBid(CancelBidMsg),
 }
 
 pub fn is_valid_name(name: &str) -> bool {
@@ -167,6 +170,23 @@ pub struct CancelSwapMsg {
     pub timeout_height: HeightOutput,
 
     pub timeout_timestamp: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug, JsonSchema)]
+pub struct MakeBidMsg {
+    pub order_id: String,
+    pub sell_token: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug, JsonSchema)]
+pub struct TakeBidMsg {
+    pub order_id: String,
+    pub bidder: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug, JsonSchema)]
+pub struct CancelBidMsg {
+    pub order_id: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
