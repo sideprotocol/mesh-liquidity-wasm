@@ -132,6 +132,7 @@ pub struct Bid {
     pub bid: Coin,
     pub status: BidStatus,
     pub bidder: String,
+    pub bidder_receiver: String,
 }
 // Map for order id -> Vec<Bids>
 // Order_id + BID_COUNT

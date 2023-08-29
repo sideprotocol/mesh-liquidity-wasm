@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     error::ContractError,
-    msg::{AtomicSwapPacketData, CancelSwapMsg, MakeSwapMsg, SwapMessageType, TakeSwapMsg, MakeBidMsg, TakeBidMsg, CancelBidMsg},
+    msg::{AtomicSwapPacketData, CancelSwapMsg, MakeSwapMsg, SwapMessageType, TakeSwapMsg, MakeBidMsg, TakeBidMsg, CancelBidMsg, Height},
     state::{AtomicSwapOrder, Status, Side, set_atomic_order, get_atomic_order, ORDER_TO_COUNT, append_atomic_order, move_order_to_bottom, ORDER_TOTAL_COUNT, BID_ORDER_TO_COUNT, Bid, BidStatus, BIDS},
     utils::{
         decode_make_swap_msg, decode_take_swap_msg, generate_order_id, order_path, send_tokens,
@@ -199,13 +199,12 @@ pub(crate) fn on_received_cancel(
 
 pub(crate) fn on_received_make_bid(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     _packet: &IbcPacket,
     msg: MakeBidMsg,
 ) -> Result<IbcReceiveResponse, ContractError> {
     let order_id = msg.order_id.clone();
-    let swap_order = get_atomic_order(deps.storage, &order_id)?;
-
+ 
     let count = ORDER_TOTAL_COUNT.may_load(deps.storage, &order_id)?;
     let mut bid_count = 1;
     if let Some(value) = count {
@@ -215,7 +214,7 @@ pub(crate) fn on_received_make_bid(
         ORDER_TOTAL_COUNT.save(deps.storage, &order_id, &bid_count)?;
     }
 
-    let key = order_id + &msg.taker_address;
+    let key = order_id.clone() + &msg.taker_address;
     if BID_ORDER_TO_COUNT.has(deps.storage, &key) {
         return Err(ContractError::BidAlreadyExist {});
     }
@@ -225,10 +224,11 @@ pub(crate) fn on_received_make_bid(
     let bid: Bid = Bid {
         bid: msg.sell_token,
         status: BidStatus::Placed,
-        bidder: msg.taker_address
+        bidder: msg.taker_address,
+        bidder_receiver: msg.taker_receiving_address,
     };
 
-    let bid_key = order_id + &bid_count.to_string();
+    let bid_key = order_id.clone() + &bid_count.to_string();
     BIDS.save(deps.storage, bid_key, &bid)?;
 
     let res = IbcReceiveResponse::new()
@@ -249,24 +249,50 @@ pub(crate) fn on_received_take_bid(
     let order_id = msg.order_id.clone();
     let mut swap_order = get_atomic_order(deps.storage, &order_id)?;
 
-    // if swap_order.maker.maker_address != msg.maker_address {
-    //     return Err(ContractError::InvalidMakerAddress);
-    // }
+    let key = order_id.clone() + &msg.bidder;
+    if !BID_ORDER_TO_COUNT.has(deps.storage, &key) {
+        return Err(ContractError::BidDoesntExist);
+    }
+    let bid_count = BID_ORDER_TO_COUNT.load(deps.storage, &key)?;
+    BID_ORDER_TO_COUNT.remove(deps.storage, &key);
 
-    // if swap_order.status != Status::Sync && swap_order.status != Status::Initial {
-    //     return Err(ContractError::InvalidStatus);
-    // }
+    let bid_key = order_id.clone() + &bid_count.to_string();
+    let bid = BIDS.load(deps.storage, bid_key.clone())?;
+    BIDS.remove(deps.storage, bid_key);
 
-    // if swap_order.taker != None {
-    //     return Err(ContractError::AlreadyTakenOrder);
-    // }
+    if swap_order.maker.desired_taker != ""
+    && swap_order.maker.desired_taker != msg.bidder.clone()
+    {
+        return Err(ContractError::InvalidTakerAddress);
+    }
 
-    // swap_order.status = Status::Cancel;
-    // swap_order.cancel_timestamp = Some(Timestamp::from_nanos(env.block.time.nanos()));
-    // set_atomic_order(deps.storage, &msg.order_id, &swap_order)?;
+    let taker_receiving_address = deps
+        .api
+        .addr_validate(&bid.bidder_receiver.clone())?;
+
+    let submsg: Vec<SubMsg> = send_tokens(
+        &taker_receiving_address,
+        swap_order.maker.buy_token.clone(),
+    )?;
+
+    let take_msg: TakeSwapMsg = TakeSwapMsg {
+        order_id: order_id.clone(),
+        sell_token: bid.bid,
+        taker_address: bid.bidder,
+        taker_receiving_address: bid.bidder_receiver,
+        timeout_height: Height {revision_height: 1, revision_number: 1},
+        timeout_timestamp: 100
+    };
+    swap_order.status = Status::Complete;
+    swap_order.taker = Some(take_msg);
+    swap_order.complete_timestamp = Some(Timestamp::from_nanos(env.block.time.nanos()));
+
+    set_atomic_order(deps.storage, &msg.order_id, &swap_order)?;
+    move_order_to_bottom(deps.storage, &msg.order_id)?;
 
     let res = IbcReceiveResponse::new()
         .set_ack(ack_success())
+        .add_submessages(submsg)
         .add_attribute("order_id", order_id)
         .add_attribute("action", "receive")
         .add_attribute("success", "true");
@@ -276,28 +302,20 @@ pub(crate) fn on_received_take_bid(
 
 pub(crate) fn on_received_cancel_bid(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     _packet: &IbcPacket,
     msg: CancelBidMsg,
 ) -> Result<IbcReceiveResponse, ContractError> {
     let order_id = msg.order_id.clone();
-    let mut swap_order = get_atomic_order(deps.storage, &order_id)?;
-
-    // if swap_order.maker.maker_address != msg.maker_address {
-    //     return Err(ContractError::InvalidMakerAddress);
-    // }
-
-    // if swap_order.status != Status::Sync && swap_order.status != Status::Initial {
-    //     return Err(ContractError::InvalidStatus);
-    // }
-
-    // if swap_order.taker != None {
-    //     return Err(ContractError::AlreadyTakenOrder);
-    // }
-
-    // swap_order.status = Status::Cancel;
-    // swap_order.cancel_timestamp = Some(Timestamp::from_nanos(env.block.time.nanos()));
-    // set_atomic_order(deps.storage, &msg.order_id, &swap_order)?;
+ 
+    let key = msg.order_id + &msg.bidder;
+    if !BID_ORDER_TO_COUNT.has(deps.storage, &key) {
+        return Err(ContractError::BidDoesntExist);
+    }
+    BID_ORDER_TO_COUNT.remove(deps.storage, &key);
+    let bid_count = BID_ORDER_TO_COUNT.load(deps.storage, &key)?;
+    let bid_key = order_id.clone() + &bid_count.to_string();
+    BIDS.remove(deps.storage, bid_key);
 
     let res = IbcReceiveResponse::new()
         .set_ack(ack_success())
@@ -400,8 +418,7 @@ pub(crate) fn on_packet_success(
         SwapMessageType::MakeBid => {
             let msg: MakeBidMsg = from_binary(&packet_data.data.clone())?;
             let order_id = msg.order_id;
-            let swap_order = get_atomic_order(deps.storage, &order_id)?;
-        
+
             let count = ORDER_TOTAL_COUNT.may_load(deps.storage, &order_id)?;
             let mut bid_count = 1;
             if let Some(value) = count {
@@ -411,7 +428,7 @@ pub(crate) fn on_packet_success(
                 ORDER_TOTAL_COUNT.save(deps.storage, &order_id, &bid_count)?;
             }
         
-            let key = order_id + &msg.taker_address;
+            let key = order_id.clone() + &msg.taker_address;
             if BID_ORDER_TO_COUNT.has(deps.storage, &key) {
                 return Err(ContractError::BidAlreadyExist {});
             }
@@ -421,7 +438,8 @@ pub(crate) fn on_packet_success(
             let bid: Bid = Bid {
                 bid: msg.sell_token,
                 status: BidStatus::Placed,
-                bidder: msg.taker_address
+                bidder: msg.taker_address,
+                bidder_receiver: msg.taker_receiving_address,
             };
         
             let bid_key = order_id + &bid_count.to_string();
@@ -431,18 +449,70 @@ pub(crate) fn on_packet_success(
         }
         SwapMessageType::TakeBid => {
             let msg: TakeBidMsg = from_binary(&packet_data.data.clone())?;
-            let order_id = msg.order_id;
+            let order_id = msg.order_id.clone();
             let mut swap_order = get_atomic_order(deps.storage, &order_id)?;
 
+            let key = order_id.clone() + &msg.bidder;
+            if !BID_ORDER_TO_COUNT.has(deps.storage, &key) {
+                return Err(ContractError::BidDoesntExist);
+            }
+            let bid_count = BID_ORDER_TO_COUNT.load(deps.storage, &key)?;
+            BID_ORDER_TO_COUNT.remove(deps.storage, &key);
+        
+            let bid_key = order_id.clone() + &bid_count.to_string();
+            let bid = BIDS.load(deps.storage, bid_key.clone())?;
+            BIDS.remove(deps.storage, bid_key);
+        
+            let maker_receiving_address = deps
+                .api
+                .addr_validate(&swap_order.maker.maker_receiving_address.clone())?;
+        
+            let submsg: Vec<SubMsg> = send_tokens(
+                &maker_receiving_address,
+                bid.bid.clone(),
+            )?;
+        
+            let take_msg: TakeSwapMsg = TakeSwapMsg {
+                order_id: order_id,
+                sell_token: bid.bid,
+                taker_address: bid.bidder,
+                taker_receiving_address: bid.bidder_receiver,
+                timeout_height: Height {revision_height: 1, revision_number: 1},
+                timeout_timestamp: 100
+            };
+            swap_order.status = Status::Complete;
+            swap_order.taker = Some(take_msg);
+            swap_order.complete_timestamp = Some(Timestamp::from_nanos(env.block.time.nanos()));
+        
+            set_atomic_order(deps.storage, &msg.order_id, &swap_order)?;
+            move_order_to_bottom(deps.storage, &msg.order_id)?;
             Ok(IbcBasicResponse::new()
                 .add_submessages(submsg)
                 .add_attributes(attributes))
         }
         SwapMessageType::CancelBid => {
             let msg: CancelBidMsg = from_binary(&packet_data.data.clone())?;
-            let order_id = msg.order_id;
-            let mut swap_order = get_atomic_order(deps.storage, &order_id)?;
+            let order_id = msg.order_id.clone();
 
+            let key = msg.order_id + &msg.bidder;
+            if !BID_ORDER_TO_COUNT.has(deps.storage, &key) {
+                return Err(ContractError::BidDoesntExist);
+            }
+            BID_ORDER_TO_COUNT.remove(deps.storage, &key);
+            let bid_count = BID_ORDER_TO_COUNT.load(deps.storage, &key)?;
+            let bid_key = order_id + &bid_count.to_string();
+            let bid = BIDS.load(deps.storage, bid_key.clone())?;
+
+            let taker_receiving_address = deps
+            .api
+            .addr_validate(&bid.bidder.clone())?;
+            // Refund amount
+            let submsg: Vec<SubMsg> = send_tokens(
+                &taker_receiving_address,
+                bid.bid.clone(),
+            )?;
+
+            BIDS.remove(deps.storage, bid_key);
             Ok(IbcBasicResponse::new()
                 .add_submessages(submsg)
                 .add_attributes(attributes))

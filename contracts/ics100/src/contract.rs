@@ -282,7 +282,7 @@ pub fn execute_make_bid(
         return Err(ContractError::InvalidSender);
     }
 
-    let key = msg.order_id + &msg.taker_address;
+    let key = msg.order_id.clone() + &msg.taker_address;
     if BID_ORDER_TO_COUNT.has(deps.storage, &key) {
         return Err(ContractError::BidAlreadyExist {});
     }
@@ -325,7 +325,19 @@ pub fn execute_take_bid(
         return Err(ContractError::TakeBidNotAllowed);
     }
 
-    // TODO: check for bid existence.
+    // Checks if the order has already been taken
+    if let Some(_taker) = order.taker {
+        return Err(ContractError::OrderTaken);
+    }
+
+    if sender != order.maker.maker_receiving_address {
+        return Err(ContractError::InvalidSender);
+    }
+
+    let key = msg.order_id.clone() + &msg.bidder;
+    if !BID_ORDER_TO_COUNT.has(deps.storage, &key) {
+        return Err(ContractError::BidDoesntExist);
+    }
 
     let packet = AtomicSwapPacketData {
         r#type: SwapMessageType::TakeBid,
@@ -348,7 +360,7 @@ pub fn execute_take_bid(
     let res = Response::new()
         .add_message(ibc_msg)
         .add_attribute("order_id", msg.order_id)
-        .add_attribute("action", "make_bid");
+        .add_attribute("action", "take_bid");
     return Ok(res);
 }
 
@@ -365,7 +377,14 @@ pub fn execute_cancel_bid(
         return Err(ContractError::TakeBidNotAllowed);
     }
 
-    // CHeck for bid existence
+    let key = msg.order_id.clone() + &sender;
+    if !BID_ORDER_TO_COUNT.has(deps.storage, &key) {
+        return Err(ContractError::BidDoesntExist);
+    }
+
+    if sender != msg.bidder {
+        return Err(ContractError::InvalidSender);
+    }
 
     let packet = AtomicSwapPacketData {
         r#type: SwapMessageType::CancelBid,

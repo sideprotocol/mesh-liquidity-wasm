@@ -68,4 +68,7 @@ pub enum ContractError {
 
     #[error("Bid already exist")]
     BidAlreadyExist,
+
+    #[error("Bid doesn't exist")]
+    BidDoesntExist,
 }

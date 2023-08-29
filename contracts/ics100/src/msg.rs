@@ -195,6 +195,7 @@ pub struct TakeBidMsg {
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug, JsonSchema)]
 pub struct CancelBidMsg {
     pub order_id: String,
+    pub bidder: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
