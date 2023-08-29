@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     error::ContractError,
-    msg::{AtomicSwapPacketData, CancelSwapMsg, MakeSwapMsg, SwapMessageType, TakeSwapMsg},
+    msg::{AtomicSwapPacketData, CancelSwapMsg, MakeSwapMsg, SwapMessageType, TakeSwapMsg, MakeBidMsg, TakeBidMsg, CancelBidMsg},
     state::{AtomicSwapOrder, Status, Side, set_atomic_order, get_atomic_order, ORDER_TO_COUNT, append_atomic_order, move_order_to_bottom},
     utils::{
         decode_make_swap_msg, decode_take_swap_msg, generate_order_id, order_path, send_tokens,
@@ -59,6 +59,18 @@ pub(crate) fn do_ibc_packet_receive(
         SwapMessageType::CancelSwap => {
             let msg: CancelSwapMsg = from_binary(&packet_data.data.clone())?;
             on_received_cancel(deps, env, packet, msg)
+        }
+        SwapMessageType::MakeBid => {
+            let msg: MakeBidMsg = from_binary(&packet_data.data.clone())?;
+            on_received_make_bid(deps, env, packet, msg)
+        }
+        SwapMessageType::TakeBid => {
+            let msg: TakeBidMsg = from_binary(&packet_data.data.clone())?;
+            on_received_take_bid(deps, env, packet, msg)
+        }
+        SwapMessageType::CancelBid => {
+            let msg: CancelBidMsg = from_binary(&packet_data.data.clone())?;
+            on_received_cancel_bid(deps, env, packet, msg)
         }
     }
 }
@@ -175,6 +187,108 @@ pub(crate) fn on_received_cancel(
     swap_order.status = Status::Cancel;
     swap_order.cancel_timestamp = Some(Timestamp::from_nanos(env.block.time.nanos()));
     set_atomic_order(deps.storage, &msg.order_id, &swap_order)?;
+
+    let res = IbcReceiveResponse::new()
+        .set_ack(ack_success())
+        .add_attribute("order_id", order_id)
+        .add_attribute("action", "receive")
+        .add_attribute("success", "true");
+
+    Ok(res)
+}
+
+pub(crate) fn on_received_make_bid(
+    deps: DepsMut,
+    env: Env,
+    _packet: &IbcPacket,
+    msg: MakeBidMsg,
+) -> Result<IbcReceiveResponse, ContractError> {
+    let order_id = msg.order_id.clone();
+    let mut swap_order = get_atomic_order(deps.storage, &order_id)?;
+
+    // if swap_order.maker.maker_address != msg.maker_address {
+    //     return Err(ContractError::InvalidMakerAddress);
+    // }
+
+    // if swap_order.status != Status::Sync && swap_order.status != Status::Initial {
+    //     return Err(ContractError::InvalidStatus);
+    // }
+
+    // if swap_order.taker != None {
+    //     return Err(ContractError::AlreadyTakenOrder);
+    // }
+
+    // swap_order.status = Status::Cancel;
+    // swap_order.cancel_timestamp = Some(Timestamp::from_nanos(env.block.time.nanos()));
+    // set_atomic_order(deps.storage, &msg.order_id, &swap_order)?;
+
+    let res = IbcReceiveResponse::new()
+        .set_ack(ack_success())
+        .add_attribute("order_id", order_id)
+        .add_attribute("action", "receive")
+        .add_attribute("success", "true");
+
+    Ok(res)
+}
+
+pub(crate) fn on_received_take_bid(
+    deps: DepsMut,
+    env: Env,
+    _packet: &IbcPacket,
+    msg: TakeBidMsg,
+) -> Result<IbcReceiveResponse, ContractError> {
+    let order_id = msg.order_id.clone();
+    let mut swap_order = get_atomic_order(deps.storage, &order_id)?;
+
+    // if swap_order.maker.maker_address != msg.maker_address {
+    //     return Err(ContractError::InvalidMakerAddress);
+    // }
+
+    // if swap_order.status != Status::Sync && swap_order.status != Status::Initial {
+    //     return Err(ContractError::InvalidStatus);
+    // }
+
+    // if swap_order.taker != None {
+    //     return Err(ContractError::AlreadyTakenOrder);
+    // }
+
+    // swap_order.status = Status::Cancel;
+    // swap_order.cancel_timestamp = Some(Timestamp::from_nanos(env.block.time.nanos()));
+    // set_atomic_order(deps.storage, &msg.order_id, &swap_order)?;
+
+    let res = IbcReceiveResponse::new()
+        .set_ack(ack_success())
+        .add_attribute("order_id", order_id)
+        .add_attribute("action", "receive")
+        .add_attribute("success", "true");
+
+    Ok(res)
+}
+
+pub(crate) fn on_received_cancel_bid(
+    deps: DepsMut,
+    env: Env,
+    _packet: &IbcPacket,
+    msg: CancelBidMsg,
+) -> Result<IbcReceiveResponse, ContractError> {
+    let order_id = msg.order_id.clone();
+    let mut swap_order = get_atomic_order(deps.storage, &order_id)?;
+
+    // if swap_order.maker.maker_address != msg.maker_address {
+    //     return Err(ContractError::InvalidMakerAddress);
+    // }
+
+    // if swap_order.status != Status::Sync && swap_order.status != Status::Initial {
+    //     return Err(ContractError::InvalidStatus);
+    // }
+
+    // if swap_order.taker != None {
+    //     return Err(ContractError::AlreadyTakenOrder);
+    // }
+
+    // swap_order.status = Status::Cancel;
+    // swap_order.cancel_timestamp = Some(Timestamp::from_nanos(env.block.time.nanos()));
+    // set_atomic_order(deps.storage, &msg.order_id, &swap_order)?;
 
     let res = IbcReceiveResponse::new()
         .set_ack(ack_success())

@@ -10,7 +10,7 @@ use cw2::set_contract_version;
 use crate::error::ContractError;
 use crate::msg::{
     AtomicSwapPacketData, CancelSwapMsg, DetailsResponse, ExecuteMsg, InstantiateMsg, ListResponse,
-    MakeSwapMsg, QueryMsg, SwapMessageType, TakeSwapMsg, MigrateMsg,
+    MakeSwapMsg, QueryMsg, SwapMessageType, TakeSwapMsg, MigrateMsg, MakeBidMsg, TakeBidMsg, CancelBidMsg,
 };
 use crate::state::{
     AtomicSwapOrder,
@@ -239,6 +239,137 @@ pub fn execute_cancel_swap(
         .add_attribute("order_id", msg.order_id)
         .add_attribute("action", "cancel_swap")
         .add_attribute("order_id", order.id.clone());
+    return Ok(res);
+}
+
+pub fn execute_make_bid(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    msg: MakeBidMsg,
+) -> Result<Response, ContractError> {
+    let sender = info.sender.to_string();
+    let order = get_atomic_order(deps.storage, &msg.order_id)?;
+    // check if given tokens are received here
+    let mut ok = false;
+    // First token in this chain only first token needs to be verified
+    for asset in info.funds {
+        if asset.denom == msg.sell_token.denom && msg.sell_token.amount == asset.amount {
+            ok = true;
+        }
+    }
+    if !ok {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Funds mismatch: Funds mismatched to with message and sent values: Make swap"
+        ))));
+    }
+
+    if !order.maker.take_bids {
+        return Err(ContractError::TakeBidNotAllowed);
+    }
+
+    let packet = AtomicSwapPacketData {
+        r#type: SwapMessageType::MakeBid,
+        data: to_binary(&msg)?,
+        memo: String::new(),
+        order_id: None,
+        path: None
+    };
+
+    let ibc_msg = IbcMsg::SendPacket {
+        channel_id: order.maker.source_channel,
+        data: to_binary(&packet)?,
+        timeout: IbcTimeout::from(
+            env.block
+                .time
+                .plus_seconds(DEFAULT_TIMEOUT_TIMESTAMP_OFFSET),
+        ),
+    };
+
+    let res = Response::new()
+        .add_message(ibc_msg)
+        .add_attribute("order_id", msg.order_id)
+        .add_attribute("action", "make_bid");
+    return Ok(res);
+}
+
+pub fn execute_take_bid(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    msg: TakeBidMsg,
+) -> Result<Response, ContractError> {
+    let sender = info.sender.to_string();
+    let order = get_atomic_order(deps.storage, &msg.order_id)?;
+
+    if !order.maker.take_bids {
+        return Err(ContractError::TakeBidNotAllowed);
+    }
+
+    // TODO: check for bid existence.
+
+    let packet = AtomicSwapPacketData {
+        r#type: SwapMessageType::TakeBid,
+        data: to_binary(&msg)?,
+        memo: String::new(),
+        order_id: None,
+        path: None
+    };
+
+    let ibc_msg = IbcMsg::SendPacket {
+        channel_id: order.maker.source_channel,
+        data: to_binary(&packet)?,
+        timeout: IbcTimeout::from(
+            env.block
+                .time
+                .plus_seconds(DEFAULT_TIMEOUT_TIMESTAMP_OFFSET),
+        ),
+    };
+
+    let res = Response::new()
+        .add_message(ibc_msg)
+        .add_attribute("order_id", msg.order_id)
+        .add_attribute("action", "make_bid");
+    return Ok(res);
+}
+
+pub fn execute_cancel_bid(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    msg: CancelBidMsg,
+) -> Result<Response, ContractError> {
+    let sender = info.sender.to_string();
+    let order = get_atomic_order(deps.storage, &msg.order_id)?;
+
+    if !order.maker.take_bids {
+        return Err(ContractError::TakeBidNotAllowed);
+    }
+
+    // CHeck for bid existence
+
+    let packet = AtomicSwapPacketData {
+        r#type: SwapMessageType::CancelBid,
+        data: to_binary(&msg)?,
+        memo: String::new(),
+        order_id: None,
+        path: None
+    };
+
+    let ibc_msg = IbcMsg::SendPacket {
+        channel_id: order.maker.source_channel,
+        data: to_binary(&packet)?,
+        timeout: IbcTimeout::from(
+            env.block
+                .time
+                .plus_seconds(DEFAULT_TIMEOUT_TIMESTAMP_OFFSET),
+        ),
+    };
+
+    let res = Response::new()
+        .add_message(ibc_msg)
+        .add_attribute("order_id", msg.order_id)
+        .add_attribute("action", "make_bid");
     return Ok(res);
 }
 

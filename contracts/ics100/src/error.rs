@@ -62,4 +62,7 @@ pub enum ContractError {
 
     #[error("Parsed channel from denom ({channel}) doesn't match packet")]
     FromOtherChannel { channel: String },
+
+    #[error("Bid is not allowed for this order")]
+    TakeBidNotAllowed,
 }

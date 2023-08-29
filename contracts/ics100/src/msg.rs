@@ -53,6 +53,12 @@ pub enum SwapMessageType {
     TakeSwap = 2,
     #[serde(rename = "TYPE_MSG_CANCEL_SWAP")]
     CancelSwap = 3,
+    #[serde(rename = "TYPE_MSG_MAKE_BID")]
+    MakeBid = 4,
+    #[serde(rename = "TYPE_MSG_TAKE_BID")]
+    TakeBid = 5,
+    #[serde(rename = "TYPE_MSG_CANCEL_BID")]
+    CancelBid = 6,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -175,7 +181,9 @@ pub struct CancelSwapMsg {
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug, JsonSchema)]
 pub struct MakeBidMsg {
     pub order_id: String,
-    pub sell_token: String,
+    pub sell_token: Coin,
+    pub taker_address: String,
+    pub taker_receiving_address: String
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug, JsonSchema)]
