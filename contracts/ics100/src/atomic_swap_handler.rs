@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     error::ContractError,
     msg::{AtomicSwapPacketData, CancelSwapMsg, MakeSwapMsg, SwapMessageType, TakeSwapMsg, MakeBidMsg, TakeBidMsg, CancelBidMsg},
-    state::{AtomicSwapOrder, Status, Side, set_atomic_order, get_atomic_order, ORDER_TO_COUNT, append_atomic_order, move_order_to_bottom},
+    state::{AtomicSwapOrder, Status, Side, set_atomic_order, get_atomic_order, ORDER_TO_COUNT, append_atomic_order, move_order_to_bottom, ORDER_TOTAL_COUNT, BID_ORDER_TO_COUNT, Bid, BidStatus, BIDS},
     utils::{
         decode_make_swap_msg, decode_take_swap_msg, generate_order_id, order_path, send_tokens,
     },
@@ -204,23 +204,32 @@ pub(crate) fn on_received_make_bid(
     msg: MakeBidMsg,
 ) -> Result<IbcReceiveResponse, ContractError> {
     let order_id = msg.order_id.clone();
-    let mut swap_order = get_atomic_order(deps.storage, &order_id)?;
+    let swap_order = get_atomic_order(deps.storage, &order_id)?;
 
-    // if swap_order.maker.maker_address != msg.maker_address {
-    //     return Err(ContractError::InvalidMakerAddress);
-    // }
+    let count = ORDER_TOTAL_COUNT.may_load(deps.storage, &order_id)?;
+    let mut bid_count = 1;
+    if let Some(value) = count {
+        bid_count = value + 1;
+        ORDER_TOTAL_COUNT.save(deps.storage, &order_id, &bid_count)?;
+    } else {
+        ORDER_TOTAL_COUNT.save(deps.storage, &order_id, &bid_count)?;
+    }
 
-    // if swap_order.status != Status::Sync && swap_order.status != Status::Initial {
-    //     return Err(ContractError::InvalidStatus);
-    // }
+    let key = order_id + &msg.taker_address;
+    if BID_ORDER_TO_COUNT.has(deps.storage, &key) {
+        return Err(ContractError::BidAlreadyExist {});
+    }
 
-    // if swap_order.taker != None {
-    //     return Err(ContractError::AlreadyTakenOrder);
-    // }
+    BID_ORDER_TO_COUNT.save(deps.storage, &key, &bid_count)?;
 
-    // swap_order.status = Status::Cancel;
-    // swap_order.cancel_timestamp = Some(Timestamp::from_nanos(env.block.time.nanos()));
-    // set_atomic_order(deps.storage, &msg.order_id, &swap_order)?;
+    let bid: Bid = Bid {
+        bid: msg.sell_token,
+        status: BidStatus::Placed,
+        bidder: msg.taker_address
+    };
+
+    let bid_key = order_id + &bid_count.to_string();
+    BIDS.save(deps.storage, bid_key, &bid)?;
 
     let res = IbcReceiveResponse::new()
         .set_ack(ack_success())
@@ -388,6 +397,56 @@ pub(crate) fn on_packet_success(
                 .add_submessages(submsg)
                 .add_attributes(attributes))
         }
+        SwapMessageType::MakeBid => {
+            let msg: MakeBidMsg = from_binary(&packet_data.data.clone())?;
+            let order_id = msg.order_id;
+            let swap_order = get_atomic_order(deps.storage, &order_id)?;
+        
+            let count = ORDER_TOTAL_COUNT.may_load(deps.storage, &order_id)?;
+            let mut bid_count = 1;
+            if let Some(value) = count {
+                bid_count = value + 1;
+                ORDER_TOTAL_COUNT.save(deps.storage, &order_id, &bid_count)?;
+            } else {
+                ORDER_TOTAL_COUNT.save(deps.storage, &order_id, &bid_count)?;
+            }
+        
+            let key = order_id + &msg.taker_address;
+            if BID_ORDER_TO_COUNT.has(deps.storage, &key) {
+                return Err(ContractError::BidAlreadyExist {});
+            }
+        
+            BID_ORDER_TO_COUNT.save(deps.storage, &key, &bid_count)?;
+        
+            let bid: Bid = Bid {
+                bid: msg.sell_token,
+                status: BidStatus::Placed,
+                bidder: msg.taker_address
+            };
+        
+            let bid_key = order_id + &bid_count.to_string();
+            BIDS.save(deps.storage, bid_key, &bid)?;
+
+            Ok(IbcBasicResponse::new().add_attributes(attributes))
+        }
+        SwapMessageType::TakeBid => {
+            let msg: TakeBidMsg = from_binary(&packet_data.data.clone())?;
+            let order_id = msg.order_id;
+            let mut swap_order = get_atomic_order(deps.storage, &order_id)?;
+
+            Ok(IbcBasicResponse::new()
+                .add_submessages(submsg)
+                .add_attributes(attributes))
+        }
+        SwapMessageType::CancelBid => {
+            let msg: CancelBidMsg = from_binary(&packet_data.data.clone())?;
+            let order_id = msg.order_id;
+            let mut swap_order = get_atomic_order(deps.storage, &order_id)?;
+
+            Ok(IbcBasicResponse::new()
+                .add_submessages(submsg)
+                .add_attributes(attributes))
+        }
     }
 }
 
@@ -447,5 +506,14 @@ pub(crate) fn refund_packet_token(
         }
         // do nothing, only send tokens back when cancel msg is acknowledged.
         SwapMessageType::CancelSwap => Ok(vec![]),
+        SwapMessageType::MakeBid => {
+            let msg: MakeBidMsg = from_binary(&packet.data.clone())?;
+            let taker_address: Addr = deps.api.addr_validate(&msg.taker_address)?;
+            let submsg = send_tokens(&taker_address, msg.sell_token)?;
+
+            Ok(submsg)
+        },
+        SwapMessageType::TakeBid => Ok(vec![]),
+        SwapMessageType::CancelBid => Ok(vec![]),
     }
 }

@@ -65,4 +65,7 @@ pub enum ContractError {
 
     #[error("Bid is not allowed for this order")]
     TakeBidNotAllowed,
+
+    #[error("Bid already exist")]
+    BidAlreadyExist,
 }

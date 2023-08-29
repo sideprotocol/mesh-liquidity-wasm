@@ -16,7 +16,7 @@ use crate::state::{
     AtomicSwapOrder,
     Status,
     // CHANNEL_INFO,
-    SWAP_ORDERS, set_atomic_order, get_atomic_order, COUNT, move_order_to_bottom,
+    SWAP_ORDERS, set_atomic_order, get_atomic_order, COUNT, move_order_to_bottom, BID_ORDER_TO_COUNT,
 };
 use crate::utils::extract_source_channel_for_taker_msg;
 use cw_storage_plus::Bound;
@@ -266,6 +266,25 @@ pub fn execute_make_bid(
 
     if !order.maker.take_bids {
         return Err(ContractError::TakeBidNotAllowed);
+    }
+
+    // Make sure the maker's buy token matches the taker's sell token
+    if order.maker.buy_token.denom != msg.sell_token.denom {
+        return Err(ContractError::InvalidSellToken);
+    }
+
+    // Checks if the order has already been taken
+    if let Some(_taker) = order.taker {
+        return Err(ContractError::OrderTaken);
+    }
+
+    if sender != msg.taker_address {
+        return Err(ContractError::InvalidSender);
+    }
+
+    let key = msg.order_id + &msg.taker_address;
+    if BID_ORDER_TO_COUNT.has(deps.storage, &key) {
+        return Err(ContractError::BidAlreadyExist {});
     }
 
     let packet = AtomicSwapPacketData {
