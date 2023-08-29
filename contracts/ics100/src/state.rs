@@ -2,7 +2,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::msg::{MakeSwapMsg, TakeSwapMsg};
-use cosmwasm_std::{IbcEndpoint, Order, StdResult, Storage, Timestamp};
+use cosmwasm_std::{IbcEndpoint, Order, StdResult, Storage, Timestamp, Coin};
 use cw_storage_plus::{Bound, Map, Item};
 
 pub const CHANNEL_INFO: Map<&str, ChannelInfo> = Map::new("channel_info");
@@ -120,6 +120,17 @@ pub fn move_order_to_bottom(storage: &mut dyn Storage, order_id: &str) -> StdRes
     COUNT.save(storage, &(count + 1))?;
     Ok(id)
 }
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct Bids {
+    /// All bids `buy_token` for maker, `sell_token for taker`
+    /// Note: `sell_token` remains same for maker
+    pub list: Vec<Coin>,
+    /// Bids that will return highest number of tokens
+    pub highest_bid: Coin
+}
+// Map for order id -> Vec<Bids>
+pub const BIDS: Map<String, Bids> = Map::new("swap_order");
 
 #[cfg(test)]
 mod tests {
