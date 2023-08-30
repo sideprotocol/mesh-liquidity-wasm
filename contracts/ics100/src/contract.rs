@@ -231,6 +231,10 @@ pub fn execute_cancel_swap(
     return Ok(res);
 }
 
+/// Make bid: Use it to make bid from taker chain
+/// For each order each user can create atmost 1 bid(they can cancel and recreate it)
+/// Panics id bid is already taken
+/// buy_token != sell_token
 pub fn execute_make_bid(
     deps: DepsMut,
     env: Env,
@@ -301,6 +305,11 @@ pub fn execute_make_bid(
     return Ok(res);
 }
 
+/// Take Bid: Only maker(maker receiving address) can take bid for their order
+/// Maker can take bid from taker chain
+/// Panics if order is already taken
+/// Panics if is not allowed
+/// Panics if bid doesn't exist or sender is not maker receiving address
 pub fn execute_take_bid(
     deps: DepsMut,
     env: Env,
@@ -353,6 +362,10 @@ pub fn execute_take_bid(
     return Ok(res);
 }
 
+/// Cancel Bid: Bid maker can cancel their bid
+/// After cancellation amount is refunded
+/// Panics if bid is not allowed
+/// bid doesn't exist
 pub fn execute_cancel_bid(
     deps: DepsMut,
     env: Env,
