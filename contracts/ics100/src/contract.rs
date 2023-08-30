@@ -475,7 +475,7 @@ fn query_list(
     limit: Option<u32>,
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.map(|s| Bound::exclusive(s.into_bytes()));
+    let start = start_after.map(|s| Bound::ExclusiveRaw(s.into_bytes()));
     let swap_orders = SWAP_ORDERS
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
@@ -492,7 +492,7 @@ fn query_list_by_desired_taker(
     desired_taker: String,
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.map(|s| Bound::exclusive(s.into_bytes()));
+    let start = start_after.map(|s| Bound::ExclusiveRaw(s.into_bytes()));
     let swap_orders = SWAP_ORDERS
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
@@ -510,7 +510,7 @@ fn query_list_by_maker(
     maker: String,
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.map(|s| Bound::exclusive(s.into_bytes()));
+    let start = start_after.map(|s| Bound::ExclusiveRaw(s.into_bytes()));
     let swap_orders = SWAP_ORDERS
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
@@ -528,7 +528,7 @@ fn query_list_by_taker(
     taker: String,
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.map(|s| Bound::exclusive(s.into_bytes()));
+    let start = start_after.map(|s| Bound::ExclusiveRaw(s.into_bytes()));
     let swap_orders = SWAP_ORDERS
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
@@ -543,19 +543,22 @@ fn query_list_by_taker(
 
 fn query_bids_by_order(
     deps: Deps,
-    start_after: Option<String>,
+    _start_after: Option<String>,
     limit: Option<u32>,
     order: String,
-) -> StdResult<ListResponse> {
+) -> StdResult<Vec<Bid>> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.map(|s| Bound::exclusive(s.into_bytes()));
-    let swap_orders = SWAP_ORDERS
-        .range(deps.storage, start, None, Order::Ascending)
-        .take(limit)
-        .map(|item: Result<(u64, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
-        .collect::<Vec<AtomicSwapOrder>>();
+    let bids = BIDS.prefix(&order)
+    .range(deps.storage, None, None, Order::Ascending)
+    .take(limit)
+    .map(|item| {
+        item.map(|(_addr, bid)| {
+            bid
+        })
+    })
+    .collect::<StdResult<_>>()?;
 
-    Ok(ListResponse { swaps: swap_orders })
+    Ok(bids)
 }
 
 fn query_bids_by_bidder(
@@ -565,8 +568,7 @@ fn query_bids_by_bidder(
 ) -> StdResult<Bid> {
     let key = order.clone() + &bidder;
     let count = BID_ORDER_TO_COUNT.load(deps.storage, &key)?;
-    let bid_key = order + &count.to_string();
-    let bid = BIDS.load(deps.storage, bid_key)?;
+    let bid = BIDS.load(deps.storage, (&order, &count.to_string()))?;
 
     Ok(bid)
 }

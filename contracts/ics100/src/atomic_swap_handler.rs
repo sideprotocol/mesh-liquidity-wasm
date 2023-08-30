@@ -228,8 +228,7 @@ pub(crate) fn on_received_make_bid(
         bidder_receiver: msg.taker_receiving_address,
     };
 
-    let bid_key = order_id.clone() + &bid_count.to_string();
-    BIDS.save(deps.storage, bid_key, &bid)?;
+    BIDS.save(deps.storage, (&order_id, &bid_count.to_string()), &bid)?;
 
     let res = IbcReceiveResponse::new()
         .set_ack(ack_success())
@@ -256,9 +255,8 @@ pub(crate) fn on_received_take_bid(
     let bid_count = BID_ORDER_TO_COUNT.load(deps.storage, &key)?;
     BID_ORDER_TO_COUNT.remove(deps.storage, &key);
 
-    let bid_key = order_id.clone() + &bid_count.to_string();
-    let bid = BIDS.load(deps.storage, bid_key.clone())?;
-    BIDS.remove(deps.storage, bid_key);
+    let bid = BIDS.load(deps.storage, (&order_id, &bid_count.to_string()))?;
+    BIDS.remove(deps.storage, (&order_id, &bid_count.to_string()));
 
     if swap_order.maker.desired_taker != ""
     && swap_order.maker.desired_taker != msg.bidder.clone()
@@ -314,8 +312,7 @@ pub(crate) fn on_received_cancel_bid(
     }
     BID_ORDER_TO_COUNT.remove(deps.storage, &key);
     let bid_count = BID_ORDER_TO_COUNT.load(deps.storage, &key)?;
-    let bid_key = order_id.clone() + &bid_count.to_string();
-    BIDS.remove(deps.storage, bid_key);
+    BIDS.remove(deps.storage, (&order_id, &bid_count.to_string()));
 
     let res = IbcReceiveResponse::new()
         .set_ack(ack_success())
@@ -442,8 +439,7 @@ pub(crate) fn on_packet_success(
                 bidder_receiver: msg.taker_receiving_address,
             };
         
-            let bid_key = order_id + &bid_count.to_string();
-            BIDS.save(deps.storage, bid_key, &bid)?;
+            BIDS.save(deps.storage, (&order_id, &bid_count.to_string()), &bid)?;
 
             Ok(IbcBasicResponse::new().add_attributes(attributes))
         }
@@ -459,9 +455,8 @@ pub(crate) fn on_packet_success(
             let bid_count = BID_ORDER_TO_COUNT.load(deps.storage, &key)?;
             BID_ORDER_TO_COUNT.remove(deps.storage, &key);
         
-            let bid_key = order_id.clone() + &bid_count.to_string();
-            let bid = BIDS.load(deps.storage, bid_key.clone())?;
-            BIDS.remove(deps.storage, bid_key);
+            let bid = BIDS.load(deps.storage, (&order_id, &bid_count.to_string()))?;
+            BIDS.remove(deps.storage, (&order_id, &bid_count.to_string()));
         
             let maker_receiving_address = deps
                 .api
@@ -500,8 +495,7 @@ pub(crate) fn on_packet_success(
             }
             BID_ORDER_TO_COUNT.remove(deps.storage, &key);
             let bid_count = BID_ORDER_TO_COUNT.load(deps.storage, &key)?;
-            let bid_key = order_id + &bid_count.to_string();
-            let bid = BIDS.load(deps.storage, bid_key.clone())?;
+            let bid = BIDS.load(deps.storage, (&order_id, &bid_count.to_string()))?;
 
             let taker_receiving_address = deps
             .api
@@ -512,7 +506,7 @@ pub(crate) fn on_packet_success(
                 bid.bid.clone(),
             )?;
 
-            BIDS.remove(deps.storage, bid_key);
+            BIDS.remove(deps.storage, (&order_id, &bid_count.to_string()));
             Ok(IbcBasicResponse::new()
                 .add_submessages(submsg)
                 .add_attributes(attributes))
