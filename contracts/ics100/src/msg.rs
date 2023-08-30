@@ -230,6 +230,15 @@ pub enum QueryMsg {
     /// Returns the details of the named swap, error if not created.
     /// Return type: DetailsResponse.
     Details { id: String },
+    BidDetailsbyOrder {
+        start_after: Option<String>,
+        limit: Option<u32>,
+        order_id: String,
+    },
+    BidDetailsbyBidder {
+        order_id: String,
+        bidder: String,
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]

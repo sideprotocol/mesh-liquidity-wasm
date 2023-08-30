@@ -16,7 +16,7 @@ use crate::state::{
     AtomicSwapOrder,
     Status,
     // CHANNEL_INFO,
-    SWAP_ORDERS, set_atomic_order, get_atomic_order, COUNT, move_order_to_bottom, BID_ORDER_TO_COUNT,
+    SWAP_ORDERS, set_atomic_order, get_atomic_order, COUNT, move_order_to_bottom, BID_ORDER_TO_COUNT, Bid, BIDS,
 };
 use crate::utils::extract_source_channel_for_taker_msg;
 use cw_storage_plus::Bound;
@@ -52,17 +52,6 @@ pub fn execute(
         ExecuteMsg::MakeBid(msg) => execute_make_bid(deps, env, info, msg),
         ExecuteMsg::TakeBid(msg) => execute_take_bid(deps, env, info, msg),
         ExecuteMsg::CancelBid(msg) => execute_cancel_bid(deps, env, info, msg),
-
-        // MakeBid, 
-        // - User will bid on make orders
-        // - Once make is close, delete user bid data structure
-        // TakeBid
-        // - User can choose to TakeBid
-        // - Once make is close delete user bid data structure by returning amounts of all bids
-        // or maybe let user reclaim their amounts
-        // - Reclaim amounts ? OR Integrate in make done pool ?
-        // - integrating can result in more state updates and refund amounts.
-
     }
 }
 
@@ -454,6 +443,10 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             taker,
         } => to_binary(&query_list_by_taker(deps, start_after, limit, taker)?),
         QueryMsg::Details { id } => to_binary(&query_details(deps, id)?),
+        QueryMsg::BidDetailsbyOrder { start_after, limit, order_id }
+            => to_binary(&query_bids_by_order(deps, start_after, limit, order_id)?),
+        QueryMsg::BidDetailsbyBidder { order_id, bidder }
+            => to_binary(&query_bids_by_bidder(deps,  order_id, bidder)?),
     }
 }
 
@@ -546,6 +539,36 @@ fn query_list_by_taker(
         .collect::<Vec<AtomicSwapOrder>>();
 
     Ok(ListResponse { swaps: swap_orders })
+}
+
+fn query_bids_by_order(
+    deps: Deps,
+    start_after: Option<String>,
+    limit: Option<u32>,
+    order: String,
+) -> StdResult<ListResponse> {
+    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
+    let start = start_after.map(|s| Bound::exclusive(s.into_bytes()));
+    let swap_orders = SWAP_ORDERS
+        .range(deps.storage, start, None, Order::Ascending)
+        .take(limit)
+        .map(|item: Result<(u64, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
+        .collect::<Vec<AtomicSwapOrder>>();
+
+    Ok(ListResponse { swaps: swap_orders })
+}
+
+fn query_bids_by_bidder(
+    deps: Deps,
+    order: String,
+    bidder: String,
+) -> StdResult<Bid> {
+    let key = order.clone() + &bidder;
+    let count = BID_ORDER_TO_COUNT.load(deps.storage, &key)?;
+    let bid_key = order + &count.to_string();
+    let bid = BIDS.load(deps.storage, bid_key)?;
+
+    Ok(bid)
 }
 
 #[cfg(test)]
