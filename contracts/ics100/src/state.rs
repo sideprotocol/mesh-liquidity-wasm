@@ -2,8 +2,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::msg::{MakeSwapMsg, TakeSwapMsg};
-use cosmwasm_std::{IbcEndpoint, Order, StdResult, Storage, Timestamp};
-use cw_storage_plus::{Bound, Map, Item};
+use cosmwasm_std::{IbcEndpoint, StdResult, Storage, Timestamp, Coin};
+use cw_storage_plus::{Map, Item};
 
 pub const CHANNEL_INFO: Map<&str, ChannelInfo> = Map::new("channel_info");
 
@@ -52,29 +52,6 @@ pub const SWAP_ORDERS: Map<u64, AtomicSwapOrder> = Map::new("swap_order");
 pub const ORDER_TO_COUNT: Map<&str, u64> = Map::new("order_to_count");
 pub const COUNT: Item<u64> = Item::new("count");
 
-pub fn all_swap_order_ids(
-    storage: &dyn Storage,
-    start: Option<Bound>,
-    limit: usize,
-) -> StdResult<Vec<String>> {
-    ORDER_TO_COUNT
-        .keys(storage, start, None, Order::Ascending)
-        .take(limit)
-        .collect()
-}
-
-pub fn all_swap_orders(
-    storage: &dyn Storage,
-    start: Option<Bound>,
-    limit: usize,
-) -> StdResult<Vec<AtomicSwapOrder>> {
-    Ok(SWAP_ORDERS
-        .range(storage, start, None, Order::Ascending)
-        .take(limit)
-        .map(|item: Result<(u64, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
-        .collect::<Vec<AtomicSwapOrder>>())
-}
-
 // append order to end of list
 pub fn append_atomic_order(storage: &mut dyn Storage, order_id: &str, order: &AtomicSwapOrder) -> StdResult<u64> {
     let count = COUNT.load(storage)?;
@@ -121,16 +98,26 @@ pub fn move_order_to_bottom(storage: &mut dyn Storage, order_id: &str) -> StdRes
     Ok(id)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    use cosmwasm_std::testing::MockStorage;
-
-    #[test]
-    fn test_no_swap_ids() {
-        let storage = MockStorage::new();
-        let ids = all_swap_order_ids(&storage, None, 10).unwrap();
-        assert_eq!(0, ids.len());
-    }
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub enum BidStatus {
+    Cancelled,
+    Executed,
+    Placed,
 }
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct Bid {
+    pub bid: Coin,
+    pub status: BidStatus,
+    pub bidder: String,
+    pub bidder_receiver: String,
+}
+// Map for order id -> Vec<Bids>
+// Order_id + BID_COUNT
+pub const BIDS: Map<(&str, &str), Bid> = Map::new("swap_order");
+
+// Each order bid count
+pub const ORDER_TOTAL_COUNT: Map<&str, u64> = Map::new("order_total_count");
+
+// order_id + account address -> order_count
+pub const BID_ORDER_TO_COUNT: Map<&str, u64> = Map::new("bid_order_to_count");
+

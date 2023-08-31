@@ -26,6 +26,9 @@ pub enum ExecuteMsg {
     MakeSwap(MakeSwapMsg),
     TakeSwap(TakeSwapMsg),
     CancelSwap(CancelSwapMsg),
+    MakeBid(MakeBidMsg),
+    TakeBid(TakeBidMsg),
+    CancelBid(CancelBidMsg),
 }
 
 pub fn is_valid_name(name: &str) -> bool {
@@ -50,6 +53,12 @@ pub enum SwapMessageType {
     TakeSwap = 2,
     #[serde(rename = "TYPE_MSG_CANCEL_SWAP")]
     CancelSwap = 3,
+    #[serde(rename = "TYPE_MSG_MAKE_BID")]
+    MakeBid = 4,
+    #[serde(rename = "TYPE_MSG_TAKE_BID")]
+    TakeBid = 5,
+    #[serde(rename = "TYPE_MSG_CANCEL_BID")]
+    CancelBid = 6,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -78,6 +87,8 @@ pub struct MakeSwapMsg {
 	/// only the desired_taker is allowed to take this order
 	/// this is address on destination chain
     pub desired_taker: String,
+    /// Allow makers to receive bids for the order
+    pub take_bids: bool,
 
     pub timeout_height: Height,
     pub timeout_timestamp: u64,
@@ -117,6 +128,7 @@ pub struct MakeSwapMsgOutput {
     pub timeout_height: HeightOutput,
     pub timeout_timestamp: String,
     pub expiration_timestamp: String,
+    pub take_bids: bool
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug, JsonSchema)]
@@ -166,6 +178,26 @@ pub struct CancelSwapMsg {
     pub timeout_timestamp: String,
 }
 
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug, JsonSchema)]
+pub struct MakeBidMsg {
+    pub order_id: String,
+    pub sell_token: Coin,
+    pub taker_address: String,
+    pub taker_receiving_address: String
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug, JsonSchema)]
+pub struct TakeBidMsg {
+    pub order_id: String,
+    pub bidder: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug, JsonSchema)]
+pub struct CancelBidMsg {
+    pub order_id: String,
+    pub bidder: String,
+}
+
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub enum BalanceHuman {
     Native(Vec<Coin>),
@@ -198,6 +230,15 @@ pub enum QueryMsg {
     /// Returns the details of the named swap, error if not created.
     /// Return type: DetailsResponse.
     Details { id: String },
+    BidDetailsbyOrder {
+        start_after: Option<String>,
+        limit: Option<u32>,
+        order_id: String,
+    },
+    BidDetailsbyBidder {
+        order_id: String,
+        bidder: String,
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
