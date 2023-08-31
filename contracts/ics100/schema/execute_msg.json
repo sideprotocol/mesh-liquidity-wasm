@@ -37,22 +37,69 @@
         }
       },
       "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "MakeBid"
+      ],
+      "properties": {
+        "MakeBid": {
+          "$ref": "#/definitions/MakeBidMsg"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "TakeBid"
+      ],
+      "properties": {
+        "TakeBid": {
+          "$ref": "#/definitions/TakeBidMsg"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "CancelBid"
+      ],
+      "properties": {
+        "CancelBid": {
+          "$ref": "#/definitions/CancelBidMsg"
+        }
+      },
+      "additionalProperties": false
     }
   ],
   "definitions": {
+    "CancelBidMsg": {
+      "type": "object",
+      "required": [
+        "bidder",
+        "order_id"
+      ],
+      "properties": {
+        "bidder": {
+          "type": "string"
+        },
+        "order_id": {
+          "type": "string"
+        }
+      }
+    },
     "CancelSwapMsg": {
       "type": "object",
       "required": [
-        "create_timestamp",
         "maker_address",
         "order_id",
         "timeout_height",
         "timeout_timestamp"
       ],
       "properties": {
-        "create_timestamp": {
-          "type": "string"
-        },
         "maker_address": {
           "type": "string"
         },
@@ -116,78 +163,15 @@
         }
       }
     },
-    "MakeSwapMsg": {
+    "MakeBidMsg": {
       "type": "object",
       "required": [
-        "buy_token",
-        "create_timestamp",
-        "desired_taker",
-        "expiration_timestamp",
-        "maker_address",
-        "maker_receiving_address",
-        "sell_token",
-        "source_channel",
-        "source_port",
-        "timeout_height",
-        "timeout_timestamp"
-      ],
-      "properties": {
-        "buy_token": {
-          "$ref": "#/definitions/Coin"
-        },
-        "create_timestamp": {
-          "type": "integer",
-          "format": "int64"
-        },
-        "desired_taker": {
-          "type": "string"
-        },
-        "expiration_timestamp": {
-          "type": "integer",
-          "format": "uint64",
-          "minimum": 0.0
-        },
-        "maker_address": {
-          "type": "string"
-        },
-        "maker_receiving_address": {
-          "type": "string"
-        },
-        "sell_token": {
-          "$ref": "#/definitions/Coin"
-        },
-        "source_channel": {
-          "type": "string"
-        },
-        "source_port": {
-          "type": "string"
-        },
-        "timeout_height": {
-          "$ref": "#/definitions/Height"
-        },
-        "timeout_timestamp": {
-          "type": "integer",
-          "format": "uint64",
-          "minimum": 0.0
-        }
-      }
-    },
-    "TakeSwapMsg": {
-      "type": "object",
-      "required": [
-        "create_timestamp",
         "order_id",
         "sell_token",
         "taker_address",
-        "taker_receiving_address",
-        "timeout_height",
-        "timeout_timestamp"
+        "taker_receiving_address"
       ],
       "properties": {
-        "create_timestamp": {
-          "type": "integer",
-          "format": "int64"
-        },
         "order_id": {
           "type": "string"
         },
@@ -199,11 +183,130 @@
         },
         "taker_receiving_address": {
           "type": "string"
+        }
+      }
+    },
+    "MakeSwapMsg": {
+      "type": "object",
+      "required": [
+        "buy_token",
+        "desired_taker",
+        "expiration_timestamp",
+        "maker_address",
+        "maker_receiving_address",
+        "sell_token",
+        "source_channel",
+        "source_port",
+        "take_bids",
+        "timeout_height",
+        "timeout_timestamp"
+      ],
+      "properties": {
+        "buy_token": {
+          "$ref": "#/definitions/Coin"
+        },
+        "desired_taker": {
+          "description": "if desired_taker is specified, only the desired_taker is allowed to take this order this is address on destination chain",
+          "type": "string"
+        },
+        "expiration_timestamp": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "maker_address": {
+          "description": "the sender address",
+          "type": "string"
+        },
+        "maker_receiving_address": {
+          "description": "the sender's address on the destination chain",
+          "type": "string"
+        },
+        "sell_token": {
+          "description": "the tokens to be sold",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Coin"
+            }
+          ]
+        },
+        "source_channel": {
+          "description": "the channel by which the packet will be sent",
+          "type": "string"
+        },
+        "source_port": {
+          "description": "the port on which the packet will be sent",
+          "type": "string"
+        },
+        "take_bids": {
+          "description": "Allow makers to receive bids for the order",
+          "type": "boolean"
         },
         "timeout_height": {
           "$ref": "#/definitions/Height"
         },
         "timeout_timestamp": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
+    "TakeBidMsg": {
+      "type": "object",
+      "required": [
+        "bidder",
+        "order_id"
+      ],
+      "properties": {
+        "bidder": {
+          "type": "string"
+        },
+        "order_id": {
+          "type": "string"
+        }
+      }
+    },
+    "TakeSwapMsg": {
+      "type": "object",
+      "required": [
+        "order_id",
+        "sell_token",
+        "taker_address",
+        "taker_receiving_address",
+        "timeout_height",
+        "timeout_timestamp"
+      ],
+      "properties": {
+        "order_id": {
+          "type": "string"
+        },
+        "sell_token": {
+          "description": "the tokens to be sell",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Coin"
+            }
+          ]
+        },
+        "taker_address": {
+          "description": "the sender address",
+          "type": "string"
+        },
+        "taker_receiving_address": {
+          "description": "the sender's address on the destination chain",
+          "type": "string"
+        },
+        "timeout_height": {
+          "description": "Timeout height relative to the current block height. The timeout is disabled when set to 0.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Height"
+            }
+          ]
+        },
+        "timeout_timestamp": {
+          "description": "Timeout timestamp in absolute nanoseconds since unix epoch. The timeout is disabled when set to 0.",
           "type": "integer",
           "format": "uint64",
           "minimum": 0.0
