@@ -23,14 +23,10 @@ const config = {
         {
           chainID: 'osmo-test-5',
           channelId: 'channel-17',
-          name: 'uosmo',
-          type: 'wasm',
         },
         {
           chainID: 'injective-888',
           channelId: 'channel-99',
-          name: ' injective-888',
-          type: 'wasm',
         },
       ],
     },
@@ -45,14 +41,10 @@ const config = {
         {
           chainID: 'injective-888',
           channelId: 'channel-1514',
-          name: 'injective-888',
-          type: 'wasm',
         },
         {
           chainID: 'side-devnet-1',
           channelId: 'channel-1510',
-          name: 'SIDE Test',
-          type: 'wasm',
         },
       ],
     },
@@ -65,14 +57,10 @@ const config = {
         {
           chainID: 'osmo-test-5',
           channelId: 'channel-98',
-          name: 'uosmo',
-          type: 'wasm',
         },
         {
           chainID: 'side-devnet-1',
           channelId: 'channel-99',
-          name: 'SIDE Test',
-          type: 'wasm',
         },
       ],
     },
