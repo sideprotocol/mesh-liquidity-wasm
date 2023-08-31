@@ -10,13 +10,13 @@ use cw2::set_contract_version;
 use crate::error::ContractError;
 use crate::msg::{
     AtomicSwapPacketData, CancelSwapMsg, DetailsResponse, ExecuteMsg, InstantiateMsg, ListResponse,
-    MakeSwapMsg, QueryMsg, SwapMessageType, TakeSwapMsg, MigrateMsg,
+    MakeSwapMsg, QueryMsg, SwapMessageType, TakeSwapMsg, MigrateMsg, MakeBidMsg, TakeBidMsg, CancelBidMsg,
 };
 use crate::state::{
     AtomicSwapOrder,
     Status,
     // CHANNEL_INFO,
-    SWAP_ORDERS, set_atomic_order, get_atomic_order, COUNT, move_order_to_bottom,
+    SWAP_ORDERS, set_atomic_order, get_atomic_order, COUNT, move_order_to_bottom, BID_ORDER_TO_COUNT, Bid, BIDS,
 };
 use crate::utils::extract_source_channel_for_taker_msg;
 use cw_storage_plus::Bound;
@@ -49,16 +49,9 @@ pub fn execute(
         ExecuteMsg::MakeSwap(msg) => execute_make_swap(deps, env, info, msg),
         ExecuteMsg::TakeSwap(msg) => execute_take_swap(deps, env, info, msg),
         ExecuteMsg::CancelSwap(msg) => execute_cancel_swap(deps, env, info, msg),
-        // MakeBid, 
-        // - User will bid on make orders
-        // - Once make is close, delete user bid data structure
-        // TakeBid
-        // - User can choose to TakeBid
-        // - Once make is close delete user bid data structure by returning amounts of all bids
-        // or maybe let user reclaim their amounts
-        // - Reclaim amounts ? OR Integrate in make done pool ?
-        // - integrating can result in more state updates and refund amounts.
-
+        ExecuteMsg::MakeBid(msg) => execute_make_bid(deps, env, info, msg),
+        ExecuteMsg::TakeBid(msg) => execute_take_bid(deps, env, info, msg),
+        ExecuteMsg::CancelBid(msg) => execute_cancel_bid(deps, env, info, msg),
     }
 }
 
@@ -238,6 +231,188 @@ pub fn execute_cancel_swap(
     return Ok(res);
 }
 
+/// Make bid: Use it to make bid from taker chain
+/// For each order each user can create atmost 1 bid(they can cancel and recreate it)
+/// Panics id bid is already taken
+/// buy_token != sell_token
+pub fn execute_make_bid(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    msg: MakeBidMsg,
+) -> Result<Response, ContractError> {
+    let sender = info.sender.to_string();
+    let order = get_atomic_order(deps.storage, &msg.order_id)?;
+    // check if given tokens are received here
+    let mut ok = false;
+    // First token in this chain only first token needs to be verified
+    for asset in info.funds {
+        if asset.denom == msg.sell_token.denom && msg.sell_token.amount == asset.amount {
+            ok = true;
+        }
+    }
+    if !ok {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Funds mismatch: Funds mismatched to with message and sent values: Make swap"
+        ))));
+    }
+
+    if !order.maker.take_bids {
+        return Err(ContractError::TakeBidNotAllowed);
+    }
+
+    // Make sure the maker's buy token matches the taker's sell token
+    if order.maker.buy_token.denom != msg.sell_token.denom {
+        return Err(ContractError::InvalidSellToken);
+    }
+
+    // Checks if the order has already been taken
+    if let Some(_taker) = order.taker {
+        return Err(ContractError::OrderTaken);
+    }
+
+    if sender != msg.taker_address {
+        return Err(ContractError::InvalidSender);
+    }
+
+    let key = msg.order_id.clone() + &msg.taker_address;
+    if BID_ORDER_TO_COUNT.has(deps.storage, &key) {
+        return Err(ContractError::BidAlreadyExist {});
+    }
+
+    let packet = AtomicSwapPacketData {
+        r#type: SwapMessageType::MakeBid,
+        data: to_binary(&msg)?,
+        memo: String::new(),
+        order_id: None,
+        path: None
+    };
+
+    let ibc_msg = IbcMsg::SendPacket {
+        channel_id: order.maker.source_channel,
+        data: to_binary(&packet)?,
+        timeout: IbcTimeout::from(
+            env.block
+                .time
+                .plus_seconds(DEFAULT_TIMEOUT_TIMESTAMP_OFFSET),
+        ),
+    };
+
+    let res = Response::new()
+        .add_message(ibc_msg)
+        .add_attribute("order_id", msg.order_id)
+        .add_attribute("action", "make_bid");
+    return Ok(res);
+}
+
+/// Take Bid: Only maker(maker receiving address) can take bid for their order
+/// Maker can take bid from taker chain
+/// Panics if order is already taken
+/// Panics if is not allowed
+/// Panics if bid doesn't exist or sender is not maker receiving address
+pub fn execute_take_bid(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    msg: TakeBidMsg,
+) -> Result<Response, ContractError> {
+    let sender = info.sender.to_string();
+    let order = get_atomic_order(deps.storage, &msg.order_id)?;
+
+    if !order.maker.take_bids {
+        return Err(ContractError::TakeBidNotAllowed);
+    }
+
+    // Checks if the order has already been taken
+    if let Some(_taker) = order.taker {
+        return Err(ContractError::OrderTaken);
+    }
+
+    if sender != order.maker.maker_receiving_address {
+        return Err(ContractError::InvalidSender);
+    }
+
+    let key = msg.order_id.clone() + &msg.bidder;
+    if !BID_ORDER_TO_COUNT.has(deps.storage, &key) {
+        return Err(ContractError::BidDoesntExist);
+    }
+
+    let packet = AtomicSwapPacketData {
+        r#type: SwapMessageType::TakeBid,
+        data: to_binary(&msg)?,
+        memo: String::new(),
+        order_id: None,
+        path: None
+    };
+
+    let ibc_msg = IbcMsg::SendPacket {
+        channel_id: order.maker.source_channel,
+        data: to_binary(&packet)?,
+        timeout: IbcTimeout::from(
+            env.block
+                .time
+                .plus_seconds(DEFAULT_TIMEOUT_TIMESTAMP_OFFSET),
+        ),
+    };
+
+    let res = Response::new()
+        .add_message(ibc_msg)
+        .add_attribute("order_id", msg.order_id)
+        .add_attribute("action", "take_bid");
+    return Ok(res);
+}
+
+/// Cancel Bid: Bid maker can cancel their bid
+/// After cancellation amount is refunded
+/// Panics if bid is not allowed
+/// bid doesn't exist
+pub fn execute_cancel_bid(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    msg: CancelBidMsg,
+) -> Result<Response, ContractError> {
+    let sender = info.sender.to_string();
+    let order = get_atomic_order(deps.storage, &msg.order_id)?;
+
+    if !order.maker.take_bids {
+        return Err(ContractError::TakeBidNotAllowed);
+    }
+
+    let key = msg.order_id.clone() + &sender;
+    if !BID_ORDER_TO_COUNT.has(deps.storage, &key) {
+        return Err(ContractError::BidDoesntExist);
+    }
+
+    if sender != msg.bidder {
+        return Err(ContractError::InvalidSender);
+    }
+
+    let packet = AtomicSwapPacketData {
+        r#type: SwapMessageType::CancelBid,
+        data: to_binary(&msg)?,
+        memo: String::new(),
+        order_id: None,
+        path: None
+    };
+
+    let ibc_msg = IbcMsg::SendPacket {
+        channel_id: order.maker.source_channel,
+        data: to_binary(&packet)?,
+        timeout: IbcTimeout::from(
+            env.block
+                .time
+                .plus_seconds(DEFAULT_TIMEOUT_TIMESTAMP_OFFSET),
+        ),
+    };
+
+    let res = Response::new()
+        .add_message(ibc_msg)
+        .add_attribute("order_id", msg.order_id)
+        .add_attribute("action", "make_bid");
+    return Ok(res);
+}
+
 #[entry_point]
 pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
     let ver = cw2::get_contract_version(deps.storage)?;
@@ -281,6 +456,10 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             taker,
         } => to_binary(&query_list_by_taker(deps, start_after, limit, taker)?),
         QueryMsg::Details { id } => to_binary(&query_details(deps, id)?),
+        QueryMsg::BidDetailsbyOrder { start_after, limit, order_id }
+            => to_binary(&query_bids_by_order(deps, start_after, limit, order_id)?),
+        QueryMsg::BidDetailsbyBidder { order_id, bidder }
+            => to_binary(&query_bids_by_bidder(deps,  order_id, bidder)?),
     }
 }
 
@@ -309,7 +488,7 @@ fn query_list(
     limit: Option<u32>,
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.map(|s| Bound::exclusive(s.into_bytes()));
+    let start = start_after.map(|s| Bound::ExclusiveRaw(s.into_bytes()));
     let swap_orders = SWAP_ORDERS
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
@@ -326,7 +505,7 @@ fn query_list_by_desired_taker(
     desired_taker: String,
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.map(|s| Bound::exclusive(s.into_bytes()));
+    let start = start_after.map(|s| Bound::ExclusiveRaw(s.into_bytes()));
     let swap_orders = SWAP_ORDERS
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
@@ -344,7 +523,7 @@ fn query_list_by_maker(
     maker: String,
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.map(|s| Bound::exclusive(s.into_bytes()));
+    let start = start_after.map(|s| Bound::ExclusiveRaw(s.into_bytes()));
     let swap_orders = SWAP_ORDERS
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
@@ -362,7 +541,7 @@ fn query_list_by_taker(
     taker: String,
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.map(|s| Bound::exclusive(s.into_bytes()));
+    let start = start_after.map(|s| Bound::ExclusiveRaw(s.into_bytes()));
     let swap_orders = SWAP_ORDERS
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
@@ -373,6 +552,38 @@ fn query_list_by_taker(
         .collect::<Vec<AtomicSwapOrder>>();
 
     Ok(ListResponse { swaps: swap_orders })
+}
+
+fn query_bids_by_order(
+    deps: Deps,
+    _start_after: Option<String>,
+    limit: Option<u32>,
+    order: String,
+) -> StdResult<Vec<Bid>> {
+    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
+    let bids = BIDS.prefix(&order)
+    .range(deps.storage, None, None, Order::Ascending)
+    .take(limit)
+    .map(|item| {
+        item.map(|(_addr, bid)| {
+            bid
+        })
+    })
+    .collect::<StdResult<_>>()?;
+
+    Ok(bids)
+}
+
+fn query_bids_by_bidder(
+    deps: Deps,
+    order: String,
+    bidder: String,
+) -> StdResult<Bid> {
+    let key = order.clone() + &bidder;
+    let count = BID_ORDER_TO_COUNT.load(deps.storage, &key)?;
+    let bid = BIDS.load(deps.storage, (&order, &count.to_string()))?;
+
+    Ok(bid)
 }
 
 #[cfg(test)]
@@ -427,6 +638,7 @@ mod tests {
                 revision_height: 0,
             },
             timeout_timestamp: env.block.time.plus_seconds(100).nanos(),
+            take_bids: false
         };
         let err = execute(
             deps.as_mut(),
@@ -471,6 +683,7 @@ mod tests {
                 revision_height: 0,
             },
             timeout_timestamp: 1693399799000000000,
+            take_bids: false
         };
 
         let path = order_path(
