@@ -7,7 +7,7 @@
 import { UseQueryOptions, useQuery, useMutation, UseMutationOptions } from "@tanstack/react-query";
 import { ExecuteResult } from "@cosmjs/cosmwasm-stargate";
 import { StdFee } from "@cosmjs/amino";
-import { Timestamp, Uint64, Uint128, Status, DetailsResponse, MakeSwapMsg, Coin, Height, TakeSwapMsg, ExecuteMsg, CancelSwapMsg, HeightOutput, InstantiateMsg, ListResponse, AtomicSwapOrder, QueryMsg } from "./Ics100.types";
+import { Timestamp, Uint64, Uint128, Status, DetailsResponse, MakeSwapMsg, Coin, Height, TakeSwapMsg, ExecuteMsg, CancelSwapMsg, HeightOutput, MakeBidMsg, TakeBidMsg, CancelBidMsg, InstantiateMsg, Side, ListResponse, AtomicSwapOrder, QueryMsg } from "./Ics100.types";
 import { Ics100QueryClient, Ics100Client } from "./Ics100.client";
 export const ics100QueryKeys = {
   contract: ([{
@@ -34,6 +34,14 @@ export const ics100QueryKeys = {
   }] as const),
   details: (contractAddress: string | undefined, args?: Record<string, unknown>) => ([{ ...ics100QueryKeys.address(contractAddress)[0],
     method: "details",
+    args
+  }] as const),
+  bidDetailsbyOrder: (contractAddress: string | undefined, args?: Record<string, unknown>) => ([{ ...ics100QueryKeys.address(contractAddress)[0],
+    method: "bid_detailsby_order",
+    args
+  }] as const),
+  bidDetailsbyBidder: (contractAddress: string | undefined, args?: Record<string, unknown>) => ([{ ...ics100QueryKeys.address(contractAddress)[0],
+    method: "bid_detailsby_bidder",
     args
   }] as const)
 };
@@ -104,6 +112,33 @@ export const ics100Queries = {
     }) : Promise.reject(new Error("Invalid client")),
     ...options,
     enabled: !!client && (options?.enabled != undefined ? options.enabled : true)
+  }),
+  bidDetailsbyOrder: <TData = BidDetailsbyOrderResponse,>({
+    client,
+    args,
+    options
+  }: Ics100BidDetailsbyOrderQuery<TData>): UseQueryOptions<BidDetailsbyOrderResponse, Error, TData> => ({
+    queryKey: ics100QueryKeys.bidDetailsbyOrder(client?.contractAddress, args),
+    queryFn: () => client ? client.bidDetailsbyOrder({
+      limit: args.limit,
+      orderId: args.orderId,
+      startAfter: args.startAfter
+    }) : Promise.reject(new Error("Invalid client")),
+    ...options,
+    enabled: !!client && (options?.enabled != undefined ? options.enabled : true)
+  }),
+  bidDetailsbyBidder: <TData = BidDetailsbyBidderResponse,>({
+    client,
+    args,
+    options
+  }: Ics100BidDetailsbyBidderQuery<TData>): UseQueryOptions<BidDetailsbyBidderResponse, Error, TData> => ({
+    queryKey: ics100QueryKeys.bidDetailsbyBidder(client?.contractAddress, args),
+    queryFn: () => client ? client.bidDetailsbyBidder({
+      bidder: args.bidder,
+      orderId: args.orderId
+    }) : Promise.reject(new Error("Invalid client")),
+    ...options,
+    enabled: !!client && (options?.enabled != undefined ? options.enabled : true)
   })
 };
 export interface Ics100ReactQuery<TResponse, TData = TResponse> {
@@ -111,6 +146,44 @@ export interface Ics100ReactQuery<TResponse, TData = TResponse> {
   options?: Omit<UseQueryOptions<TResponse, Error, TData>, "'queryKey' | 'queryFn' | 'initialData'"> & {
     initialData?: undefined;
   };
+}
+export interface Ics100BidDetailsbyBidderQuery<TData> extends Ics100ReactQuery<BidDetailsbyBidderResponse, TData> {
+  args: {
+    bidder: string;
+    orderId: string;
+  };
+}
+export function useIcs100BidDetailsbyBidderQuery<TData = BidDetailsbyBidderResponse>({
+  client,
+  args,
+  options
+}: Ics100BidDetailsbyBidderQuery<TData>) {
+  return useQuery<BidDetailsbyBidderResponse, Error, TData>(ics100QueryKeys.bidDetailsbyBidder(client?.contractAddress, args), () => client ? client.bidDetailsbyBidder({
+    bidder: args.bidder,
+    orderId: args.orderId
+  }) : Promise.reject(new Error("Invalid client")), { ...options,
+    enabled: !!client && (options?.enabled != undefined ? options.enabled : true)
+  });
+}
+export interface Ics100BidDetailsbyOrderQuery<TData> extends Ics100ReactQuery<BidDetailsbyOrderResponse, TData> {
+  args: {
+    limit?: number;
+    orderId: string;
+    startAfter?: string;
+  };
+}
+export function useIcs100BidDetailsbyOrderQuery<TData = BidDetailsbyOrderResponse>({
+  client,
+  args,
+  options
+}: Ics100BidDetailsbyOrderQuery<TData>) {
+  return useQuery<BidDetailsbyOrderResponse, Error, TData>(ics100QueryKeys.bidDetailsbyOrder(client?.contractAddress, args), () => client ? client.bidDetailsbyOrder({
+    limit: args.limit,
+    orderId: args.orderId,
+    startAfter: args.startAfter
+  }) : Promise.reject(new Error("Invalid client")), { ...options,
+    enabled: !!client && (options?.enabled != undefined ? options.enabled : true)
+  });
 }
 export interface Ics100DetailsQuery<TData> extends Ics100ReactQuery<DetailsResponse, TData> {
   args: {
@@ -206,10 +279,80 @@ export function useIcs100ListQuery<TData = ListResponse>({
     enabled: !!client && (options?.enabled != undefined ? options.enabled : true)
   });
 }
+export interface Ics100CancelBidMutation {
+  client: Ics100Client;
+  msg: {
+    bidder: string;
+    orderId: string;
+  };
+  args?: {
+    fee?: number | StdFee | "auto";
+    memo?: string;
+    funds?: Coin[];
+  };
+}
+export function useIcs100CancelBidMutation(options?: Omit<UseMutationOptions<ExecuteResult, Error, Ics100CancelBidMutation>, "mutationFn">) {
+  return useMutation<ExecuteResult, Error, Ics100CancelBidMutation>(({
+    client,
+    msg,
+    args: {
+      fee,
+      memo,
+      funds
+    } = {}
+  }) => client.cancelBid(msg, fee, memo, funds), options);
+}
+export interface Ics100TakeBidMutation {
+  client: Ics100Client;
+  msg: {
+    bidder: string;
+    orderId: string;
+  };
+  args?: {
+    fee?: number | StdFee | "auto";
+    memo?: string;
+    funds?: Coin[];
+  };
+}
+export function useIcs100TakeBidMutation(options?: Omit<UseMutationOptions<ExecuteResult, Error, Ics100TakeBidMutation>, "mutationFn">) {
+  return useMutation<ExecuteResult, Error, Ics100TakeBidMutation>(({
+    client,
+    msg,
+    args: {
+      fee,
+      memo,
+      funds
+    } = {}
+  }) => client.takeBid(msg, fee, memo, funds), options);
+}
+export interface Ics100MakeBidMutation {
+  client: Ics100Client;
+  msg: {
+    orderId: string;
+    sellToken: Coin;
+    takerAddress: string;
+    takerReceivingAddress: string;
+  };
+  args?: {
+    fee?: number | StdFee | "auto";
+    memo?: string;
+    funds?: Coin[];
+  };
+}
+export function useIcs100MakeBidMutation(options?: Omit<UseMutationOptions<ExecuteResult, Error, Ics100MakeBidMutation>, "mutationFn">) {
+  return useMutation<ExecuteResult, Error, Ics100MakeBidMutation>(({
+    client,
+    msg,
+    args: {
+      fee,
+      memo,
+      funds
+    } = {}
+  }) => client.makeBid(msg, fee, memo, funds), options);
+}
 export interface Ics100CancelSwapMutation {
   client: Ics100Client;
   msg: {
-    createTimestamp: string;
     makerAddress: string;
     orderId: string;
     timeoutHeight: HeightOutput;
@@ -235,7 +378,6 @@ export function useIcs100CancelSwapMutation(options?: Omit<UseMutationOptions<Ex
 export interface Ics100TakeSwapMutation {
   client: Ics100Client;
   msg: {
-    createTimestamp: number;
     orderId: string;
     sellToken: Coin;
     takerAddress: string;
@@ -264,7 +406,6 @@ export interface Ics100MakeSwapMutation {
   client: Ics100Client;
   msg: {
     buyToken: Coin;
-    createTimestamp: number;
     desiredTaker: string;
     expirationTimestamp: number;
     makerAddress: string;
@@ -272,6 +413,7 @@ export interface Ics100MakeSwapMutation {
     sellToken: Coin;
     sourceChannel: string;
     sourcePort: string;
+    takeBids: boolean;
     timeoutHeight: Height;
     timeoutTimestamp: number;
   };

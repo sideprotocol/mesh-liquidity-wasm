@@ -20,7 +20,6 @@ export interface DetailsResponse {
 }
 export interface MakeSwapMsg {
   buy_token: Coin;
-  create_timestamp: number;
   desired_taker: string;
   expiration_timestamp: number;
   maker_address: string;
@@ -28,6 +27,7 @@ export interface MakeSwapMsg {
   sell_token: Coin;
   source_channel: string;
   source_port: string;
+  take_bids: boolean;
   timeout_height: Height;
   timeout_timestamp: number;
   [k: string]: unknown;
@@ -43,7 +43,6 @@ export interface Height {
   [k: string]: unknown;
 }
 export interface TakeSwapMsg {
-  create_timestamp: number;
   order_id: string;
   sell_token: Coin;
   taker_address: string;
@@ -58,9 +57,14 @@ export type ExecuteMsg = {
   TakeSwap: TakeSwapMsg;
 } | {
   CancelSwap: CancelSwapMsg;
+} | {
+  MakeBid: MakeBidMsg;
+} | {
+  TakeBid: TakeBidMsg;
+} | {
+  CancelBid: CancelBidMsg;
 };
 export interface CancelSwapMsg {
-  create_timestamp: string;
   maker_address: string;
   order_id: string;
   timeout_height: HeightOutput;
@@ -72,9 +76,27 @@ export interface HeightOutput {
   revision_number: string;
   [k: string]: unknown;
 }
+export interface MakeBidMsg {
+  order_id: string;
+  sell_token: Coin;
+  taker_address: string;
+  taker_receiving_address: string;
+  [k: string]: unknown;
+}
+export interface TakeBidMsg {
+  bidder: string;
+  order_id: string;
+  [k: string]: unknown;
+}
+export interface CancelBidMsg {
+  bidder: string;
+  order_id: string;
+  [k: string]: unknown;
+}
 export interface InstantiateMsg {
   [k: string]: unknown;
 }
+export type Side = "NATIVE" | "REMOTE";
 export interface ListResponse {
   swaps: AtomicSwapOrder[];
   [k: string]: unknown;
@@ -82,9 +104,11 @@ export interface ListResponse {
 export interface AtomicSwapOrder {
   cancel_timestamp?: Timestamp | null;
   complete_timestamp?: Timestamp | null;
+  create_timestamp: number;
   id: string;
   maker: MakeSwapMsg;
   path: string;
+  side: Side;
   status: Status;
   taker?: TakeSwapMsg | null;
   [k: string]: unknown;
@@ -119,6 +143,19 @@ export type QueryMsg = {
 } | {
   details: {
     id: string;
+    [k: string]: unknown;
+  };
+} | {
+  bid_detailsby_order: {
+    limit?: number | null;
+    order_id: string;
+    start_after?: string | null;
+    [k: string]: unknown;
+  };
+} | {
+  bid_detailsby_bidder: {
+    bidder: string;
+    order_id: string;
     [k: string]: unknown;
   };
 };

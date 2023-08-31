@@ -6,7 +6,7 @@
 
 import { CosmWasmClient, SigningCosmWasmClient, ExecuteResult } from "@cosmjs/cosmwasm-stargate";
 import { StdFee } from "@cosmjs/amino";
-import { Timestamp, Uint64, Uint128, Status, DetailsResponse, MakeSwapMsg, Coin, Height, TakeSwapMsg, ExecuteMsg, CancelSwapMsg, HeightOutput, InstantiateMsg, ListResponse, AtomicSwapOrder, QueryMsg } from "./Ics100.types";
+import { Timestamp, Uint64, Uint128, Status, DetailsResponse, MakeSwapMsg, Coin, Height, TakeSwapMsg, ExecuteMsg, CancelSwapMsg, HeightOutput, MakeBidMsg, TakeBidMsg, CancelBidMsg, InstantiateMsg, Side, ListResponse, AtomicSwapOrder, QueryMsg } from "./Ics100.types";
 export interface Ics100ReadOnlyInterface {
   contractAddress: string;
   list: ({
@@ -48,6 +48,22 @@ export interface Ics100ReadOnlyInterface {
   }: {
     id: string;
   }) => Promise<DetailsResponse>;
+  bidDetailsbyOrder: ({
+    limit,
+    orderId,
+    startAfter
+  }: {
+    limit?: number;
+    orderId: string;
+    startAfter?: string;
+  }) => Promise<BidDetailsbyOrderResponse>;
+  bidDetailsbyBidder: ({
+    bidder,
+    orderId
+  }: {
+    bidder: string;
+    orderId: string;
+  }) => Promise<BidDetailsbyBidderResponse>;
 }
 export class Ics100QueryClient implements Ics100ReadOnlyInterface {
   client: CosmWasmClient;
@@ -61,6 +77,8 @@ export class Ics100QueryClient implements Ics100ReadOnlyInterface {
     this.listByMaker = this.listByMaker.bind(this);
     this.listByTaker = this.listByTaker.bind(this);
     this.details = this.details.bind(this);
+    this.bidDetailsbyOrder = this.bidDetailsbyOrder.bind(this);
+    this.bidDetailsbyBidder = this.bidDetailsbyBidder.bind(this);
   }
 
   list = async ({
@@ -139,13 +157,43 @@ export class Ics100QueryClient implements Ics100ReadOnlyInterface {
       }
     });
   };
+  bidDetailsbyOrder = async ({
+    limit,
+    orderId,
+    startAfter
+  }: {
+    limit?: number;
+    orderId: string;
+    startAfter?: string;
+  }): Promise<BidDetailsbyOrderResponse> => {
+    return this.client.queryContractSmart(this.contractAddress, {
+      bid_detailsby_order: {
+        limit,
+        order_id: orderId,
+        start_after: startAfter
+      }
+    });
+  };
+  bidDetailsbyBidder = async ({
+    bidder,
+    orderId
+  }: {
+    bidder: string;
+    orderId: string;
+  }): Promise<BidDetailsbyBidderResponse> => {
+    return this.client.queryContractSmart(this.contractAddress, {
+      bid_detailsby_bidder: {
+        bidder,
+        order_id: orderId
+      }
+    });
+  };
 }
 export interface Ics100Interface extends Ics100ReadOnlyInterface {
   contractAddress: string;
   sender: string;
   makeSwap: ({
     buyToken,
-    createTimestamp,
     desiredTaker,
     expirationTimestamp,
     makerAddress,
@@ -153,11 +201,11 @@ export interface Ics100Interface extends Ics100ReadOnlyInterface {
     sellToken,
     sourceChannel,
     sourcePort,
+    takeBids,
     timeoutHeight,
     timeoutTimestamp
   }: {
     buyToken: Coin;
-    createTimestamp: number;
     desiredTaker: string;
     expirationTimestamp: number;
     makerAddress: string;
@@ -165,11 +213,11 @@ export interface Ics100Interface extends Ics100ReadOnlyInterface {
     sellToken: Coin;
     sourceChannel: string;
     sourcePort: string;
+    takeBids: boolean;
     timeoutHeight: Height;
     timeoutTimestamp: number;
   }, fee?: number | StdFee | "auto", memo?: string, _funds?: Coin[]) => Promise<ExecuteResult>;
   takeSwap: ({
-    createTimestamp,
     orderId,
     sellToken,
     takerAddress,
@@ -177,7 +225,6 @@ export interface Ics100Interface extends Ics100ReadOnlyInterface {
     timeoutHeight,
     timeoutTimestamp
   }: {
-    createTimestamp: number;
     orderId: string;
     sellToken: Coin;
     takerAddress: string;
@@ -186,17 +233,40 @@ export interface Ics100Interface extends Ics100ReadOnlyInterface {
     timeoutTimestamp: number;
   }, fee?: number | StdFee | "auto", memo?: string, _funds?: Coin[]) => Promise<ExecuteResult>;
   cancelSwap: ({
-    createTimestamp,
     makerAddress,
     orderId,
     timeoutHeight,
     timeoutTimestamp
   }: {
-    createTimestamp: string;
     makerAddress: string;
     orderId: string;
     timeoutHeight: HeightOutput;
     timeoutTimestamp: string;
+  }, fee?: number | StdFee | "auto", memo?: string, _funds?: Coin[]) => Promise<ExecuteResult>;
+  makeBid: ({
+    orderId,
+    sellToken,
+    takerAddress,
+    takerReceivingAddress
+  }: {
+    orderId: string;
+    sellToken: Coin;
+    takerAddress: string;
+    takerReceivingAddress: string;
+  }, fee?: number | StdFee | "auto", memo?: string, _funds?: Coin[]) => Promise<ExecuteResult>;
+  takeBid: ({
+    bidder,
+    orderId
+  }: {
+    bidder: string;
+    orderId: string;
+  }, fee?: number | StdFee | "auto", memo?: string, _funds?: Coin[]) => Promise<ExecuteResult>;
+  cancelBid: ({
+    bidder,
+    orderId
+  }: {
+    bidder: string;
+    orderId: string;
   }, fee?: number | StdFee | "auto", memo?: string, _funds?: Coin[]) => Promise<ExecuteResult>;
 }
 export class Ics100Client extends Ics100QueryClient implements Ics100Interface {
@@ -212,11 +282,13 @@ export class Ics100Client extends Ics100QueryClient implements Ics100Interface {
     this.makeSwap = this.makeSwap.bind(this);
     this.takeSwap = this.takeSwap.bind(this);
     this.cancelSwap = this.cancelSwap.bind(this);
+    this.makeBid = this.makeBid.bind(this);
+    this.takeBid = this.takeBid.bind(this);
+    this.cancelBid = this.cancelBid.bind(this);
   }
 
   makeSwap = async ({
     buyToken,
-    createTimestamp,
     desiredTaker,
     expirationTimestamp,
     makerAddress,
@@ -224,11 +296,11 @@ export class Ics100Client extends Ics100QueryClient implements Ics100Interface {
     sellToken,
     sourceChannel,
     sourcePort,
+    takeBids,
     timeoutHeight,
     timeoutTimestamp
   }: {
     buyToken: Coin;
-    createTimestamp: number;
     desiredTaker: string;
     expirationTimestamp: number;
     makerAddress: string;
@@ -236,13 +308,13 @@ export class Ics100Client extends Ics100QueryClient implements Ics100Interface {
     sellToken: Coin;
     sourceChannel: string;
     sourcePort: string;
+    takeBids: boolean;
     timeoutHeight: Height;
     timeoutTimestamp: number;
   }, fee: number | StdFee | "auto" = "auto", memo?: string, _funds?: Coin[]): Promise<ExecuteResult> => {
     return await this.client.execute(this.sender, this.contractAddress, {
       MakeSwap: {
         buy_token: buyToken,
-        create_timestamp: createTimestamp,
         desired_taker: desiredTaker,
         expiration_timestamp: expirationTimestamp,
         maker_address: makerAddress,
@@ -250,13 +322,13 @@ export class Ics100Client extends Ics100QueryClient implements Ics100Interface {
         sell_token: sellToken,
         source_channel: sourceChannel,
         source_port: sourcePort,
+        take_bids: takeBids,
         timeout_height: timeoutHeight,
         timeout_timestamp: timeoutTimestamp
       }
     }, fee, memo, _funds);
   };
   takeSwap = async ({
-    createTimestamp,
     orderId,
     sellToken,
     takerAddress,
@@ -264,7 +336,6 @@ export class Ics100Client extends Ics100QueryClient implements Ics100Interface {
     timeoutHeight,
     timeoutTimestamp
   }: {
-    createTimestamp: number;
     orderId: string;
     sellToken: Coin;
     takerAddress: string;
@@ -274,7 +345,6 @@ export class Ics100Client extends Ics100QueryClient implements Ics100Interface {
   }, fee: number | StdFee | "auto" = "auto", memo?: string, _funds?: Coin[]): Promise<ExecuteResult> => {
     return await this.client.execute(this.sender, this.contractAddress, {
       TakeSwap: {
-        create_timestamp: createTimestamp,
         order_id: orderId,
         sell_token: sellToken,
         taker_address: takerAddress,
@@ -285,13 +355,11 @@ export class Ics100Client extends Ics100QueryClient implements Ics100Interface {
     }, fee, memo, _funds);
   };
   cancelSwap = async ({
-    createTimestamp,
     makerAddress,
     orderId,
     timeoutHeight,
     timeoutTimestamp
   }: {
-    createTimestamp: string;
     makerAddress: string;
     orderId: string;
     timeoutHeight: HeightOutput;
@@ -299,11 +367,58 @@ export class Ics100Client extends Ics100QueryClient implements Ics100Interface {
   }, fee: number | StdFee | "auto" = "auto", memo?: string, _funds?: Coin[]): Promise<ExecuteResult> => {
     return await this.client.execute(this.sender, this.contractAddress, {
       CancelSwap: {
-        create_timestamp: createTimestamp,
         maker_address: makerAddress,
         order_id: orderId,
         timeout_height: timeoutHeight,
         timeout_timestamp: timeoutTimestamp
+      }
+    }, fee, memo, _funds);
+  };
+  makeBid = async ({
+    orderId,
+    sellToken,
+    takerAddress,
+    takerReceivingAddress
+  }: {
+    orderId: string;
+    sellToken: Coin;
+    takerAddress: string;
+    takerReceivingAddress: string;
+  }, fee: number | StdFee | "auto" = "auto", memo?: string, _funds?: Coin[]): Promise<ExecuteResult> => {
+    return await this.client.execute(this.sender, this.contractAddress, {
+      MakeBid: {
+        order_id: orderId,
+        sell_token: sellToken,
+        taker_address: takerAddress,
+        taker_receiving_address: takerReceivingAddress
+      }
+    }, fee, memo, _funds);
+  };
+  takeBid = async ({
+    bidder,
+    orderId
+  }: {
+    bidder: string;
+    orderId: string;
+  }, fee: number | StdFee | "auto" = "auto", memo?: string, _funds?: Coin[]): Promise<ExecuteResult> => {
+    return await this.client.execute(this.sender, this.contractAddress, {
+      TakeBid: {
+        bidder,
+        order_id: orderId
+      }
+    }, fee, memo, _funds);
+  };
+  cancelBid = async ({
+    bidder,
+    orderId
+  }: {
+    bidder: string;
+    orderId: string;
+  }, fee: number | StdFee | "auto" = "auto", memo?: string, _funds?: Coin[]): Promise<ExecuteResult> => {
+    return await this.client.execute(this.sender, this.contractAddress, {
+      CancelBid: {
+        bidder,
+        order_id: orderId
       }
     }, fee, memo, _funds);
   };
