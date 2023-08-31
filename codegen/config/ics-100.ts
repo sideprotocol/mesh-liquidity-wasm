@@ -22,11 +22,11 @@ const config = {
       counterparties: [
         {
           chainID: 'osmo-test-5',
-          channelId: 'channel-17',
+          sourceChannel: 'channel-17',
         },
         {
           chainID: 'injective-888',
-          channelId: 'channel-99',
+          sourceChannel: 'channel-99',
         },
       ],
     },
@@ -40,11 +40,11 @@ const config = {
       counterparties: [
         {
           chainID: 'injective-888',
-          channelId: 'channel-1514',
+          sourceChannel: 'channel-1514',
         },
         {
           chainID: 'side-devnet-1',
-          channelId: 'channel-1510',
+          sourceChannel: 'channel-1510',
         },
       ],
     },
@@ -56,11 +56,11 @@ const config = {
       counterparties: [
         {
           chainID: 'osmo-test-5',
-          channelId: 'channel-98',
+          sourceChannel: 'channel-98',
         },
         {
           chainID: 'side-devnet-1',
-          channelId: 'channel-99',
+          sourceChannel: 'channel-99',
         },
       ],
     },
