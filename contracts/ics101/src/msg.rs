@@ -26,6 +26,10 @@ pub enum ExecuteMsg {
     MultiAssetWithdraw(MsgMultiAssetWithdrawRequest),
     Swap(MsgSwapRequest),
     RemovePool(MsgRemovePool),
+    SetLogAddress {
+        pool_id: String,
+        address: String,
+    }
    // Receive(Cw20ReceiveMsg)
 }
 
@@ -296,6 +300,13 @@ impl TokenInstantiateMsg {
         }
         Ok(())
     }
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct LogObservation {
+    pub token1: Coin,
+    pub token2: Coin,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

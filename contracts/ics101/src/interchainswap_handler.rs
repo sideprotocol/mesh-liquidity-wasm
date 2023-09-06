@@ -1,20 +1,22 @@
+use std::vec;
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     error::ContractError,
     types::{InterchainSwapPacketData, InterchainMessageType, StateChange, MultiAssetDepositOrder, OrderStatus},
-    state::{POOLS, CONFIG, MULTI_ASSET_DEPOSIT_ORDERS, POOL_TOKENS_LIST, ACTIVE_ORDERS},
+    state::{POOLS, CONFIG, MULTI_ASSET_DEPOSIT_ORDERS, POOL_TOKENS_LIST, ACTIVE_ORDERS, LOG_VOLUME},
     utils::{
         get_pool_id_with_tokens, get_coins_from_deposits, mint_tokens_cw20, send_tokens_coin, send_tokens_cw20, burn_tokens_cw20,
     }, msg::{MsgMakePoolRequest, MsgTakePoolRequest, MsgSingleAssetDepositRequest,
      MsgMultiAssetWithdrawRequest, MsgSwapRequest,
-    MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, MsgCancelPoolRequest, MsgCancelMultiAssetDepositRequest}
+    MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, MsgCancelPoolRequest, MsgCancelMultiAssetDepositRequest, LogObservation}
     ,market::{InterchainLiquidityPool, PoolStatus::{Initialized, Active, Cancelled}, InterchainMarketMaker, PoolSide},
 };
 use cosmwasm_std::{
     attr, from_binary, to_binary, Binary, DepsMut, Env, IbcBasicResponse, IbcPacket,
-    IbcReceiveResponse, SubMsg, Coin, Uint128, StdError, Addr, from_slice,
+    IbcReceiveResponse, SubMsg, Coin, Uint128, StdError, Addr, from_slice, WasmMsg,
 };
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema)]
@@ -531,22 +533,43 @@ pub(crate) fn on_received_swap(
     let token_out = state_change.out_tokens.unwrap();
 
     // send tokens
-    let sub_messages = send_tokens_coin(&Addr::unchecked(msg.recipient), token_out.get(0).unwrap().clone())?;
-
+    let mut sub_messages = send_tokens_coin(&Addr::unchecked(msg.recipient), token_out.get(0).unwrap().clone())?;
+    let log_token_1;
+    let log_token_2;
     // Update pool status by subtracting output token and adding input token
     match msg.swap_type {
         crate::msg::SwapMsgType::LEFT => {
-            interchain_pool.add_asset(msg.token_in).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;
+            interchain_pool.add_asset(msg.token_in.clone()).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;
             interchain_pool.subtract_asset(token_out.get(0).unwrap().clone()).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;        
+            log_token_1 = msg.token_in;
+            log_token_2 = token_out.get(0).unwrap().clone();
         }
         crate::msg::SwapMsgType::RIGHT => {
             // token_out here is offer amount that is needed to get msg.token_out
             interchain_pool.add_asset(token_out.get(0).unwrap().clone()).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;
-            interchain_pool.subtract_asset(msg.token_out).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;        
+            interchain_pool.subtract_asset(msg.token_out.clone()).map_err(|err| StdError::generic_err(format!("Failed to add asset: {}", err)))?;        
+            log_token_1 = msg.token_out;
+            log_token_2 = token_out.get(0).unwrap().clone()
         }
     }
     
     POOLS.save(deps.storage, &msg.pool_id, &interchain_pool)?;
+
+    // Log swap values
+    let log_volume = LOG_VOLUME.may_load(deps.storage, msg.pool_id.clone())?;
+    if let Some(val) = log_volume {
+        let log_msg = LogObservation {
+            token1: log_token_1,
+            token2: log_token_2,
+        };
+    
+        // log message
+        sub_messages.push(SubMsg::new(WasmMsg::Execute {
+            contract_addr: val,
+            msg: to_binary(&log_msg)?,
+            funds: vec![],
+        }));
+    }
 
     let res = IbcReceiveResponse::new()
     .set_ack(ack_success())
@@ -1034,6 +1057,7 @@ pub(crate) fn refund_packet_token(
         InterchainMessageType::LeftSwap => {
             let msg: MsgSwapRequest = from_binary(&packet.data.clone())?;
             let sub_messages = send_tokens_coin(&Addr::unchecked(msg.sender), msg.token_in)?;
+
             Ok(sub_messages)
         },
         InterchainMessageType::RightSwap => {
