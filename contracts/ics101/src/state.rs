@@ -25,7 +25,7 @@ pub struct Config {
     // Token code id  (Cw20)
     pub token_code_id: u64,
     // Admin address
-    pub admin: String
+    pub admin: String,
 }
 
 // Each pool has it's pool token (cw20)
@@ -43,6 +43,9 @@ pub const MULTI_ASSET_DEPOSIT_ORDERS: Map<String, MultiAssetDepositOrder> = Map:
 
 // Map from key (source_makers + "-" + pool_id)
 pub const ACTIVE_ORDERS: Map<String, MultiAssetDepositOrder> = Map::new("active_order");
+
+// Map from pool_id to contract address
+pub const LOG_VOLUME: Map<String, String> = Map::new("log_volume");
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]

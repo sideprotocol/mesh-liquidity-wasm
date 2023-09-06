@@ -109,6 +109,18 @@
         }
       },
       "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "RemovePool"
+      ],
+      "properties": {
+        "RemovePool": {
+          "$ref": "#/definitions/MsgRemovePool"
+        }
+      },
+      "additionalProperties": false
     }
   ],
   "definitions": {
@@ -322,6 +334,17 @@
           "type": "integer",
           "format": "uint64",
           "minimum": 0.0
+        }
+      }
+    },
+    "MsgRemovePool": {
+      "type": "object",
+      "required": [
+        "poolId"
+      ],
+      "properties": {
+        "poolId": {
+          "type": "string"
         }
       }
     },

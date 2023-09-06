@@ -23,7 +23,7 @@ use crate::msg::{
     MsgMultiAssetWithdrawRequest, MsgSingleAssetDepositRequest,
     MsgSwapRequest, SwapMsgType, MsgMakePoolRequest, MsgTakePoolRequest, MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, QueryMsg, QueryConfigResponse, InterchainPoolResponse, InterchainListResponse, OrderListResponse, PoolListResponse, TokenInstantiateMsg, Cw20HookMsg, MsgCancelPoolRequest, MsgCancelMultiAssetDepositRequest, MsgRemovePool, MigrateMsg,
 };
-use crate::state::{POOLS, MULTI_ASSET_DEPOSIT_ORDERS, CONFIG, POOL_TOKENS_LIST, Config, TEMP, ACTIVE_ORDERS};
+use crate::state::{POOLS, MULTI_ASSET_DEPOSIT_ORDERS, CONFIG, POOL_TOKENS_LIST, Config, TEMP, ACTIVE_ORDERS, LOG_VOLUME};
 use crate::types::{InterchainSwapPacketData, StateChange, InterchainMessageType, MultiAssetDepositOrder, OrderStatus};
 use crate::utils::{get_coins_from_deposits, get_pool_id_with_tokens, INSTANTIATE_TOKEN_REPLY_ID, get_order_id};
 
@@ -45,7 +45,7 @@ pub fn instantiate(
     let config = Config {
         counter: 0,
         token_code_id: msg.token_code_id,
-        admin: info.sender.to_string()
+        admin: info.sender.to_string(),
     };
 
     CONFIG.save(deps.storage, &config)?;
@@ -120,6 +120,7 @@ pub fn execute(
         ExecuteMsg::MultiAssetWithdraw(msg) => multi_asset_withdraw(deps, env, info, msg),
         ExecuteMsg::Swap(msg) => swap(deps, env, info, msg),
         ExecuteMsg::RemovePool(msg) => remove_pool(deps, env, info, msg),
+        ExecuteMsg::SetLogAddress { pool_id, address } => set_log_address(deps, env, info, pool_id, address)
         //ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
     }
 }
@@ -139,6 +140,25 @@ fn remove_pool(
 
     POOL_TOKENS_LIST.remove(deps.storage, &msg.pool_id);
     POOLS.remove(deps.storage, &msg.pool_id);
+
+    Ok(Response::default())
+}
+
+fn set_log_address(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    pool_id: String,
+    address: String
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    if config.admin != info.sender {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "not allowed"
+        ))));
+    }
+
+    LOG_VOLUME.save(deps.storage, pool_id, &address)?;
 
     Ok(Response::default())
 }
@@ -258,7 +278,7 @@ fn make_pool(
                 msg: to_binary(&TokenInstantiateMsg {
                     name: "sideLP".to_string(),
                     symbol: "sideLP".to_string(),
-                    decimals: 18,
+                    decimals: 6,
                     initial_balances: vec![],
                     marketing: None,
                     mint: Some(MinterResponse {
@@ -343,7 +363,7 @@ fn take_pool(
                 msg: to_binary(&TokenInstantiateMsg {
                     name: "sideLP".to_string(),
                     symbol: "sideLP".to_string(),
-                    decimals: 18,
+                    decimals: 6,
                     initial_balances: vec![],
                     marketing: None,
                     mint: Some(MinterResponse {
@@ -700,7 +720,7 @@ fn cancel_multi_asset_deposit(
         return Err(ContractError::ErrOrderNotFound);
     }
 
-    if multi_asset_order.destination_taker != info.sender {
+    if multi_asset_order.source_maker != info.sender {
         return Err(ContractError::InvalidSender);
     }
 
