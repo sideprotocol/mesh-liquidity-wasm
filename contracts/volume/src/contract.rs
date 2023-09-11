@@ -1,22 +1,16 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Binary, Deps, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Order, Response,
-    StdResult, StdError,
+    to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Order, Response,
+    StdResult, StdError, Coin,
 };
 
 use cw2::set_contract_version;
 
 use crate::error::ContractError;
-use crate::msg::{
-    AtomicSwapPacketData, CancelSwapMsg, DetailsResponse, ExecuteMsg, InstantiateMsg, ListResponse,
-    MakeSwapMsg, QueryMsg, SwapMessageType, TakeSwapMsg, MigrateMsg, MakeBidMsg, TakeBidMsg, CancelBidMsg,
-};
+use crate::msg::{ ExecuteMsg, InstantiateMsg, MigrateMsg};
 use crate::state::{
-    AtomicSwapOrder,
-    Status,
-    // CHANNEL_INFO,
-    SWAP_ORDERS, set_atomic_order, get_atomic_order, COUNT, move_order_to_bottom, BID_ORDER_TO_COUNT, Bid, BIDS,
+  CONFIG, OBSERVATIONS, Observation, Config,
 };
 use cw_storage_plus::Bound;
 
@@ -28,11 +22,18 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub fn instantiate(
     deps: DepsMut,
     _env: Env,
-    _info: MessageInfo,
-    _msg: InstantiateMsg,
+    info: MessageInfo,
+    msg: InstantiateMsg,
 ) -> StdResult<Response> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
-    COUNT.save(deps.storage, &0u64)?;
+    let config = Config {
+        admin: info.sender.into_string(),
+        contract_address: msg.contract,
+        max_length: msg.max_length,
+        pivoted: true,
+        current_idx: 0
+    };
+    CONFIG.save(deps.storage, &config)?;
     Ok(Response::default())
 }
 
@@ -44,371 +45,111 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::MakeSwap(msg) => execute_make_swap(deps, env, info, msg),
-        ExecuteMsg::TakeSwap(msg) => execute_take_swap(deps, env, info, msg),
-        ExecuteMsg::CancelSwap(msg) => execute_cancel_swap(deps, env, info, msg),
-        ExecuteMsg::MakeBid(msg) => execute_make_bid(deps, env, info, msg),
-        ExecuteMsg::TakeBid(msg) => execute_take_bid(deps, env, info, msg),
-        ExecuteMsg::CancelBid(msg) => execute_cancel_bid(deps, env, info, msg),
+        ExecuteMsg::LogObservation { token1, token2 } => execute_log_observation(deps, env, info, token1, token2),
+        ExecuteMsg::SetContract { address } => execute_set_contract(deps, env, info, address),
     }
 }
 
-// MakeSwap is called when the maker wants to make atomic swap. The method create new order and lock tokens.
-// This is the step 1 (Create order & Lock Token) of the atomic swap: https://github.com/cosmos/ibc/tree/main/spec/app/ics-100-atomic-swap
-pub fn execute_make_swap(
-    _deps: DepsMut,
+pub fn execute_log_observation(
+    deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    msg: MakeSwapMsg,
+    token1: Coin,
+    token2: Coin
 ) -> Result<Response, ContractError> {
-    // check if given tokens are received here
-    let mut ok = false;
-    // First token in this chain only first token needs to be verified
-    for asset in info.funds {
-        if asset.denom == msg.sell_token.denom && msg.sell_token.amount == asset.amount {
-            ok = true;
-        }
-    }
-    if !ok {
+    let config = CONFIG.load(deps.storage)?;
+    if info.sender != config.contract_address {
         return Err(ContractError::Std(StdError::generic_err(format!(
-            "Funds mismatch: Funds mismatched to with message and sent values: Make swap"
+            "Must be called by contract"
         ))));
     }
 
-    let ibc_packet = AtomicSwapPacketData {
-        r#type: SwapMessageType::MakeSwap,
-        data: to_binary(&msg)?,
-        order_id: None,
-        path: None,
-        memo: String::new(),
-    };
-
-    let ibc_msg = IbcMsg::SendPacket {
-        channel_id: msg.source_channel.clone(),
-        data: to_binary(&ibc_packet)?,
-        timeout: IbcTimeout::from(
-            env.block
-                .time
-                .plus_seconds(DEFAULT_TIMEOUT_TIMESTAMP_OFFSET),
-        ),
-    };
+    write(
+        deps,
+        env.block.time.nanos(),
+        token1.amount.u128(),
+        token2.amount.u128()
+    )?;
 
     let res = Response::new()
-        .add_message(ibc_msg)
-        .add_attribute("action", "make_swap");
+        .add_attribute("action", "log_observation");
     Ok(res)
 }
 
-// TakeSwap is the step 5 (Lock Order & Lock Token) of the atomic swap: https://github.com/liangping/ibc/blob/atomic-swap/spec/app/ics-100-atomic-swap/ibcswap.png
-// This method lock the order (set a value to the field "Taker") and lock Token
-pub fn execute_take_swap(
+pub fn execute_set_contract(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    msg: TakeSwapMsg,
+    address: String
 ) -> Result<Response, ContractError> {
-    // check if given tokens are received here
-    let mut ok = false;
-    // First token in this chain only first token needs to be verified
-    for asset in info.funds {
-        if asset.denom == msg.sell_token.denom && msg.sell_token.amount == asset.amount {
-            ok = true;
-        }
-    }
-    if !ok {
+    let mut config = CONFIG.load(deps.storage)?;
+    if info.sender != config.admin {
         return Err(ContractError::Std(StdError::generic_err(format!(
-            "Funds mismatch: Funds mismatched to with message and sent values: Make swap"
+            "Must be called by admin"
         ))));
     }
 
-    let mut order = get_atomic_order(deps.storage, &msg.order_id)?;
-
-    if order.status != Status::Initial && order.status != Status::Sync {
-        return Err(ContractError::OrderTaken);
-    }
-
-    // Make sure the maker's buy token matches the taker's sell token
-    if order.maker.buy_token != msg.sell_token {
-        return Err(ContractError::InvalidSellToken);
-    }
-
-    // Checks if the order has already been taken
-    if let Some(_taker) = order.taker {
-        return Err(ContractError::OrderTaken);
-    }
-
-    // If `desiredTaker` is set, only the desiredTaker can accept the order.
-    if order.maker.desired_taker != "" && order.maker.desired_taker != msg.clone().taker_address {
-        return Err(ContractError::InvalidTakerAddress);
-    }
-
-    if env.block.time.seconds() > order.maker.expiration_timestamp {
-        move_order_to_bottom(deps.storage, &msg.order_id)?;
-        return Err(ContractError::Expired);
-    }
-
-    order.taker = Some(msg.clone());
-
-    let ibc_packet = AtomicSwapPacketData {
-        r#type: SwapMessageType::TakeSwap,
-        data: to_binary(&msg)?,
-        order_id: None,
-        path: None,
-        memo: String::new(),
-    };
-
-    let ibc_msg = IbcMsg::SendPacket {
-        channel_id: extract_source_channel_for_taker_msg(&order.path)?,
-        data: to_binary(&ibc_packet)?,
-        timeout: IbcTimeout::from(
-            env.block
-                .time
-                .plus_seconds(DEFAULT_TIMEOUT_TIMESTAMP_OFFSET),
-        ),
-    };
-
-    // Save order
-    set_atomic_order(deps.storage, &order.id, &order)?;
+    config.contract_address = address;
+    CONFIG.save(deps.storage, &config)?;
 
     let res = Response::new()
-        .add_message(ibc_msg)
-        .add_attribute("order_id", msg.order_id)
-        .add_attribute("action", "take_swap")
-        .add_attribute("order_id", order.id.clone());
-    return Ok(res);
+        .add_attribute("action", "set_contract");
+    Ok(res)
 }
 
-// CancelSwap is the step 10 (Cancel Request) of the atomic swap: https://github.com/cosmos/ibc/tree/main/spec/app/ics-100-atomic-swap.
-// It is executed on the Maker chain. Only the maker of the order can cancel the order.
-pub fn execute_cancel_swap(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    msg: CancelSwapMsg,
-) -> Result<Response, ContractError> {
-    let sender = info.sender.to_string();
-    let order = get_atomic_order(deps.storage, &msg.order_id)?;
+/**
+Writes an oracle observation to the struct.
+Index represents the most recently written element.
+Parameters:
++ `block_timestamp`: The timestamp (in nanoseconds) of the new observation.
++ `volume1`: volume of first token.
++ `volume2`: volume of second token.
+*/
+fn write(deps: DepsMut, block_timestamp: u64, volume1: u128, volume2: u128) -> Result<u64, ContractError> {
+    let mut config = CONFIG.load(deps.storage)?;
+    let obs = OBSERVATIONS.load(deps.storage, config.current_idx)?;
 
-    if sender != order.maker.maker_address {
-        return Err(ContractError::InvalidSender);
+    if block_timestamp == obs.block_timestamp {
+        let new_obs = transform(&obs, block_timestamp, volume1, volume2);
+        OBSERVATIONS.save(deps.storage, config.current_idx, &new_obs)?;
+        return Ok(config.current_idx);
     }
 
-    // Make sure the sender is the maker of the order.
-    if order.maker.maker_address != msg.maker_address {
-        return Err(ContractError::InvalidMakerAddress);
+    if config.current_idx + 1 >= config.max_length {
+        config.pivoted = true;
+        config.current_idx = 0;
+    } else {
+        config.current_idx += 1;
     }
 
-    // Make sure the order is in a valid state for cancellation
-    if order.status != Status::Sync && order.status != Status::Initial {
-        return Err(ContractError::InvalidStatus);
-    }
+    let new_obs = transform(&obs, block_timestamp, volume1, volume2);
+    OBSERVATIONS.save(deps.storage, config.current_idx, &new_obs)?;
 
-    let packet = AtomicSwapPacketData {
-        r#type: SwapMessageType::CancelSwap,
-        data: to_binary(&msg)?,
-        memo: String::new(),
-        order_id: None,
-        path: None
-    };
+    CONFIG.save(deps.storage, &config)?;
 
-    let ibc_msg = IbcMsg::SendPacket {
-        channel_id: order.maker.source_channel,
-        data: to_binary(&packet)?,
-        timeout: IbcTimeout::from(
-            env.block
-                .time
-                .plus_seconds(DEFAULT_TIMEOUT_TIMESTAMP_OFFSET),
-        ),
-    };
-
-    let res = Response::new()
-        .add_message(ibc_msg)
-        .add_attribute("order_id", msg.order_id)
-        .add_attribute("action", "cancel_swap")
-        .add_attribute("order_id", order.id.clone());
-    return Ok(res);
+    return Ok(config.current_idx);
 }
 
-/// Make bid: Use it to make bid from taker chain
-/// For each order each user can create atmost 1 bid(they can cancel and recreate it)
-/// Panics id bid is already taken
-/// buy_token != sell_token
-pub fn execute_make_bid(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    msg: MakeBidMsg,
-) -> Result<Response, ContractError> {
-    let sender = info.sender.to_string();
-    let order = get_atomic_order(deps.storage, &msg.order_id)?;
-    // check if given tokens are received here
-    let mut ok = false;
-    // First token in this chain only first token needs to be verified
-    for asset in info.funds {
-        if asset.denom == msg.sell_token.denom && msg.sell_token.amount == asset.amount {
-            ok = true;
-        }
-    }
-    if !ok {
-        return Err(ContractError::Std(StdError::generic_err(format!(
-            "Funds mismatch: Funds mismatched to with message and sent values: Make swap"
-        ))));
-    }
-
-    if !order.maker.take_bids {
-        return Err(ContractError::TakeBidNotAllowed);
-    }
-
-    // Make sure the maker's buy token matches the taker's sell token
-    if order.maker.buy_token.denom != msg.sell_token.denom {
-        return Err(ContractError::InvalidSellToken);
-    }
-
-    // Checks if the order has already been taken
-    if let Some(_taker) = order.taker {
-        return Err(ContractError::OrderTaken);
-    }
-
-    if sender != msg.taker_address {
-        return Err(ContractError::InvalidSender);
-    }
-
-    let key = msg.order_id.clone() + &msg.taker_address;
-    if BID_ORDER_TO_COUNT.has(deps.storage, &key) {
-        return Err(ContractError::BidAlreadyExist {});
-    }
-
-    let packet = AtomicSwapPacketData {
-        r#type: SwapMessageType::MakeBid,
-        data: to_binary(&msg)?,
-        memo: String::new(),
-        order_id: None,
-        path: None
+/**
+Transforms a previous observation into a new observation.
+Parameters:
++ `block_timestamp`: _must_ be chronologically equal to or greater than last.block_timestamp.
++ `last`: The specified observation to be transformed.
++ `price1`: price of first token.
++ `price2`: price of second token.
+*/
+pub fn transform(
+    last: &Observation,
+    block_timestamp: u64,
+    volume1: u128,
+    volume2: u128,
+) -> Observation {
+    return Observation {
+        block_timestamp: block_timestamp,
+        num_of_observations: last.num_of_observations + 1,
+        volume1: last.volume1 + volume1,
+        volume2: last.volume2 + volume2,
     };
-
-    let ibc_msg = IbcMsg::SendPacket {
-        channel_id: order.maker.source_channel,
-        data: to_binary(&packet)?,
-        timeout: IbcTimeout::from(
-            env.block
-                .time
-                .plus_seconds(DEFAULT_TIMEOUT_TIMESTAMP_OFFSET),
-        ),
-    };
-
-    let res = Response::new()
-        .add_message(ibc_msg)
-        .add_attribute("order_id", msg.order_id)
-        .add_attribute("action", "make_bid");
-    return Ok(res);
-}
-
-/// Take Bid: Only maker(maker receiving address) can take bid for their order
-/// Maker can take bid from taker chain
-/// Panics if order is already taken
-/// Panics if is not allowed
-/// Panics if bid doesn't exist or sender is not maker receiving address
-pub fn execute_take_bid(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    msg: TakeBidMsg,
-) -> Result<Response, ContractError> {
-    let sender = info.sender.to_string();
-    let order = get_atomic_order(deps.storage, &msg.order_id)?;
-
-    if !order.maker.take_bids {
-        return Err(ContractError::TakeBidNotAllowed);
-    }
-
-    // Checks if the order has already been taken
-    if let Some(_taker) = order.taker {
-        return Err(ContractError::OrderTaken);
-    }
-
-    if sender != order.maker.maker_receiving_address {
-        return Err(ContractError::InvalidSender);
-    }
-
-    let key = msg.order_id.clone() + &msg.bidder;
-    if !BID_ORDER_TO_COUNT.has(deps.storage, &key) {
-        return Err(ContractError::BidDoesntExist);
-    }
-
-    let packet = AtomicSwapPacketData {
-        r#type: SwapMessageType::TakeBid,
-        data: to_binary(&msg)?,
-        memo: String::new(),
-        order_id: None,
-        path: None
-    };
-
-    let ibc_msg = IbcMsg::SendPacket {
-        channel_id: order.maker.source_channel,
-        data: to_binary(&packet)?,
-        timeout: IbcTimeout::from(
-            env.block
-                .time
-                .plus_seconds(DEFAULT_TIMEOUT_TIMESTAMP_OFFSET),
-        ),
-    };
-
-    let res = Response::new()
-        .add_message(ibc_msg)
-        .add_attribute("order_id", msg.order_id)
-        .add_attribute("action", "take_bid");
-    return Ok(res);
-}
-
-/// Cancel Bid: Bid maker can cancel their bid
-/// After cancellation amount is refunded
-/// Panics if bid is not allowed
-/// bid doesn't exist
-pub fn execute_cancel_bid(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    msg: CancelBidMsg,
-) -> Result<Response, ContractError> {
-    let sender = info.sender.to_string();
-    let order = get_atomic_order(deps.storage, &msg.order_id)?;
-
-    if !order.maker.take_bids {
-        return Err(ContractError::TakeBidNotAllowed);
-    }
-
-    let key = msg.order_id.clone() + &sender;
-    if !BID_ORDER_TO_COUNT.has(deps.storage, &key) {
-        return Err(ContractError::BidDoesntExist);
-    }
-
-    if sender != msg.bidder {
-        return Err(ContractError::InvalidSender);
-    }
-
-    let packet = AtomicSwapPacketData {
-        r#type: SwapMessageType::CancelBid,
-        data: to_binary(&msg)?,
-        memo: String::new(),
-        order_id: None,
-        path: None
-    };
-
-    let ibc_msg = IbcMsg::SendPacket {
-        channel_id: order.maker.source_channel,
-        data: to_binary(&packet)?,
-        timeout: IbcTimeout::from(
-            env.block
-                .time
-                .plus_seconds(DEFAULT_TIMEOUT_TIMESTAMP_OFFSET),
-        ),
-    };
-
-    let res = Response::new()
-        .add_message(ibc_msg)
-        .add_attribute("order_id", msg.order_id)
-        .add_attribute("action", "make_bid");
-    return Ok(res);
 }
 
 #[entry_point]

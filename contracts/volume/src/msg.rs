@@ -1,15 +1,19 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{Uint128};
+use cosmwasm_std::{Coin};
 
 #[derive(Serialize, Deserialize, JsonSchema)]
-pub struct InstantiateMsg {}
+pub struct InstantiateMsg {
+    pub contract: String,
+    pub max_length: u64
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub enum ExecuteMsg {
     LogObservation {
-        amount_traded: Uint128
+        token1: Coin,
+        token2: Coin
     },
     SetContract {
         address: String
