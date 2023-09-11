@@ -31,7 +31,8 @@ pub fn instantiate(
         contract_address: msg.contract,
         max_length: msg.max_length,
         pivoted: true,
-        current_idx: 0
+        current_idx: 0,
+        is_new: true
     };
     CONFIG.save(deps.storage, &config)?;
     Ok(Response::default())
@@ -57,19 +58,31 @@ pub fn execute_log_observation(
     token1: Coin,
     token2: Coin
 ) -> Result<Response, ContractError> {
-    let config = CONFIG.load(deps.storage)?;
+    let mut config = CONFIG.load(deps.storage)?;
     if info.sender != config.contract_address {
         return Err(ContractError::Std(StdError::generic_err(format!(
             "Must be called by contract"
         ))));
     }
 
-    write(
-        deps,
-        env.block.time.nanos(),
-        token1.amount.u128(),
-        token2.amount.u128()
-    )?;
+    if config.is_new {
+        let obs = Observation {
+            block_timestamp: env.block.time.nanos(),
+            volume1: token1.amount.u128(),
+            volume2: token2.amount.u128(),
+            num_of_observations: 1,
+        };
+        OBSERVATIONS.save(deps.storage, config.current_idx, &obs)?;
+        config.is_new = false;
+    } else {
+        write(
+            deps,
+            env.block.time.nanos(),
+            token1.amount.u128(),
+            token2.amount.u128()
+        )?;
+    }
+    CONFIG.save(deps.storage, &config)?;
 
     let res = Response::new()
         .add_attribute("action", "log_observation");
@@ -151,6 +164,57 @@ pub fn transform(
         volume2: last.volume2 + volume2,
     };
 }
+
+/**
+Pivoted point binary search: searches array which is
+sorted and rotated from a particular point.
+Similar to rotated array from a certain pivot point.
+Parameters:
++ `block_timestamp`: timestamp in nanoseconds.
+*/
+pub fn binary_search(deps: Deps, block_timestamp: u64) -> StdResult<u64> {
+    let config = CONFIG.load(deps.storage)?;
+    // edge case when all values are less than required
+    let obs = OBSERVATIONS.load(deps.storage, config.current_idx)?;
+    if obs.block_timestamp < block_timestamp
+    {
+        panic!("Observation after this timestamp doesn't exist");
+    }
+
+    let mut start: u64 = 0;
+    let mut end: u64 = config.current_idx + 1;
+    let mut mid: u64;
+
+    while start < end {
+        mid = (start + end) / 2;
+        if block_timestamp <= OBSERVATIONS.load(deps.storage, mid)?.block_timestamp {
+            end = mid;
+        } else {
+            start = mid + 1;
+        }
+    }
+
+    if config.pivoted && start == 0 {
+        let res = start;
+        start = config.current_idx + 1;
+        end = observations.len();
+
+        while start < end {
+            mid = (start + end) / 2;
+            if block_timestamp <= OBSERVATIONS.load(deps.storage, mid)?.block_timestamp {
+                end = mid;
+            } else {
+                start = mid + 1;
+            }
+        }
+        if start >= observations.len() {
+            start = res;
+        }
+    }
+
+    return Ok(start);
+}
+
 
 #[entry_point]
 pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {

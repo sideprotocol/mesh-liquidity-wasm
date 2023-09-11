@@ -26,7 +26,9 @@ pub struct Config {
     // pivoted or not
     pub pivoted: bool,
     // Maximum length
-    pub max_length: u64
+    pub max_length: u64,
+    // Is new
+    pub is_new: bool
 }
 pub const OBSERVATIONS: Map<u64, Observation> = Map::new("observations");
 
