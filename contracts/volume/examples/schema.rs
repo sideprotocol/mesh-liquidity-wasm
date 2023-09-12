@@ -3,10 +3,8 @@ use std::fs::create_dir_all;
 
 use cosmwasm_schema::{export_schema, remove_schemas, schema_for};
 
-use volume::msg::DetailsResponse;
 use volume::msg::ExecuteMsg;
 use volume::msg::InstantiateMsg;
-use volume::msg::ListResponse;
 use volume::msg::QueryMsg;
 
 fn main() {
@@ -18,6 +16,4 @@ fn main() {
     export_schema(&schema_for!(InstantiateMsg), &out_dir);
     export_schema(&schema_for!(ExecuteMsg), &out_dir);
     export_schema(&schema_for!(QueryMsg), &out_dir);
-    export_schema(&schema_for!(ListResponse), &out_dir);
-    export_schema(&schema_for!(DetailsResponse), &out_dir);
 }

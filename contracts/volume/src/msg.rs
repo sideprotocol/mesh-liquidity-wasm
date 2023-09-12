@@ -27,10 +27,10 @@ pub struct MigrateMsg {}
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
     /// Returns volume between specific interval
-    VolumeInterval {
-        start: u64,
-        end: u64,
-    },
+    // VolumeInterval {
+    //     start: u64,
+    //     end: u64,
+    // },
     /// Returns total volume till latest timestamp
     TotalVolume {},
     /// Returns total volume till given timestamp

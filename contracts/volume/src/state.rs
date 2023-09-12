@@ -28,7 +28,9 @@ pub struct Config {
     // Maximum length
     pub max_length: u64,
     // Is new
-    pub is_new: bool
+    pub is_new: bool,
+    // total observations in map
+    pub counter: u64
 }
 pub const OBSERVATIONS: Map<u64, Observation> = Map::new("observations");
 
