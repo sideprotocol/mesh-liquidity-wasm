@@ -3,7 +3,20 @@
   "title": "QueryMsg",
   "oneOf": [
     {
-      "description": "Returns volume between specific interval Returns total volume till latest timestamp",
+      "description": "Returns volume between specific interval",
+      "type": "object",
+      "required": [
+        "volume24"
+      ],
+      "properties": {
+        "volume24": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Returns total volume till latest timestamp",
       "type": "object",
       "required": [
         "total_volume"
