@@ -22,6 +22,8 @@ export type ExecuteMsg = {
   MultiAssetWithdraw: MsgMultiAssetWithdrawRequest;
 } | {
   Swap: MsgSwapRequest;
+} | {
+  RemovePool: MsgRemovePool;
 };
 export type Uint128 = string;
 export type PoolSide = "SOURCE" | "DESTINATION";
@@ -122,6 +124,10 @@ export interface MsgSwapRequest {
   timeoutTimestamp: number;
   tokenIn: Coin;
   tokenOut: Coin;
+  [k: string]: unknown;
+}
+export interface MsgRemovePool {
+  poolId: string;
   [k: string]: unknown;
 }
 export interface InstantiateMsg {

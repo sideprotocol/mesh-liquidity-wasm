@@ -6,7 +6,7 @@
 
 import { CosmWasmClient, SigningCosmWasmClient, ExecuteResult } from "@cosmjs/cosmwasm-stargate";
 import { StdFee } from "@cosmjs/amino";
-import { ExecuteMsg, Uint128, PoolSide, SwapMsgType, MsgMakePoolRequest, PoolAsset, Coin, MsgTakePoolRequest, MsgCancelPoolRequest, MsgSingleAssetDepositRequest, MsgMakeMultiAssetDepositRequest, DepositAsset, MsgCancelMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, MsgMultiAssetWithdrawRequest, MsgSwapRequest, InstantiateMsg, QueryMsg } from "./Ics101.types";
+import { ExecuteMsg, Uint128, PoolSide, SwapMsgType, MsgMakePoolRequest, PoolAsset, Coin, MsgTakePoolRequest, MsgCancelPoolRequest, MsgSingleAssetDepositRequest, MsgMakeMultiAssetDepositRequest, DepositAsset, MsgCancelMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, MsgMultiAssetWithdrawRequest, MsgSwapRequest, MsgRemovePool, InstantiateMsg, QueryMsg } from "./Ics101.types";
 export interface Ics101ReadOnlyInterface {
   contractAddress: string;
   orderList: ({
@@ -390,6 +390,11 @@ export interface Ics101Interface extends Ics101ReadOnlyInterface {
     tokenIn: Coin;
     tokenOut: Coin;
   }, fee?: number | StdFee | "auto", memo?: string, _funds?: Coin[]) => Promise<ExecuteResult>;
+  removePool: ({
+    poolId
+  }: {
+    poolId: string;
+  }, fee?: number | StdFee | "auto", memo?: string, _funds?: Coin[]) => Promise<ExecuteResult>;
 }
 export class Ics101Client extends Ics101QueryClient implements Ics101Interface {
   client: SigningCosmWasmClient;
@@ -410,6 +415,7 @@ export class Ics101Client extends Ics101QueryClient implements Ics101Interface {
     this.takeMultiAssetDeposit = this.takeMultiAssetDeposit.bind(this);
     this.multiAssetWithdraw = this.multiAssetWithdraw.bind(this);
     this.swap = this.swap.bind(this);
+    this.removePool = this.removePool.bind(this);
   }
 
   makePool = async ({
@@ -643,6 +649,17 @@ export class Ics101Client extends Ics101QueryClient implements Ics101Interface {
         timeoutTimestamp,
         tokenIn,
         tokenOut
+      }
+    }, fee, memo, _funds);
+  };
+  removePool = async ({
+    poolId
+  }: {
+    poolId: string;
+  }, fee: number | StdFee | "auto" = "auto", memo?: string, _funds?: Coin[]): Promise<ExecuteResult> => {
+    return await this.client.execute(this.sender, this.contractAddress, {
+      RemovePool: {
+        poolId
       }
     }, fee, memo, _funds);
   };

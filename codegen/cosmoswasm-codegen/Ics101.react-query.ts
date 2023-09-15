@@ -7,7 +7,7 @@
 import { UseQueryOptions, useQuery, useMutation, UseMutationOptions } from "@tanstack/react-query";
 import { ExecuteResult } from "@cosmjs/cosmwasm-stargate";
 import { StdFee } from "@cosmjs/amino";
-import { ExecuteMsg, Uint128, PoolSide, SwapMsgType, MsgMakePoolRequest, PoolAsset, Coin, MsgTakePoolRequest, MsgCancelPoolRequest, MsgSingleAssetDepositRequest, MsgMakeMultiAssetDepositRequest, DepositAsset, MsgCancelMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, MsgMultiAssetWithdrawRequest, MsgSwapRequest, InstantiateMsg, QueryMsg } from "./Ics101.types";
+import { ExecuteMsg, Uint128, PoolSide, SwapMsgType, MsgMakePoolRequest, PoolAsset, Coin, MsgTakePoolRequest, MsgCancelPoolRequest, MsgSingleAssetDepositRequest, MsgMakeMultiAssetDepositRequest, DepositAsset, MsgCancelMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, MsgMultiAssetWithdrawRequest, MsgSwapRequest, MsgRemovePool, InstantiateMsg, QueryMsg } from "./Ics101.types";
 import { Ics101QueryClient, Ics101Client } from "./Ics101.client";
 export const ics101QueryKeys = {
   contract: ([{
@@ -399,6 +399,28 @@ export function useIcs101OrderListQuery<TData = OrderListResponse>({
   }) : Promise.reject(new Error("Invalid client")), { ...options,
     enabled: !!client && (options?.enabled != undefined ? options.enabled : true)
   });
+}
+export interface Ics101RemovePoolMutation {
+  client: Ics101Client;
+  msg: {
+    poolId: string;
+  };
+  args?: {
+    fee?: number | StdFee | "auto";
+    memo?: string;
+    funds?: Coin[];
+  };
+}
+export function useIcs101RemovePoolMutation(options?: Omit<UseMutationOptions<ExecuteResult, Error, Ics101RemovePoolMutation>, "mutationFn">) {
+  return useMutation<ExecuteResult, Error, Ics101RemovePoolMutation>(({
+    client,
+    msg,
+    args: {
+      fee,
+      memo,
+      funds
+    } = {}
+  }) => client.removePool(msg, fee, memo, funds), options);
 }
 export interface Ics101SwapMutation {
   client: Ics101Client;
