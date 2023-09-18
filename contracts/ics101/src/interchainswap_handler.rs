@@ -675,6 +675,7 @@ pub(crate) fn on_packet_success(
             .add_attribute("action", "cancel_pool_acknowledged")
             .add_attributes(attributes))
         }
+        
         InterchainMessageType::SingleAssetDeposit => {
             let msg: MsgSingleAssetDepositRequest = from_binary(&packet_data.data.clone())?;
             let state_change: StateChange = from_slice(&packet_data.state_change.unwrap())?;

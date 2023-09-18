@@ -415,9 +415,7 @@ fn take_pool(
         state_change: None,
     };
 
-    // TODO: counter_party_channel is just make pool message channel. 
-    // When source channel and counter_party_channel is different, it trigger issues. 
-    // Because of that, go version expose channel as a parameter in msg. 
+    // TODO: if that relayer is died, so can't recover that port and channel so have to use new relayer?  
     let ibc_msg = IbcMsg::SendPacket {
         channel_id: interchain_pool.counter_party_channel.clone(),
         data: to_binary(&ibc_packet_data)?,
@@ -557,7 +555,7 @@ pub fn single_asset_deposit(
     };
 
     // Send the IBC swap packet.
-    // TODO: same issue about counter_party_channel. 
+    // if that relayer is died, so can't recover that port and channel so have to use new relayer?  
     let ibc_msg = IbcMsg::SendPacket {
         channel_id: pool.counter_party_channel.clone(),
         data: to_binary(&packet_data)?,
@@ -671,7 +669,7 @@ fn make_multi_asset_deposit(
         state_change: Some(state_change_data),
     };
 
-    // TODO: counter_party_channel is not same with source channel information. 
+    // TODO: if that relayer is died, so can't recover that port and channel so have to use new relayer? 
     let ibc_msg = IbcMsg::SendPacket {
         channel_id: interchain_pool.clone().counter_party_channel,
         data: to_binary(&packet_data)?,
@@ -729,8 +727,7 @@ fn cancel_multi_asset_deposit(
         data: to_binary(&msg.clone())?,
         state_change: None,
     };
-
-    // TODO: same problem. 
+ 
     let ibc_msg = IbcMsg::SendPacket {
         channel_id: interchain_pool.clone().counter_party_channel,
         data: to_binary(&packet_data)?,
