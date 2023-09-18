@@ -128,7 +128,6 @@ impl InterchainLiquidityPool {
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct InterchainMarketMaker {
-    pub pool_id: String,
     pub pool: InterchainLiquidityPool,
     pub fee_rate: u32,
 }
@@ -136,7 +135,6 @@ pub struct InterchainMarketMaker {
 impl InterchainMarketMaker {
     pub fn new(pool_data: &InterchainLiquidityPool, fee_rate: u32) -> Self {
         InterchainMarketMaker {
-            pool_id: pool_data.clone().id,
             pool: pool_data.clone(),
             fee_rate,
         }
