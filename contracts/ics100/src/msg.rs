@@ -211,6 +211,7 @@ pub enum QueryMsg {
     List {
         start_after: Option<String>,
         limit: Option<u32>,
+        order: Option<String>
     },
     ListByDesiredTaker {
         start_after: Option<String>,
@@ -238,7 +239,28 @@ pub enum QueryMsg {
     BidDetailsbyBidder {
         order_id: String,
         bidder: String,
-    }
+    },
+    /// Inactive fields query
+    InactiveList {
+        start_after: Option<String>,
+        limit: Option<u32>,
+        order: Option<String>
+    },
+    InactiveListByDesiredTaker {
+        start_after: Option<String>,
+        limit: Option<u32>,
+        desired_taker: String,
+    },
+    InactiveListByMaker {
+        start_after: Option<String>,
+        limit: Option<u32>,
+        maker: String,
+    },
+    InactiveListByTaker {
+        start_after: Option<String>,
+        limit: Option<u32>,
+        taker: String,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]

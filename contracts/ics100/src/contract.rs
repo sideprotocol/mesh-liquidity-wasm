@@ -16,7 +16,7 @@ use crate::state::{
     AtomicSwapOrder,
     Status,
     // CHANNEL_INFO,
-    SWAP_ORDERS, set_atomic_order, get_atomic_order, COUNT, move_order_to_bottom, BID_ORDER_TO_COUNT, Bid, BIDS,
+    SWAP_ORDERS, set_atomic_order, get_atomic_order, COUNT, move_order_to_bottom, BID_ORDER_TO_COUNT, Bid, BIDS, INACTIVE_SWAP_ORDERS,
 };
 use crate::utils::extract_source_channel_for_taker_msg;
 use cw_storage_plus::Bound;
@@ -434,7 +434,7 @@ pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, C
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::List { start_after, limit } => to_binary(&query_list(deps, start_after, limit)?),
+        QueryMsg::List { start_after, limit, order } => to_binary(&query_list(deps, start_after, limit, order)?),
         QueryMsg::ListByDesiredTaker {
             start_after,
             limit,
@@ -460,6 +460,28 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             => to_binary(&query_bids_by_order(deps, start_after, limit, order_id)?),
         QueryMsg::BidDetailsbyBidder { order_id, bidder }
             => to_binary(&query_bids_by_bidder(deps,  order_id, bidder)?),
+        // Inactive fields
+        QueryMsg::InactiveList { start_after, limit, order } => to_binary(&query_inactive_list(deps, start_after, limit, order)?),
+        QueryMsg::InactiveListByDesiredTaker {
+            start_after,
+            limit,
+            desired_taker,
+        } => to_binary(&query_inactive_list_by_desired_taker(
+            deps,
+            start_after,
+            limit,
+            desired_taker,
+        )?),
+        QueryMsg::InactiveListByMaker {
+            start_after,
+            limit,
+            maker,
+        } => to_binary(&query_inactive_list_by_maker(deps, start_after, limit, maker)?),
+        QueryMsg::InactiveListByTaker {
+            start_after,
+            limit,
+            taker,
+        } => to_binary(&query_inactive_list_by_taker(deps, start_after, limit, taker)?),
     }
 }
 
@@ -486,11 +508,19 @@ fn query_list(
     deps: Deps,
     start_after: Option<String>,
     limit: Option<u32>,
+    order: Option<String>
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
     let start = start_after.map(|s| Bound::ExclusiveRaw(s.into_bytes()));
+    let order = order.unwrap_or("asc".to_string());
+    let list_order;
+    if order == "asc".to_string() {
+        list_order = Order::Ascending;
+    } else {
+        list_order = Order::Descending;
+    }
     let swap_orders = SWAP_ORDERS
-        .range(deps.storage, start, None, Order::Ascending)
+        .range(deps.storage, start, None, list_order)
         .take(limit)
         .map(|item: Result<(u64, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
         .collect::<Vec<AtomicSwapOrder>>();
@@ -584,6 +614,88 @@ fn query_bids_by_bidder(
     let bid = BIDS.load(deps.storage, (&order, &count.to_string()))?;
 
     Ok(bid)
+}
+
+// Inactive fields
+
+fn query_inactive_list(
+    deps: Deps,
+    start_after: Option<String>,
+    limit: Option<u32>,
+    order: Option<String>
+) -> StdResult<ListResponse> {
+    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
+    let start = start_after.map(|s| Bound::ExclusiveRaw(s.into_bytes()));
+    let order = order.unwrap_or("asc".to_string());
+    let list_order;
+    if order == "asc".to_string() {
+        list_order = Order::Ascending;
+    } else {
+        list_order = Order::Descending;
+    }
+    let swap_orders = INACTIVE_SWAP_ORDERS
+        .range(deps.storage, start, None, list_order)
+        .take(limit)
+        .map(|item: Result<(u64, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
+        .collect::<Vec<AtomicSwapOrder>>();
+
+    Ok(ListResponse { swaps: swap_orders })
+}
+
+fn query_inactive_list_by_desired_taker(
+    deps: Deps,
+    start_after: Option<String>,
+    limit: Option<u32>,
+    desired_taker: String,
+) -> StdResult<ListResponse> {
+    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
+    let start = start_after.map(|s| Bound::ExclusiveRaw(s.into_bytes()));
+    let swap_orders = INACTIVE_SWAP_ORDERS
+        .range(deps.storage, start, None, Order::Ascending)
+        .take(limit)
+        .map(|item: Result<(u64, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
+        .filter(|swap_order| swap_order.maker.desired_taker == desired_taker)
+        .collect::<Vec<AtomicSwapOrder>>();
+
+    Ok(ListResponse { swaps: swap_orders })
+}
+
+fn query_inactive_list_by_maker(
+    deps: Deps,
+    start_after: Option<String>,
+    limit: Option<u32>,
+    maker: String,
+) -> StdResult<ListResponse> {
+    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
+    let start = start_after.map(|s| Bound::ExclusiveRaw(s.into_bytes()));
+    let swap_orders = INACTIVE_SWAP_ORDERS
+        .range(deps.storage, start, None, Order::Ascending)
+        .take(limit)
+        .map(|item: Result<(u64, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
+        .filter(|swap_order| swap_order.maker.maker_address == maker)
+        .collect::<Vec<AtomicSwapOrder>>();
+
+    Ok(ListResponse { swaps: swap_orders })
+}
+
+fn query_inactive_list_by_taker(
+    deps: Deps,
+    start_after: Option<String>,
+    limit: Option<u32>,
+    taker: String,
+) -> StdResult<ListResponse> {
+    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
+    let start = start_after.map(|s| Bound::ExclusiveRaw(s.into_bytes()));
+    let swap_orders = INACTIVE_SWAP_ORDERS
+        .range(deps.storage, start, None, Order::Ascending)
+        .take(limit)
+        .map(|item: Result<(u64, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
+        .filter(|swap_order| {
+            swap_order.taker.is_some() && swap_order.taker.clone().unwrap().taker_address == taker
+        })
+        .collect::<Vec<AtomicSwapOrder>>();
+
+    Ok(ListResponse { swaps: swap_orders })
 }
 
 #[cfg(test)]

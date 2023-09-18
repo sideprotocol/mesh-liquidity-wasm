@@ -20,6 +20,12 @@
               "format": "uint32",
               "minimum": 0.0
             },
+            "order": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "start_after": {
               "type": [
                 "string",
@@ -205,6 +211,143 @@
               "type": "string"
             },
             "order_id": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Inactive fields query",
+      "type": "object",
+      "required": [
+        "inactive_list"
+      ],
+      "properties": {
+        "inactive_list": {
+          "type": "object",
+          "properties": {
+            "limit": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "order": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "start_after": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "inactive_list_by_desired_taker"
+      ],
+      "properties": {
+        "inactive_list_by_desired_taker": {
+          "type": "object",
+          "required": [
+            "desired_taker"
+          ],
+          "properties": {
+            "desired_taker": {
+              "type": "string"
+            },
+            "limit": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "start_after": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "inactive_list_by_maker"
+      ],
+      "properties": {
+        "inactive_list_by_maker": {
+          "type": "object",
+          "required": [
+            "maker"
+          ],
+          "properties": {
+            "limit": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "maker": {
+              "type": "string"
+            },
+            "start_after": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "inactive_list_by_taker"
+      ],
+      "properties": {
+        "inactive_list_by_taker": {
+          "type": "object",
+          "required": [
+            "taker"
+          ],
+          "properties": {
+            "limit": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "start_after": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "taker": {
               "type": "string"
             }
           }
