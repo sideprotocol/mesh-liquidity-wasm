@@ -50,7 +50,10 @@ pub struct AtomicSwapOrder {
 
 pub const SWAP_ORDERS: Map<u64, AtomicSwapOrder> = Map::new("swap_order");
 pub const ORDER_TO_COUNT: Map<&str, u64> = Map::new("order_to_count");
+
 pub const COUNT: Item<u64> = Item::new("count");
+pub const INACTIVE_COUNT: Item<u64> = Item::new("inactive_count");
+pub const INACTIVE_SWAP_ORDERS: Map<u64, AtomicSwapOrder> = Map::new("inactive_swap_order");
 
 // append order to end of list
 pub fn append_atomic_order(storage: &mut dyn Storage, order_id: &str, order: &AtomicSwapOrder) -> StdResult<u64> {
@@ -84,17 +87,18 @@ pub fn remove_atomic_order(storage: &mut dyn Storage, order_id: &str) -> StdResu
     Ok(id)
 }
 
+/// Move completed or expired order to inactive list
 pub fn move_order_to_bottom(storage: &mut dyn Storage, order_id: &str) -> StdResult<u64> {
     // Step 1: Retrieve the item based on the given ID.
-    let count = COUNT.load(storage)?;
     let id: u64 = ORDER_TO_COUNT.load(storage, order_id)?;
     let swap_order = SWAP_ORDERS.load(storage, id)?;
     // Step 2: Remove the item from its current position.
     SWAP_ORDERS.remove(storage, id);
-    // Step 3: Append the item to the end.
-    SWAP_ORDERS.save(storage, count, &swap_order)?;
-    ORDER_TO_COUNT.save(storage, &order_id, &count)?;
-    COUNT.save(storage, &(count + 1))?;
+    ORDER_TO_COUNT.remove(storage, &order_id);
+    // Step 3: Append the item to the end of inactive list.
+    let count = INACTIVE_COUNT.load(storage)?;
+    INACTIVE_SWAP_ORDERS.save(storage, count, &swap_order)?;
+    INACTIVE_COUNT.save(storage, &(count + 1))?;
     Ok(id)
 }
 
@@ -104,6 +108,7 @@ pub enum BidStatus {
     Executed,
     Placed,
 }
+
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct Bid {
     pub bid: Coin,
