@@ -16,7 +16,7 @@ use crate::state::{
     AtomicSwapOrder,
     Status,
     // CHANNEL_INFO,
-    SWAP_ORDERS, set_atomic_order, get_atomic_order, COUNT, move_order_to_bottom, BID_ORDER_TO_COUNT, Bid, BIDS, INACTIVE_SWAP_ORDERS,
+    SWAP_ORDERS, set_atomic_order, get_atomic_order, COUNT, move_order_to_bottom, BID_ORDER_TO_COUNT, Bid, BIDS, INACTIVE_SWAP_ORDERS, INACTIVE_COUNT,
 };
 use crate::utils::extract_source_channel_for_taker_msg;
 use cw_storage_plus::Bound;
@@ -35,6 +35,7 @@ pub fn instantiate(
 ) -> StdResult<Response> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     COUNT.save(deps.storage, &0u64)?;
+    INACTIVE_COUNT.save(deps.storage, &0u64)?;
     Ok(Response::default())
 }
 
@@ -501,17 +502,22 @@ fn query_details(deps: Deps, id: String) -> StdResult<DetailsResponse> {
 }
 
 // Settings for pagination
-const MAX_LIMIT: u32 = 30;
-const DEFAULT_LIMIT: u32 = 10;
+const MAX_LIMIT: u32 = 50;
+const DEFAULT_LIMIT: u32 = 20;
 
 fn query_list(
     deps: Deps,
-    start_after: Option<String>,
+    start_after: Option<u64>,
     limit: Option<u32>,
     order: Option<String>
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.map(|s| Bound::ExclusiveRaw(s.into_bytes()));
+    let start;
+    if !start_after.is_none() {
+        start = Some(Bound::exclusive(start_after.unwrap()));
+    } else {
+        start = None;
+    }
     let order = order.unwrap_or("asc".to_string());
     let list_order;
     if order == "asc".to_string() {
@@ -530,12 +536,17 @@ fn query_list(
 
 fn query_list_by_desired_taker(
     deps: Deps,
-    start_after: Option<String>,
+    start_after: Option<u64>,
     limit: Option<u32>,
     desired_taker: String,
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.map(|s| Bound::ExclusiveRaw(s.into_bytes()));
+    let start;
+    if !start_after.is_none() {
+        start = Some(Bound::exclusive(start_after.unwrap()));
+    } else {
+        start = None;
+    }
     let swap_orders = SWAP_ORDERS
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
@@ -548,12 +559,17 @@ fn query_list_by_desired_taker(
 
 fn query_list_by_maker(
     deps: Deps,
-    start_after: Option<String>,
+    start_after: Option<u64>,
     limit: Option<u32>,
     maker: String,
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.map(|s| Bound::ExclusiveRaw(s.into_bytes()));
+    let start;
+    if !start_after.is_none() {
+        start = Some(Bound::exclusive(start_after.unwrap()));
+    } else {
+        start = None;
+    }
     let swap_orders = SWAP_ORDERS
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
@@ -566,12 +582,17 @@ fn query_list_by_maker(
 
 fn query_list_by_taker(
     deps: Deps,
-    start_after: Option<String>,
+    start_after: Option<u64>,
     limit: Option<u32>,
     taker: String,
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.map(|s| Bound::ExclusiveRaw(s.into_bytes()));
+    let start;
+    if !start_after.is_none() {
+        start = Some(Bound::exclusive(start_after.unwrap()));
+    } else {
+        start = None;
+    }
     let swap_orders = SWAP_ORDERS
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
@@ -586,11 +607,11 @@ fn query_list_by_taker(
 
 fn query_bids_by_order(
     deps: Deps,
-    _start_after: Option<String>,
+    _start_after: Option<u64>,
     limit: Option<u32>,
     order: String,
 ) -> StdResult<Vec<Bid>> {
-    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
+    let limit = limit.unwrap_or(1000) as usize;
     let bids = BIDS.prefix(&order)
     .range(deps.storage, None, None, Order::Ascending)
     .take(limit)
@@ -620,12 +641,17 @@ fn query_bids_by_bidder(
 
 fn query_inactive_list(
     deps: Deps,
-    start_after: Option<String>,
+    start_after: Option<u64>,
     limit: Option<u32>,
     order: Option<String>
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.map(|s| Bound::ExclusiveRaw(s.into_bytes()));
+    let start;
+    if !start_after.is_none() {
+        start = Some(Bound::exclusive(start_after.unwrap()));
+    } else {
+        start = None;
+    }
     let order = order.unwrap_or("asc".to_string());
     let list_order;
     if order == "asc".to_string() {
@@ -644,12 +670,17 @@ fn query_inactive_list(
 
 fn query_inactive_list_by_desired_taker(
     deps: Deps,
-    start_after: Option<String>,
+    start_after: Option<u64>,
     limit: Option<u32>,
     desired_taker: String,
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.map(|s| Bound::ExclusiveRaw(s.into_bytes()));
+    let start;
+    if !start_after.is_none() {
+        start = Some(Bound::exclusive(start_after.unwrap()));
+    } else {
+        start = None;
+    }
     let swap_orders = INACTIVE_SWAP_ORDERS
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
@@ -662,12 +693,17 @@ fn query_inactive_list_by_desired_taker(
 
 fn query_inactive_list_by_maker(
     deps: Deps,
-    start_after: Option<String>,
+    start_after: Option<u64>,
     limit: Option<u32>,
     maker: String,
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.map(|s| Bound::ExclusiveRaw(s.into_bytes()));
+    let start;
+    if !start_after.is_none() {
+        start = Some(Bound::exclusive(start_after.unwrap()));
+    } else {
+        start = None;
+    }
     let swap_orders = INACTIVE_SWAP_ORDERS
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
@@ -680,12 +716,17 @@ fn query_inactive_list_by_maker(
 
 fn query_inactive_list_by_taker(
     deps: Deps,
-    start_after: Option<String>,
+    start_after: Option<u64>,
     limit: Option<u32>,
     taker: String,
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.map(|s| Bound::ExclusiveRaw(s.into_bytes()));
+    let start;
+    if !start_after.is_none() {
+        start = Some(Bound::exclusive(start_after.unwrap()));
+    } else {
+        start = None;
+    }
     let swap_orders = INACTIVE_SWAP_ORDERS
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)

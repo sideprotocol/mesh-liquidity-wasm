@@ -28,9 +28,11 @@
             },
             "start_after": {
               "type": [
-                "string",
+                "integer",
                 "null"
-              ]
+              ],
+              "format": "uint64",
+              "minimum": 0.0
             }
           }
         }
@@ -62,9 +64,11 @@
             },
             "start_after": {
               "type": [
-                "string",
+                "integer",
                 "null"
-              ]
+              ],
+              "format": "uint64",
+              "minimum": 0.0
             }
           }
         }
@@ -96,9 +100,11 @@
             },
             "start_after": {
               "type": [
-                "string",
+                "integer",
                 "null"
-              ]
+              ],
+              "format": "uint64",
+              "minimum": 0.0
             }
           }
         }
@@ -127,9 +133,11 @@
             },
             "start_after": {
               "type": [
-                "string",
+                "integer",
                 "null"
-              ]
+              ],
+              "format": "uint64",
+              "minimum": 0.0
             },
             "taker": {
               "type": "string"
@@ -185,9 +193,11 @@
             },
             "start_after": {
               "type": [
-                "string",
+                "integer",
                 "null"
-              ]
+              ],
+              "format": "uint64",
+              "minimum": 0.0
             }
           }
         }
@@ -244,9 +254,11 @@
             },
             "start_after": {
               "type": [
-                "string",
+                "integer",
                 "null"
-              ]
+              ],
+              "format": "uint64",
+              "minimum": 0.0
             }
           }
         }
@@ -278,9 +290,11 @@
             },
             "start_after": {
               "type": [
-                "string",
+                "integer",
                 "null"
-              ]
+              ],
+              "format": "uint64",
+              "minimum": 0.0
             }
           }
         }
@@ -312,9 +326,11 @@
             },
             "start_after": {
               "type": [
-                "string",
+                "integer",
                 "null"
-              ]
+              ],
+              "format": "uint64",
+              "minimum": 0.0
             }
           }
         }
@@ -343,9 +359,11 @@
             },
             "start_after": {
               "type": [
-                "string",
+                "integer",
                 "null"
-              ]
+              ],
+              "format": "uint64",
+              "minimum": 0.0
             },
             "taker": {
               "type": "string"
