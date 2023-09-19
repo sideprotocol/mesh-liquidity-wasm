@@ -209,22 +209,22 @@ pub enum BalanceHuman {
 pub enum QueryMsg {
     /// Show all open swaps. Return type is ListResponse.
     List {
-        start_after: Option<String>,
+        start_after: Option<u64>,
         limit: Option<u32>,
         order: Option<String>
     },
     ListByDesiredTaker {
-        start_after: Option<String>,
+        start_after: Option<u64>,
         limit: Option<u32>,
         desired_taker: String,
     },
     ListByMaker {
-        start_after: Option<String>,
+        start_after: Option<u64>,
         limit: Option<u32>,
         maker: String,
     },
     ListByTaker {
-        start_after: Option<String>,
+        start_after: Option<u64>,
         limit: Option<u32>,
         taker: String,
     },
@@ -232,7 +232,7 @@ pub enum QueryMsg {
     /// Return type: DetailsResponse.
     Details { id: String },
     BidDetailsbyOrder {
-        start_after: Option<String>,
+        start_after: Option<u64>,
         limit: Option<u32>,
         order_id: String,
     },
@@ -242,22 +242,22 @@ pub enum QueryMsg {
     },
     /// Inactive fields query
     InactiveList {
-        start_after: Option<String>,
+        start_after: Option<u64>,
         limit: Option<u32>,
         order: Option<String>
     },
     InactiveListByDesiredTaker {
-        start_after: Option<String>,
+        start_after: Option<u64>,
         limit: Option<u32>,
         desired_taker: String,
     },
     InactiveListByMaker {
-        start_after: Option<String>,
+        start_after: Option<u64>,
         limit: Option<u32>,
         maker: String,
     },
     InactiveListByTaker {
-        start_after: Option<String>,
+        start_after: Option<u64>,
         limit: Option<u32>,
         taker: String,
     },
