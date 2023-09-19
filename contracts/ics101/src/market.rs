@@ -128,7 +128,6 @@ impl InterchainLiquidityPool {
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct InterchainMarketMaker {
-    pub pool_id: String,
     pub pool: InterchainLiquidityPool,
     pub fee_rate: u32,
 }
@@ -136,7 +135,6 @@ pub struct InterchainMarketMaker {
 impl InterchainMarketMaker {
     pub fn new(pool_data: &InterchainLiquidityPool, fee_rate: u32) -> Self {
         InterchainMarketMaker {
-            pool_id: pool_data.clone().id,
             pool: pool_data.clone(),
             fee_rate,
         }
@@ -185,15 +183,23 @@ impl InterchainMarketMaker {
         let mut out_tokens = vec![];
         for token in tokens {
             let asset = self.pool.clone().find_asset_by_denom(&token.denom)?;
-            let mut total_asset_amount = Uint128::from(0u128);
             let mut issue_amount;
+
             if self.pool.status == PoolStatus::Initialized && self.pool.supply.amount.is_zero() {
-                for asset in &self.pool.assets {
-                    let dec_asset_amount = adjust_precision(asset.balance.amount, asset.decimal.try_into().unwrap(), 18)?;
-                    total_asset_amount = total_asset_amount + dec_asset_amount;
-                }
-                let mult_amount = total_asset_amount.checked_mul(asset.weight.into())?;
-                issue_amount = Decimal::from_ratio(mult_amount, Uint128::from(100u128));
+                
+                let total_asset_amount: Uint128 = self
+                .pool
+                .assets
+                .iter()
+                .map(|asset| {
+                    // Handle the error appropriately here
+                    adjust_precision(asset.balance.amount, asset.decimal.try_into().unwrap(), 18)
+                        .unwrap()
+                })
+                .sum();
+                
+                let multi_amount = total_asset_amount.checked_mul(asset.weight.into())?;
+                issue_amount = Decimal::from_ratio(multi_amount, Uint128::from(100u128));
             } else {
                 let ratio = Decimal::from_ratio(token.amount, asset.balance.amount);
                 issue_amount = Decimal::from_ratio(self.pool.supply.amount, Uint128::from(100u128));
@@ -211,7 +217,7 @@ impl InterchainMarketMaker {
     }
 
     pub fn multi_asset_withdraw(&self, redeem: Coin) -> StdResult<Vec<Coin>> {
-        let total_share = self.pool.supply.amount.clone();
+        let total_share = self.pool.supply.amount;
 
         // % of share to be burnt from the pool
         let share_out_ratio = Decimal::from_ratio(redeem.amount, total_share);
@@ -248,8 +254,8 @@ impl InterchainMarketMaker {
     /// * **ask_pool** is an object of type [`DecimalAsset`]. This is the asked asset.
     /// * **pools** is an array of [`DecimalAsset`] type items. These are the assets available in the pool.
     pub fn compute_swap(&self, amount_in: Coin, denom_out: &str) -> StdResult<Coin> {
-        let asset_in = self.pool.clone().find_asset_by_denom(&amount_in.denom)?;
-        let asset_out = self.pool.clone().find_asset_by_denom(denom_out)?;
+        let asset_in = self.pool.find_asset_by_denom(&amount_in.denom)?;
+        let asset_out = self.pool.find_asset_by_denom(denom_out)?;
 
         let token_precision = asset_out.decimal as u8;
 
@@ -295,8 +301,9 @@ impl InterchainMarketMaker {
     }
 
     pub fn compute_offer_amount(&self, amount_in: Coin, amount_out: Coin) -> StdResult<Coin> {
-        let asset_in = self.pool.clone().find_asset_by_denom(&amount_in.denom)?;
-        let asset_out = self.pool.clone().find_asset_by_denom(&amount_out.denom)?;
+        
+        let asset_in = self.pool.find_asset_by_denom(&amount_in.denom)?;
+        let asset_out = self.pool.find_asset_by_denom(&amount_out.denom)?;
 
         // get ask asset precisison
         let token_precision = asset_in.decimal as u8;

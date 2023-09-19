@@ -1,5 +1,4 @@
 use std::ops::{Div, Mul};
-use std::vec;
 
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
@@ -222,9 +221,9 @@ fn make_pool(
     let pool_id = get_pool_id_with_tokens(&tokens, msg.source_chain_id.clone(), msg.destination_chain_id.clone());
 
     TEMP.save(deps.storage, &pool_id)?;
+
     // load pool throw error if not found
-    let interchain_pool_temp = POOLS.may_load(deps.storage,&pool_id)?;
-    if let Some(_pool) = interchain_pool_temp {
+    if POOLS.has(deps.storage,&pool_id) {
         return Err(ContractError::Std(StdError::generic_err(format!(
             "Pool already exists"
         ))));
@@ -416,6 +415,7 @@ fn take_pool(
         state_change: None,
     };
 
+    // TODO: if that relayer is died, so can't recover that port and channel so have to use new relayer?  
     let ibc_msg = IbcMsg::SendPacket {
         channel_id: interchain_pool.counter_party_channel.clone(),
         data: to_binary(&ibc_packet_data)?,
@@ -528,7 +528,7 @@ pub fn single_asset_deposit(
 
     // Create the interchain market maker (amm).
     let amm = InterchainMarketMaker {
-        pool_id: pool_id.clone(),
+       // pool_id: pool_id.clone(),
         pool: pool.clone(),
         fee_rate: pool.swap_fee,
     };
@@ -555,6 +555,7 @@ pub fn single_asset_deposit(
     };
 
     // Send the IBC swap packet.
+    // if that relayer is died, so can't recover that port and channel so have to use new relayer?  
     let ibc_msg = IbcMsg::SendPacket {
         channel_id: pool.counter_party_channel.clone(),
         data: to_binary(&packet_data)?,
@@ -617,7 +618,6 @@ fn make_multi_asset_deposit(
 
     // Create the interchain market maker
     let amm = InterchainMarketMaker {
-        pool_id: interchain_pool.clone().id,
         pool: interchain_pool.clone(),
         fee_rate: interchain_pool.swap_fee,
     };
@@ -629,9 +629,10 @@ fn make_multi_asset_deposit(
     ])?;
 
     let mut config = CONFIG.load(deps.storage)?;
-
-    let mut multi_asset_order = MultiAssetDepositOrder {
-        id: "".to_string(),
+    config.counter = config.counter + 1;
+    
+    let multi_asset_order = MultiAssetDepositOrder {
+        id: get_order_id(msg.deposits[0].sender.clone(), config.counter).to_string(),
         chain_id: msg.chain_id.clone(),
         pool_id: msg.pool_id.clone(),
         source_maker: msg.deposits[0].sender.clone(),
@@ -646,14 +647,6 @@ fn make_multi_asset_deposit(
     // check for order, if exist throw error.
 
     let ac_key = msg.deposits[0].sender.clone() + "-" + &msg.pool_id.clone() + "-" + &msg.deposits[1].sender.clone();
-    // let multi_asset_order_temp = ACTIVE_ORDERS.may_load(deps.storage, ac_key.clone())?;
-
-    // if let Some(_order) = multi_asset_order_temp {
-    //     return Err(ContractError::ErrPreviousOrderNotCompleted);
-    // }
-    config.counter = config.counter + 1;
-    multi_asset_order.id = get_order_id(msg.deposits[0].sender.clone(), config.counter);
-    //}
 
     // save order in source chain
     let key = msg.pool_id.clone() + "-" + &multi_asset_order.id.clone().to_string();
@@ -676,6 +669,7 @@ fn make_multi_asset_deposit(
         state_change: Some(state_change_data),
     };
 
+    // TODO: if that relayer is died, so can't recover that port and channel so have to use new relayer? 
     let ibc_msg = IbcMsg::SendPacket {
         channel_id: interchain_pool.clone().counter_party_channel,
         data: to_binary(&packet_data)?,
@@ -733,7 +727,7 @@ fn cancel_multi_asset_deposit(
         data: to_binary(&msg.clone())?,
         state_change: None,
     };
-
+ 
     let ibc_msg = IbcMsg::SendPacket {
         channel_id: interchain_pool.clone().counter_party_channel,
         data: to_binary(&packet_data)?,
@@ -806,7 +800,6 @@ fn take_multi_asset_deposit(
     // find number of tokens to be minted
     // Create the interchain market maker (amm).
     let amm = InterchainMarketMaker {
-        pool_id: msg.pool_id.clone(),
         pool: interchain_pool.clone(),
         fee_rate: interchain_pool.swap_fee,
     };
@@ -888,7 +881,6 @@ fn multi_asset_withdraw(
 
     // Create the interchain market maker
     let amm = InterchainMarketMaker {
-        pool_id: interchain_pool.clone().id,
         pool: interchain_pool.clone(),
         fee_rate: interchain_pool.swap_fee,
     };
@@ -990,7 +982,6 @@ fn swap(
 
     // Create the interchain market maker
     let amm = InterchainMarketMaker {
-        pool_id: interchain_pool.clone().id,
         pool: interchain_pool.clone(),
         fee_rate: interchain_pool.swap_fee,
     };
@@ -1254,7 +1245,7 @@ fn query_left_swap(
 
     // Create the interchain market maker
     let amm = InterchainMarketMaker {
-        pool_id: interchain_pool.clone().id,
+        //pool_id: interchain_pool.clone().id,
         pool: interchain_pool.clone(),
         fee_rate: interchain_pool.swap_fee,
     };
@@ -1289,7 +1280,7 @@ fn query_right_swap(
 
     // Create the interchain market maker
     let amm = InterchainMarketMaker {
-        pool_id: interchain_pool.clone().id,
+        //pool_id: interchain_pool.clone().id,
         pool: interchain_pool.clone(),
         fee_rate: interchain_pool.swap_fee,
     };
@@ -1332,7 +1323,6 @@ fn query_rate(deps: Deps, pool_id: String, amount: Uint128) -> StdResult<Vec<Coi
 
     // Create the interchain market maker
     let amm = InterchainMarketMaker {
-        pool_id: interchain_pool.clone().id,
         pool: interchain_pool.clone(),
         fee_rate: interchain_pool.swap_fee,
     };

@@ -125,12 +125,11 @@ pub(crate) fn on_received_make_pool(
     let pool_id = get_pool_id_with_tokens(&tokens, msg.source_chain_id.clone(), msg.destination_chain_id.clone());
 
     //load pool throw error if found
-    let interchain_pool_temp = POOLS.may_load(deps.storage, &pool_id.clone())?;
-    if let Some(_pool) = interchain_pool_temp {
-        return Err(ContractError::Std(StdError::generic_err(format!(
-            "Pool already exists"
-        ))));
-    }
+   if POOLS.has(deps.storage, &pool_id.clone()) {
+    return Err(ContractError::Std(StdError::generic_err(format!(
+        "Pool already exists"
+    ))));
+   };
 
     let mut liquidity = vec![];
     for mut asset in msg.liquidity {
@@ -195,7 +194,7 @@ pub(crate) fn on_received_take_pool(
     // find number of tokens to be minted
     // Create the interchain market maker (amm).
     let amm = InterchainMarketMaker {
-        pool_id: msg.pool_id.clone(),
+        //pool_id: msg.pool_id.clone(),
         pool: interchain_pool.clone(),
         fee_rate: interchain_pool.swap_fee,
     };
@@ -624,7 +623,7 @@ pub(crate) fn on_packet_success(
             // find number of tokens to be minted
             // Create the interchain market maker (amm).
             let amm = InterchainMarketMaker {
-                pool_id: msg.pool_id.clone(),
+                //pool_id: msg.pool_id.clone(),
                 pool: interchain_pool.clone(),
                 fee_rate: interchain_pool.swap_fee,
             };
@@ -676,6 +675,7 @@ pub(crate) fn on_packet_success(
             .add_attribute("action", "cancel_pool_acknowledged")
             .add_attributes(attributes))
         }
+        
         InterchainMessageType::SingleAssetDeposit => {
             let msg: MsgSingleAssetDepositRequest = from_binary(&packet_data.data.clone())?;
             let state_change: StateChange = from_slice(&packet_data.state_change.unwrap())?;
