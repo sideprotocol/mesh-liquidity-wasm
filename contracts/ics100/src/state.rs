@@ -23,6 +23,7 @@ pub enum Status {
     Initial,  // initialised on maker chain
     Sync,     // synced to the taker chain
     Cancel,   // cancelled
+    Failed,
     Complete, // completed
 }
 
@@ -52,6 +53,7 @@ pub const SWAP_ORDERS: Map<u64, AtomicSwapOrder> = Map::new("swap_order");
 pub const ORDER_TO_COUNT: Map<&str, u64> = Map::new("order_to_count");
 
 pub const COUNT: Item<u64> = Item::new("count");
+pub const SWAP_SEQUENCE: Item<u64> = Item::new("swap_sequence");
 pub const INACTIVE_COUNT: Item<u64> = Item::new("inactive_count");
 pub const INACTIVE_SWAP_ORDERS: Map<u64, AtomicSwapOrder> = Map::new("inactive_swap_order");
 
