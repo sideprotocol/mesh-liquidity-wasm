@@ -88,7 +88,8 @@ pub(crate) fn on_received_make(
         packet.dest.port_id.clone(),
         packet.sequence,
     )?;
-    let order_id = generate_order_id(&path, msg.clone())?;
+    
+    let order_id = generate_order_id(&path)?;
     let swap_order = AtomicSwapOrder {
         id: order_id.clone(),
         side: Side::Remote,
@@ -339,31 +340,10 @@ pub(crate) fn on_packet_success(
         // This logic is executed when Taker chain acknowledge the make swap packet.
         SwapMessageType::Unspecified => Ok(IbcBasicResponse::new()),
         SwapMessageType::MakeSwap => {
-            // let msg: MakeSwapMsg = from_binary(&packet_data.data.clone())?;
-            let msg: MakeSwapMsg = decode_make_swap_msg(&packet_data.data);
-            let path = order_path(
-                msg.source_channel.clone(),
-                msg.source_port.clone(),
-                packet.dest.channel_id.clone(),
-                packet.dest.port_id.clone(),
-                packet.sequence,
-            )?;
-            let order_id = generate_order_id(&path, msg.clone())?;
-
-            let new_order = AtomicSwapOrder {
-                id: order_id.clone(),
-                side: Side::Native,
-                maker: msg,
-                status: Status::Sync,
-                path,
-                taker: None,
-                cancel_timestamp: None,
-                complete_timestamp: None,
-                create_timestamp: env.block.time.seconds()
-            };
-
-            append_atomic_order(deps.storage, &order_id, &new_order)?;
-
+            let order_id = &packet_data.order_id.unwrap();
+            let mut order = get_atomic_order(deps.storage, &order_id)?;
+            order.status = Status::Sync;
+            set_atomic_order(deps.storage, order_id, &order)?;
             Ok(IbcBasicResponse::new().add_attributes(attributes))
         }
         // This is the step 9 (Transfer Take Token & Close order): https://github.com/cosmos/ibc/tree/main/spec/app/ics-100-atomic-swap
@@ -542,19 +522,18 @@ pub(crate) fn refund_packet_token(
         // the maker on the maker chain.
         SwapMessageType::Unspecified => Ok(vec![]),
         SwapMessageType::MakeSwap => {
-            // let msg: MakeSwapMsg = from_binary(&packet.data.clone())?;
             let msg: MakeSwapMsg = decode_make_swap_msg(&packet.data);
-            // let order_id: String = generate_order_id(packet.clone())?;
-            // let swap_order: AtomicSwapOrder = SWAP_ORDERS.load(deps.storage, &order_id)?;
             let maker_address: Addr = deps.api.addr_validate(&msg.maker_address)?;
             let submsg = send_tokens(&maker_address, msg.sell_token)?;
-
+            let order_id = packet.order_id.unwrap();
+            let mut order = get_atomic_order(deps.storage, &order_id)?;
+            order.status = Status::Failed;
+            set_atomic_order(deps.storage, &order_id, &order)?;
             Ok(submsg)
         }
         // This is the step 7.2 (Unlock order and refund) of the atomic swap: https://github.com/cosmos/ibc/tree/main/spec/app/ics-100-atomic-swap
         // This step is executed on the Taker chain when Take Swap request timeout.
         SwapMessageType::TakeSwap => {
-            // let msg: TakeSwapMsg = from_binary(&packet.data.clone())?;
             let msg: TakeSwapMsg = decode_take_swap_msg(&packet.data);
             let order_id: String = msg.order_id.clone();
             let mut swap_order = get_atomic_order(deps.storage, &order_id)?;

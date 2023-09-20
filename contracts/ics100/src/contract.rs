@@ -16,9 +16,9 @@ use crate::state::{
     AtomicSwapOrder,
     Status,
     // CHANNEL_INFO,
-    SWAP_ORDERS, set_atomic_order, get_atomic_order, COUNT, move_order_to_bottom, BID_ORDER_TO_COUNT, Bid, BIDS, INACTIVE_SWAP_ORDERS, INACTIVE_COUNT,
+    SWAP_ORDERS,append_atomic_order, set_atomic_order, get_atomic_order, COUNT, move_order_to_bottom, BID_ORDER_TO_COUNT, Bid, BIDS, INACTIVE_SWAP_ORDERS, INACTIVE_COUNT, Side, CHANNEL_INFO, SWAP_SEQUENCE,
 };
-use crate::utils::extract_source_channel_for_taker_msg;
+use crate::utils::{extract_source_channel_for_taker_msg, generate_order_id,order_path};
 use cw_storage_plus::Bound;
 
 // Version info, for migration info
@@ -36,6 +36,7 @@ pub fn instantiate(
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     COUNT.save(deps.storage, &0u64)?;
     INACTIVE_COUNT.save(deps.storage, &0u64)?;
+    SWAP_SEQUENCE.save(deps.storage, &0u64)?;
     Ok(Response::default())
 }
 
@@ -59,7 +60,7 @@ pub fn execute(
 // MakeSwap is called when the maker wants to make atomic swap. The method create new order and lock tokens.
 // This is the step 1 (Create order & Lock Token) of the atomic swap: https://github.com/cosmos/ibc/tree/main/spec/app/ics-100-atomic-swap
 pub fn execute_make_swap(
-    _deps: DepsMut,
+    deps: DepsMut,
     env: Env,
     info: MessageInfo,
     msg: MakeSwapMsg,
@@ -76,13 +77,41 @@ pub fn execute_make_swap(
         return Err(ContractError::Std(StdError::generic_err("Funds mismatch: Funds mismatched to with message and sent values: Make swap".to_string())));
     }
 
+    // Add swap message 
+    let channel_info = CHANNEL_INFO.load(deps.storage, &msg.source_channel)?;
+    let sequence = SWAP_SEQUENCE.load(deps.storage).unwrap();
+    let path = order_path(
+        msg.source_channel.clone(),
+        msg.source_port.clone(),
+        channel_info.counterparty_endpoint.channel_id,
+        channel_info.counterparty_endpoint.port_id,
+        sequence
+    )?;
+   
+    let order_id = generate_order_id(&path)?;
+    let new_order = AtomicSwapOrder {
+        id: order_id.clone(),
+        side: Side::Native,
+        maker: msg.clone(),
+        status: Status::Initial,
+        path: path.clone(),
+        taker: None,
+        cancel_timestamp: None,
+        complete_timestamp: None,
+        create_timestamp: env.block.time.seconds()
+    };
+    append_atomic_order(deps.storage, &order_id, &new_order)?;
     let ibc_packet = AtomicSwapPacketData {
         r#type: SwapMessageType::MakeSwap,
         data: to_binary(&msg)?,
-        order_id: None,
-        path: None,
+        order_id: Some(order_id),
+        path: Some(path),
         memo: String::new(),
     };
+
+    // Increment the sequence counter.
+    let new_sequence = sequence+1;
+    SWAP_SEQUENCE.save(deps.storage, &new_sequence)?;
 
     let ibc_msg = IbcMsg::SendPacket {
         channel_id: msg.source_channel,
@@ -815,8 +844,7 @@ mod tests {
         let sequence = 3;
 
         // Cannot create, no funds
-        // let info = mock_info(&sender, &[]);
-        let create = MakeSwapMsg {
+        let _ = MakeSwapMsg {
             source_port: source_port.clone(),
             source_channel: source_channel.clone(),
             sell_token: balance1,
@@ -842,7 +870,7 @@ mod tests {
         )
         .unwrap();
 
-        let order_id = generate_order_id(&path, create);
+        let order_id = generate_order_id(&path);
         println!("order_id is {:?}", &order_id);
     }
 

@@ -1,39 +1,22 @@
 use cosmwasm_std::{
-    from_binary, to_binary, Addr, BankMsg, Binary, Coin, IbcAcknowledgement, IbcChannel, IbcOrder,
+    from_binary, Addr, BankMsg, Binary, Coin, IbcAcknowledgement, IbcChannel, IbcOrder,
     StdError, StdResult, SubMsg,
 };
+
 use sha2::{Digest, Sha256};
 
 use crate::{
     atomic_swap_handler::AtomicSwapPacketAcknowledgement,
-    msg::{Height, HeightOutput, MakeSwapMsg, MakeSwapMsgOutput, TakeSwapMsg, TakeSwapMsgOutput},
-    ContractError,
+    msg::{Height, MakeSwapMsg, MakeSwapMsgOutput, TakeSwapMsg, TakeSwapMsgOutput},
+    ContractError, 
 };
 
-pub fn generate_order_id(order_path: &str, msg: MakeSwapMsg) -> StdResult<String> {
-    let prefix = order_path.as_bytes();
+pub fn generate_order_id(order_path: &str) -> StdResult<String> {
+    // Generate random bytes
+    // Create the ID by combining the order_path and random bytes
+    let res: Vec<u8> = [order_path.as_bytes()].concat();
 
-    let msg_output = MakeSwapMsgOutput {
-        source_port: msg.source_port.clone(),
-        source_channel: msg.source_channel.clone(),
-        sell_token: msg.sell_token.clone(),
-        buy_token: msg.buy_token.clone(),
-        maker_address: msg.maker_address.clone(),
-        maker_receiving_address: msg.maker_receiving_address.clone(),
-        desired_taker: msg.desired_taker.clone(),
-        timeout_height: HeightOutput {
-            revision_number: msg.timeout_height.revision_number.clone().to_string(),
-            revision_height: msg.timeout_height.revision_height.clone().to_string(),
-        },
-        timeout_timestamp: msg.timeout_timestamp.clone().to_string(),
-        expiration_timestamp: msg.expiration_timestamp.clone().to_string(),
-        take_bids: msg.take_bids,
-    };
-
-    let binding_output = to_binary(&msg_output)?;
-    let msg_bytes = binding_output.as_slice();
-    let res: Vec<u8> = [prefix.clone(), msg_bytes.clone()].concat();
-
+    // Hash the result to create a fixed-length ID
     let hash = Sha256::digest(&res);
     let id = hex::encode(hash);
 
@@ -45,11 +28,11 @@ pub fn order_path(
     source_port: String,
     destination_channel: String,
     destination_port: String,
-    id: u64,
+    sequence:u64,
 ) -> StdResult<String> {
     let path = format!(
         "channel/{}/port/{}/channel/{}/port/{}/{}",
-        source_channel, source_port, destination_channel, destination_port, id,
+        source_channel, source_port, destination_channel, destination_port,sequence
     );
     Ok(path)
 }
