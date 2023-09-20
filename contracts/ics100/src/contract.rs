@@ -15,10 +15,11 @@ use crate::msg::{
 use crate::state::{
     AtomicSwapOrder,
     Status,
-    // CHANNEL_INFO,
-    SWAP_ORDERS, set_atomic_order, get_atomic_order, COUNT, move_order_to_bottom, BID_ORDER_TO_COUNT, Bid, BIDS, INACTIVE_SWAP_ORDERS,
+    CHANNEL_INFO,
+    append_atomic_order,
+    SWAP_ORDERS, set_atomic_order, get_atomic_order, COUNT, move_order_to_bottom, BID_ORDER_TO_COUNT, Bid, BIDS, INACTIVE_SWAP_ORDERS, Side,
 };
-use crate::utils::extract_source_channel_for_taker_msg;
+use crate::utils::{generate_order_id,extract_source_channel_for_taker_msg,order_path};
 use cw_storage_plus::Bound;
 
 // Version info, for migration info
@@ -77,11 +78,38 @@ pub fn execute_make_swap(
         ))));
     }
 
+    // TODO: I guess we have add order here with status - Initial. 
+    // This optimistic operation will update user's experiences in frontend code. 
+    // When success update status as a Sync. when failed, we can remove that pool with refund logic. 
+    
+    let channel_info = CHANNEL_INFO.load(_deps.storage, &msg.source_channel)?;
+    let path = order_path(
+        msg.source_channel.clone(),
+        msg.source_port.clone(),
+        channel_info.counterparty_endpoint.channel_id,
+        channel_info.counterparty_endpoint.port_id,
+    )?;
+
+    let order_id = generate_order_id(&path)?;
+    let new_order = AtomicSwapOrder {
+        id: order_id.clone(),
+        side: Side::Native,
+        maker: msg.clone(),
+        status: Status::Initial,
+        path: path.clone(),
+        taker: None,
+        cancel_timestamp: None,
+        complete_timestamp: None,
+        create_timestamp: env.block.time.seconds()
+    };
+
+    append_atomic_order(_deps.storage, &order_id, &new_order)?;
+
     let ibc_packet = AtomicSwapPacketData {
         r#type: SwapMessageType::MakeSwap,
         data: to_binary(&msg)?,
-        order_id: None,
-        path: None,
+        order_id: Some(order_id),
+        path: Some(path),
         memo: String::new(),
     };
 
@@ -803,11 +831,11 @@ mod tests {
             source_port.clone(),
             destination_channel.clone(),
             destination_port.clone(),
-            sequence.clone(),
+            //sequence.clone(),
         )
         .unwrap();
 
-        let order_id = generate_order_id(&path, create.clone());
+        let order_id = generate_order_id(&path);
         println!("order_id is {:?}", &order_id);
     }
 

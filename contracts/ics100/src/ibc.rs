@@ -58,6 +58,7 @@ pub fn ibc_channel_connect(
         counterparty_endpoint: channel.counterparty_endpoint,
         connection_id: channel.connection_id,
     };
+    
     CHANNEL_INFO.save(deps.storage, &info.id, &info)?;
 
     Ok(IbcBasicResponse::default())

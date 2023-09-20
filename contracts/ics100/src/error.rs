@@ -21,6 +21,9 @@ pub enum ContractError {
     #[error("Atomic swap already exists")]
     AlreadyExists,
 
+    #[error("Atomic swap doesn't exist")]
+    NotFound,
+
     #[error("Order already taken")]
     OrderTaken,
 

@@ -116,6 +116,10 @@ pub struct Bid {
     pub bidder: String,
     pub bidder_receiver: String,
 }
+pub struct CounterPartyIBC {
+    pub channel: String,
+    pub port: String
+}
 // Map for order id -> Vec<Bids>
 // Order_id + BID_COUNT
 pub const BIDS: Map<(&str, &str), Bid> = Map::new("swap_order");
