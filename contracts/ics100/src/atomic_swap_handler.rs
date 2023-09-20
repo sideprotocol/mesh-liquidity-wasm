@@ -312,8 +312,8 @@ pub(crate) fn on_received_cancel_bid(
     if !BID_ORDER_TO_COUNT.has(deps.storage, &key) {
         return Err(ContractError::BidDoesntExist);
     }
-    BID_ORDER_TO_COUNT.remove(deps.storage, &key);
     let bid_count = BID_ORDER_TO_COUNT.load(deps.storage, &key)?;
+    BID_ORDER_TO_COUNT.remove(deps.storage, &key);
     BIDS.remove(deps.storage, (&order_id, &bid_count.to_string()));
 
     let res = IbcReceiveResponse::new()
@@ -481,7 +481,6 @@ pub(crate) fn on_packet_success(
             if !BID_ORDER_TO_COUNT.has(deps.storage, &key) {
                 return Err(ContractError::BidDoesntExist);
             }
-            BID_ORDER_TO_COUNT.remove(deps.storage, &key);
             let bid_count = BID_ORDER_TO_COUNT.load(deps.storage, &key)?;
             let bid = BIDS.load(deps.storage, (&order_id, &bid_count.to_string()))?;
 
@@ -495,6 +494,7 @@ pub(crate) fn on_packet_success(
             )?;
 
             BIDS.remove(deps.storage, (&order_id, &bid_count.to_string()));
+            BID_ORDER_TO_COUNT.remove(deps.storage, &key);
             Ok(IbcBasicResponse::new()
                 .add_submessages(submsg)
                 .add_attributes(attributes))

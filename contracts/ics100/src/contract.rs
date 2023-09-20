@@ -314,11 +314,6 @@ pub fn execute_make_bid(
         ORDER_TOTAL_COUNT.save(deps.storage, &order_id, &bid_count)?;
     }
 
-    let key = order_id.clone() + &msg.taker_address.clone();
-    if BID_ORDER_TO_COUNT.has(deps.storage, &key) {
-        return Err(ContractError::BidAlreadyExist {});
-    }
-
     BID_ORDER_TO_COUNT.save(deps.storage, &key, &bid_count)?;
 
     let bid: Bid = Bid {
@@ -340,7 +335,7 @@ pub fn execute_make_bid(
     };
 
     let ibc_msg = IbcMsg::SendPacket {
-        channel_id: order.maker.source_channel,
+        channel_id: extract_source_channel_for_taker_msg(&order.path)?,
         data: to_binary(&packet)?,
         timeout: IbcTimeout::from(
             env.block
@@ -456,7 +451,7 @@ pub fn execute_cancel_bid(
     };
 
     let ibc_msg = IbcMsg::SendPacket {
-        channel_id: order.maker.source_channel,
+        channel_id: extract_source_channel_for_taker_msg(&order.path)?,
         data: to_binary(&packet)?,
         timeout: IbcTimeout::from(
             env.block

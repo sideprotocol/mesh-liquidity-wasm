@@ -191,6 +191,7 @@
         "INITIAL",
         "SYNC",
         "CANCEL",
+        "FAILED",
         "COMPLETE"
       ]
     },

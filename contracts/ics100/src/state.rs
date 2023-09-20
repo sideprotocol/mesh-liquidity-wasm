@@ -123,7 +123,7 @@ pub struct Bid {
 }
 // Map for order id -> Vec<Bids>
 // Order_id + BID_COUNT
-pub const BIDS: Map<(&str, &str), Bid> = Map::new("swap_order");
+pub const BIDS: Map<(&str, &str), Bid> = Map::new("bids");
 
 // Each order bid count
 pub const ORDER_TOTAL_COUNT: Map<&str, u64> = Map::new("order_total_count");
