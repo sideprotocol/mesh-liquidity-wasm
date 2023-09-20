@@ -85,7 +85,7 @@ impl MsgMakePoolRequest {
         }
 
         if total_weight != 100 {
-            return Err(ContractError::InvalidWeightPair.into());
+            return Err(ContractError::InvalidWeightPair);
         }
 
         Ok(Response::default())

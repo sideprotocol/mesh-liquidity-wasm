@@ -60,7 +60,7 @@ pub fn append_atomic_order(storage: &mut dyn Storage, order_id: &str, order: &At
     let count = COUNT.load(storage)?;
 
     SWAP_ORDERS.save(storage, count, order)?;
-    ORDER_TO_COUNT.save(storage, &order_id, &count)?;
+    ORDER_TO_COUNT.save(storage, order_id, &count)?;
     COUNT.save(storage, &(count + 1))?;
     
     Ok(count)
@@ -94,7 +94,7 @@ pub fn move_order_to_bottom(storage: &mut dyn Storage, order_id: &str) -> StdRes
     let swap_order = SWAP_ORDERS.load(storage, id)?;
     // Step 2: Remove the item from its current position.
     SWAP_ORDERS.remove(storage, id);
-    ORDER_TO_COUNT.remove(storage, &order_id);
+    ORDER_TO_COUNT.remove(storage, order_id);
     // Step 3: Append the item to the end of inactive list.
     let count = INACTIVE_COUNT.load(storage)?;
     INACTIVE_SWAP_ORDERS.save(storage, count, &swap_order)?;

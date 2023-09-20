@@ -73,9 +73,7 @@ pub fn execute_make_swap(
         }
     }
     if !ok {
-        return Err(ContractError::Std(StdError::generic_err(format!(
-            "Funds mismatch: Funds mismatched to with message and sent values: Make swap"
-        ))));
+        return Err(ContractError::Std(StdError::generic_err("Funds mismatch: Funds mismatched to with message and sent values: Make swap".to_string())));
     }
 
     let ibc_packet = AtomicSwapPacketData {
@@ -87,7 +85,7 @@ pub fn execute_make_swap(
     };
 
     let ibc_msg = IbcMsg::SendPacket {
-        channel_id: msg.source_channel.clone(),
+        channel_id: msg.source_channel,
         data: to_binary(&ibc_packet)?,
         timeout: IbcTimeout::from(
             env.block
@@ -119,9 +117,7 @@ pub fn execute_take_swap(
         }
     }
     if !ok {
-        return Err(ContractError::Std(StdError::generic_err(format!(
-            "Funds mismatch: Funds mismatched to with message and sent values: Make swap"
-        ))));
+        return Err(ContractError::Std(StdError::generic_err("Funds mismatch: Funds mismatched to with message and sent values: Make swap".to_string())));
     }
 
     let mut order = get_atomic_order(deps.storage, &msg.order_id)?;
@@ -141,7 +137,7 @@ pub fn execute_take_swap(
     }
 
     // If `desiredTaker` is set, only the desiredTaker can accept the order.
-    if order.maker.desired_taker != "" && order.maker.desired_taker != msg.clone().taker_address {
+    if !order.maker.desired_taker.is_empty() && order.maker.desired_taker != msg.taker_address {
         return Err(ContractError::InvalidTakerAddress);
     }
 
@@ -178,7 +174,7 @@ pub fn execute_take_swap(
         .add_attribute("order_id", msg.order_id)
         .add_attribute("action", "take_swap")
         .add_attribute("order_id", order.id.clone());
-    return Ok(res);
+    Ok(res)
 }
 
 // CancelSwap is the step 10 (Cancel Request) of the atomic swap: https://github.com/cosmos/ibc/tree/main/spec/app/ics-100-atomic-swap.
@@ -228,8 +224,8 @@ pub fn execute_cancel_swap(
         .add_message(ibc_msg)
         .add_attribute("order_id", msg.order_id)
         .add_attribute("action", "cancel_swap")
-        .add_attribute("order_id", order.id.clone());
-    return Ok(res);
+        .add_attribute("order_id", order.id);
+    Ok(res)
 }
 
 /// Make bid: Use it to make bid from taker chain
@@ -253,9 +249,7 @@ pub fn execute_make_bid(
         }
     }
     if !ok {
-        return Err(ContractError::Std(StdError::generic_err(format!(
-            "Funds mismatch: Funds mismatched to with message and sent values: Make swap"
-        ))));
+        return Err(ContractError::Std(StdError::generic_err("Funds mismatch: Funds mismatched to with message and sent values: Make swap".to_string())));
     }
 
     if !order.maker.take_bids {
@@ -303,7 +297,7 @@ pub fn execute_make_bid(
         .add_message(ibc_msg)
         .add_attribute("order_id", msg.order_id)
         .add_attribute("action", "make_bid");
-    return Ok(res);
+    Ok(res)
 }
 
 /// Take Bid: Only maker(maker receiving address) can take bid for their order
@@ -360,7 +354,7 @@ pub fn execute_take_bid(
         .add_message(ibc_msg)
         .add_attribute("order_id", msg.order_id)
         .add_attribute("action", "take_bid");
-    return Ok(res);
+    Ok(res)
 }
 
 /// Cancel Bid: Bid maker can cancel their bid
@@ -411,7 +405,7 @@ pub fn execute_cancel_bid(
         .add_message(ibc_msg)
         .add_attribute("order_id", msg.order_id)
         .add_attribute("action", "make_bid");
-    return Ok(res);
+    Ok(res)
 }
 
 #[entry_point]
@@ -422,7 +416,7 @@ pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, C
         return Err(StdError::generic_err("Can only upgrade from same type").into());
     }
     // note: better to do proper semver compare, but string compare *usually* works
-    if ver.version >= CONTRACT_VERSION.to_string() {
+    if ver.version.as_str()  >= CONTRACT_VERSION {
         return Err(StdError::generic_err("Cannot upgrade from a newer version").into());
     }
 
@@ -495,8 +489,8 @@ fn query_details(deps: Deps, id: String) -> StdResult<DetailsResponse> {
         status: swap_order.status.clone(),
         path: swap_order.path.clone(),
         taker: swap_order.taker.clone(),
-        cancel_timestamp: swap_order.cancel_timestamp.clone(),
-        complete_timestamp: swap_order.complete_timestamp.clone(),
+        cancel_timestamp: swap_order.cancel_timestamp,
+        complete_timestamp: swap_order.complete_timestamp,
     };
     Ok(details)
 }
@@ -513,14 +507,14 @@ fn query_list(
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
     let start;
-    if !start_after.is_none() {
+    if start_after.is_some() {
         start = Some(Bound::exclusive(start_after.unwrap()));
     } else {
         start = None;
     }
     let order = order.unwrap_or("asc".to_string());
     let list_order;
-    if order == "asc".to_string() {
+    if order == *"asc" {
         list_order = Order::Ascending;
     } else {
         list_order = Order::Descending;
@@ -542,7 +536,7 @@ fn query_list_by_desired_taker(
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
     let start;
-    if !start_after.is_none() {
+    if start_after.is_some() {
         start = Some(Bound::exclusive(start_after.unwrap()));
     } else {
         start = None;
@@ -565,7 +559,7 @@ fn query_list_by_maker(
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
     let start;
-    if !start_after.is_none() {
+    if start_after.is_some() {
         start = Some(Bound::exclusive(start_after.unwrap()));
     } else {
         start = None;
@@ -588,7 +582,7 @@ fn query_list_by_taker(
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
     let start;
-    if !start_after.is_none() {
+    if start_after.is_some() {
         start = Some(Bound::exclusive(start_after.unwrap()));
     } else {
         start = None;
@@ -647,14 +641,14 @@ fn query_inactive_list(
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
     let start;
-    if !start_after.is_none() {
+    if start_after.is_some() {
         start = Some(Bound::exclusive(start_after.unwrap()));
     } else {
         start = None;
     }
     let order = order.unwrap_or("asc".to_string());
     let list_order;
-    if order == "asc".to_string() {
+    if order == *"asc" {
         list_order = Order::Ascending;
     } else {
         list_order = Order::Descending;
@@ -676,7 +670,7 @@ fn query_inactive_list_by_desired_taker(
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
     let start;
-    if !start_after.is_none() {
+    if start_after.is_some() {
         start = Some(Bound::exclusive(start_after.unwrap()));
     } else {
         start = None;
@@ -699,7 +693,7 @@ fn query_inactive_list_by_maker(
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
     let start;
-    if !start_after.is_none() {
+    if start_after.is_some() {
         start = Some(Bound::exclusive(start_after.unwrap()));
     } else {
         start = None;
@@ -722,7 +716,7 @@ fn query_inactive_list_by_taker(
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
     let start;
-    if !start_after.is_none() {
+    if start_after.is_some() {
         start = Some(Bound::exclusive(start_after.unwrap()));
     } else {
         start = None;
@@ -795,7 +789,7 @@ mod tests {
         };
         let err = execute(
             deps.as_mut(),
-            env.clone(),
+            env,
             info,
             ExecuteMsg::MakeSwap(create),
         )
@@ -809,7 +803,7 @@ mod tests {
 
         let info = mock_info("anyone", &[]);
         let env = mock_env();
-        instantiate(deps.as_mut(), env.clone(), info, InstantiateMsg {}).unwrap();
+        instantiate(deps.as_mut(), env, info, InstantiateMsg {}).unwrap();
         // let balance = coins(100, "tokens");
         let balance1 = coin(100, "token");
         let balance2 = coin(100, "aside");
@@ -840,15 +834,15 @@ mod tests {
         };
 
         let path = order_path(
-            source_channel.clone(),
-            source_port.clone(),
-            destination_channel.clone(),
-            destination_port.clone(),
-            sequence.clone(),
+            source_channel,
+            source_port,
+            destination_channel,
+            destination_port,
+            sequence,
         )
         .unwrap();
 
-        let order_id = generate_order_id(&path, create.clone());
+        let order_id = generate_order_id(&path, create);
         println!("order_id is {:?}", &order_id);
     }
 
@@ -858,7 +852,7 @@ mod tests {
 
         let info = mock_info("anyone", &[]);
         let env = mock_env();
-        instantiate(deps.as_mut(), env.clone(), info, InstantiateMsg {}).unwrap();
+        instantiate(deps.as_mut(), env, info, InstantiateMsg {}).unwrap();
         // let balance = coins(100, "tokens");
         let balance2 = coin(100, "aside");
         let taker_address = String::from("side1lqd386kze5355mgpncu5y52jcdhs85ckj7kdv0");
@@ -878,12 +872,12 @@ mod tests {
             timeout_timestamp: 1693399799000000000,
         };
 
-        let create_bytes = to_binary(&create.clone()).unwrap();
-        println!("create_bytes is {:?}", &create_bytes.clone().to_base64());
+        let create_bytes = to_binary(&create).unwrap();
+        println!("create_bytes is {:?}", &create_bytes.to_base64());
 
         let bytes = Binary::from_base64("eyJvcmRlcl9pZCI6ImJmNGRkODNmYzA0ZWE0YmY1NjVhMDI5NGVkMTVkMTg5ZWUyZDc2NjJhMTE3NDQyOGQzZDQ2YjQ2YWY1NWM3YTIiLCJzZWxsX3Rva2VuIjp7ImRlbm9tIjoiYXNpZGUiLCJhbW91bnQiOiIxMDAifSwidGFrZXJfYWRkcmVzcyI6InNpZGUxbHFkMzg2a3plNTM1NW1ncG5jdTV5NTJqY2Roczg1Y2tqN2tkdjAiLCJ0YWtlcl9yZWNlaXZpbmdfYWRkcmVzcyI6Indhc20xOXpsNGwyaGFmY2R3NnA5OWtjMDB6bnR0Z3BkeWszMmEwMnB1ajIiLCJ0aW1lb3V0X2hlaWdodCI6eyJyZXZpc2lvbl9udW1iZXIiOiIwIiwicmV2aXNpb25faGVpZ2h0IjoiOTk5OTk5NiJ9LCJ0aW1lb3V0X3RpbWVzdGFtcCI6IjE2OTMzOTk3OTkwMDAwMDAwMDAiLCJjcmVhdGVfdGltZXN0YW1wIjoiMTY4NDMyODUyNyJ9").unwrap();
 
-        println!("bytes is {:?}", &bytes.clone());
+        println!("bytes is {:?}", &bytes);
         // let msg: TakeSwapMsg = from_binary(&bytes.clone()).unwrap();
 
         let msg_res: Result<TakeSwapMsg, StdError> = from_binary(&bytes);
@@ -891,7 +885,7 @@ mod tests {
 
         match msg_res {
             Ok(value) => {
-                msg = value.clone();
+                msg = value;
             }
             Err(_err) => {
                 let msg_output: TakeSwapMsgOutput = from_binary(&bytes).unwrap();
@@ -904,13 +898,13 @@ mod tests {
                         revision_number: msg_output
                             .timeout_height
                             .revision_number
-                            .clone()
+                            
                             .parse()
                             .unwrap(),
                         revision_height: msg_output
                             .timeout_height
                             .revision_height
-                            .clone()
+                            
                             .parse()
                             .unwrap(),
                     },
