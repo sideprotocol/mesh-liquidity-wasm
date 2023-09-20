@@ -106,6 +106,8 @@ pub fn move_order_to_bottom(storage: &mut dyn Storage, order_id: &str) -> StdRes
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub enum BidStatus {
+    Initial,
+    Failed,
     Cancelled,
     Executed,
     Placed,
@@ -117,6 +119,7 @@ pub struct Bid {
     pub status: BidStatus,
     pub bidder: String,
     pub bidder_receiver: String,
+    pub expire_timestamp: u64,
 }
 // Map for order id -> Vec<Bids>
 // Order_id + BID_COUNT

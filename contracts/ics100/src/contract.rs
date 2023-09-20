@@ -16,7 +16,7 @@ use crate::state::{
     AtomicSwapOrder,
     Status,
     // CHANNEL_INFO,
-    SWAP_ORDERS,append_atomic_order, set_atomic_order, get_atomic_order, COUNT, move_order_to_bottom, BID_ORDER_TO_COUNT, Bid, BIDS, INACTIVE_SWAP_ORDERS, INACTIVE_COUNT, Side, CHANNEL_INFO, SWAP_SEQUENCE,
+    SWAP_ORDERS,append_atomic_order, set_atomic_order, get_atomic_order, COUNT, move_order_to_bottom, BID_ORDER_TO_COUNT, Bid, BIDS, INACTIVE_SWAP_ORDERS, INACTIVE_COUNT, Side, CHANNEL_INFO, SWAP_SEQUENCE, ORDER_TOTAL_COUNT, BidStatus,
 };
 use crate::utils::{extract_source_channel_for_taker_msg, generate_order_id,order_path};
 use cw_storage_plus::Bound;
@@ -79,7 +79,7 @@ pub fn execute_make_swap(
 
     // Add swap message 
     let channel_info = CHANNEL_INFO.load(deps.storage, &msg.source_channel)?;
-    let sequence = SWAP_SEQUENCE.load(deps.storage).unwrap();
+    let sequence = SWAP_SEQUENCE.load(deps.storage)?;
     let path = order_path(
         msg.source_channel.clone(),
         msg.source_port.clone(),
@@ -304,6 +304,33 @@ pub fn execute_make_bid(
         return Err(ContractError::BidAlreadyExist {});
     }
 
+    let order_id = msg.order_id.clone();
+    let count = ORDER_TOTAL_COUNT.may_load(deps.storage, &order_id)?;
+    let mut bid_count = 1;
+    if let Some(value) = count {
+        bid_count = value + 1;
+        ORDER_TOTAL_COUNT.save(deps.storage, &order_id, &bid_count)?;
+    } else {
+        ORDER_TOTAL_COUNT.save(deps.storage, &order_id, &bid_count)?;
+    }
+
+    let key = order_id.clone() + &msg.taker_address.clone();
+    if BID_ORDER_TO_COUNT.has(deps.storage, &key) {
+        return Err(ContractError::BidAlreadyExist {});
+    }
+
+    BID_ORDER_TO_COUNT.save(deps.storage, &key, &bid_count)?;
+
+    let bid: Bid = Bid {
+        bid: msg.sell_token.clone(),
+        status: BidStatus::Initial,
+        bidder: msg.taker_address.clone(),
+        bidder_receiver: msg.taker_receiving_address.clone(),
+        expire_timestamp: msg.expiration_timestamp,
+    };
+
+    BIDS.save(deps.storage, (&order_id, &bid_count.to_string()), &bid)?;
+
     let packet = AtomicSwapPacketData {
         r#type: SwapMessageType::MakeBid,
         data: to_binary(&msg)?,
@@ -359,6 +386,14 @@ pub fn execute_take_bid(
     let key = msg.order_id.clone() + &msg.bidder;
     if !BID_ORDER_TO_COUNT.has(deps.storage, &key) {
         return Err(ContractError::BidDoesntExist);
+    }
+
+    let key = msg.order_id.clone() + &msg.bidder;
+    let bid_count =  BID_ORDER_TO_COUNT.load(deps.storage, &key)?;
+    let bid = BIDS.load(deps.storage, (&msg.order_id.clone(), &bid_count.to_string()))?;
+
+    if env.block.time.seconds() > bid.expire_timestamp {
+        return Err(ContractError::Expired);
     }
 
     let packet = AtomicSwapPacketData {

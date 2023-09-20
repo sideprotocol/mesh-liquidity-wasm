@@ -183,7 +183,8 @@ pub struct MakeBidMsg {
     pub order_id: String,
     pub sell_token: Coin,
     pub taker_address: String,
-    pub taker_receiving_address: String
+    pub taker_receiving_address: String,
+    pub expiration_timestamp: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug, JsonSchema)]
