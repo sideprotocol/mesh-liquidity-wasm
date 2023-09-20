@@ -49,27 +49,27 @@ pub(crate) fn do_ibc_packet_receive(
             Ok(res)
         }
         SwapMessageType::MakeSwap => {
-            let msg: MakeSwapMsg = decode_make_swap_msg(&packet_data.data.clone());
+            let msg: MakeSwapMsg = decode_make_swap_msg(&packet_data.data);
             on_received_make(deps, env, packet, msg)
         }
         SwapMessageType::TakeSwap => {
-            let msg: TakeSwapMsg = decode_take_swap_msg(&packet_data.data.clone());
+            let msg: TakeSwapMsg = decode_take_swap_msg(&packet_data.data);
             on_received_take(deps, env, packet, msg)
         }
         SwapMessageType::CancelSwap => {
-            let msg: CancelSwapMsg = from_binary(&packet_data.data.clone())?;
+            let msg: CancelSwapMsg = from_binary(&packet_data.data)?;
             on_received_cancel(deps, env, packet, msg)
         }
         SwapMessageType::MakeBid => {
-            let msg: MakeBidMsg = from_binary(&packet_data.data.clone())?;
+            let msg: MakeBidMsg = from_binary(&packet_data.data)?;
             on_received_make_bid(deps, env, packet, msg)
         }
         SwapMessageType::TakeBid => {
-            let msg: TakeBidMsg = from_binary(&packet_data.data.clone())?;
+            let msg: TakeBidMsg = from_binary(&packet_data.data)?;
             on_received_take_bid(deps, env, packet, msg)
         }
         SwapMessageType::CancelBid => {
-            let msg: CancelBidMsg = from_binary(&packet_data.data.clone())?;
+            let msg: CancelBidMsg = from_binary(&packet_data.data)?;
             on_received_cancel_bid(deps, env, packet, msg)
         }
     }
@@ -92,12 +92,12 @@ pub(crate) fn on_received_make(
     let swap_order = AtomicSwapOrder {
         id: order_id.clone(),
         side: Side::Remote,
-        maker: msg.clone(),
+        maker: msg,
         status: Status::Sync,
         taker: None,
         cancel_timestamp: None,
         complete_timestamp: None,
-        path: path.clone(),
+        path,
         create_timestamp: env.block.time.seconds()
     };
 
@@ -131,15 +131,15 @@ pub(crate) fn on_received_take(
         return Err(ContractError::InvalidSellToken);
     }
 
-    if swap_order.maker.desired_taker != ""
-        && swap_order.maker.desired_taker != msg.taker_address.clone()
+    if !swap_order.maker.desired_taker.is_empty()
+        && swap_order.maker.desired_taker != msg.taker_address
     {
         return Err(ContractError::InvalidTakerAddress);
     }
 
     let taker_receiving_address = deps
         .api
-        .addr_validate(&msg.taker_receiving_address.clone())?;
+        .addr_validate(&msg.taker_receiving_address)?;
 
     let submsg: Vec<SubMsg> = send_tokens(
         &taker_receiving_address,
@@ -180,7 +180,7 @@ pub(crate) fn on_received_cancel(
         return Err(ContractError::InvalidStatus);
     }
 
-    if swap_order.taker != None {
+    if swap_order.taker.is_some() {
         return Err(ContractError::AlreadyTakenOrder);
     }
 
@@ -258,15 +258,15 @@ pub(crate) fn on_received_take_bid(
     let bid = BIDS.load(deps.storage, (&order_id, &bid_count.to_string()))?;
     BIDS.remove(deps.storage, (&order_id, &bid_count.to_string()));
 
-    if swap_order.maker.desired_taker != ""
-    && swap_order.maker.desired_taker != msg.bidder.clone()
+    if !swap_order.maker.desired_taker.is_empty()
+    && swap_order.maker.desired_taker != msg.bidder
     {
         return Err(ContractError::InvalidTakerAddress);
     }
 
     let taker_receiving_address = deps
         .api
-        .addr_validate(&bid.bidder_receiver.clone())?;
+        .addr_validate(&bid.bidder_receiver)?;
 
     let submsg: Vec<SubMsg> = send_tokens(
         &taker_receiving_address,
@@ -340,7 +340,7 @@ pub(crate) fn on_packet_success(
         SwapMessageType::Unspecified => Ok(IbcBasicResponse::new()),
         SwapMessageType::MakeSwap => {
             // let msg: MakeSwapMsg = from_binary(&packet_data.data.clone())?;
-            let msg: MakeSwapMsg = decode_make_swap_msg(&packet_data.data.clone());
+            let msg: MakeSwapMsg = decode_make_swap_msg(&packet_data.data);
             let path = order_path(
                 msg.source_channel.clone(),
                 msg.source_port.clone(),
@@ -353,9 +353,9 @@ pub(crate) fn on_packet_success(
             let new_order = AtomicSwapOrder {
                 id: order_id.clone(),
                 side: Side::Native,
-                maker: msg.clone(),
+                maker: msg,
                 status: Status::Sync,
-                path: path.clone(),
+                path,
                 taker: None,
                 cancel_timestamp: None,
                 complete_timestamp: None,
@@ -369,7 +369,7 @@ pub(crate) fn on_packet_success(
         // This is the step 9 (Transfer Take Token & Close order): https://github.com/cosmos/ibc/tree/main/spec/app/ics-100-atomic-swap
         // The step is executed on the Taker chain.
         SwapMessageType::TakeSwap => {
-            let msg: TakeSwapMsg = decode_take_swap_msg(&packet_data.data.clone());
+            let msg: TakeSwapMsg = decode_take_swap_msg(&packet_data.data);
 
             let order_id = msg.order_id.clone();
             let mut swap_order = get_atomic_order(deps.storage, &order_id)?;
@@ -394,7 +394,7 @@ pub(crate) fn on_packet_success(
         // This is the step 14 (Cancel & refund) of the atomic swap: https://github.com/cosmos/ibc/tree/main/spec/app/ics-100-atomic-swap
         // It is executed on the Maker chain.
         SwapMessageType::CancelSwap => {
-            let msg: CancelSwapMsg = from_binary(&packet_data.data.clone())?;
+            let msg: CancelSwapMsg = from_binary(&packet_data.data)?;
             let order_id = msg.order_id;
             let mut swap_order = get_atomic_order(deps.storage, &order_id)?;
 
@@ -413,7 +413,7 @@ pub(crate) fn on_packet_success(
                 .add_attributes(attributes))
         }
         SwapMessageType::MakeBid => {
-            let msg: MakeBidMsg = from_binary(&packet_data.data.clone())?;
+            let msg: MakeBidMsg = from_binary(&packet_data.data)?;
             let order_id = msg.order_id;
 
             let count = ORDER_TOTAL_COUNT.may_load(deps.storage, &order_id)?;
@@ -444,7 +444,7 @@ pub(crate) fn on_packet_success(
             Ok(IbcBasicResponse::new().add_attributes(attributes))
         }
         SwapMessageType::TakeBid => {
-            let msg: TakeBidMsg = from_binary(&packet_data.data.clone())?;
+            let msg: TakeBidMsg = from_binary(&packet_data.data)?;
             let order_id = msg.order_id.clone();
             let mut swap_order = get_atomic_order(deps.storage, &order_id)?;
 
@@ -460,7 +460,7 @@ pub(crate) fn on_packet_success(
         
             let maker_receiving_address = deps
                 .api
-                .addr_validate(&swap_order.maker.maker_receiving_address.clone())?;
+                .addr_validate(&swap_order.maker.maker_receiving_address)?;
         
             let submsg: Vec<SubMsg> = send_tokens(
                 &maker_receiving_address,
@@ -468,7 +468,7 @@ pub(crate) fn on_packet_success(
             )?;
         
             let take_msg: TakeSwapMsg = TakeSwapMsg {
-                order_id: order_id,
+                order_id,
                 sell_token: bid.bid,
                 taker_address: bid.bidder,
                 taker_receiving_address: bid.bidder_receiver,
@@ -486,7 +486,7 @@ pub(crate) fn on_packet_success(
                 .add_attributes(attributes))
         }
         SwapMessageType::CancelBid => {
-            let msg: CancelBidMsg = from_binary(&packet_data.data.clone())?;
+            let msg: CancelBidMsg = from_binary(&packet_data.data)?;
             let order_id = msg.order_id.clone();
 
             let key = msg.order_id + &msg.bidder;
@@ -499,11 +499,11 @@ pub(crate) fn on_packet_success(
 
             let taker_receiving_address = deps
             .api
-            .addr_validate(&bid.bidder.clone())?;
+            .addr_validate(&bid.bidder)?;
             // Refund amount
             let submsg: Vec<SubMsg> = send_tokens(
                 &taker_receiving_address,
-                bid.bid.clone(),
+                bid.bid,
             )?;
 
             BIDS.remove(deps.storage, (&order_id, &bid_count.to_string()));
@@ -543,7 +543,7 @@ pub(crate) fn refund_packet_token(
         SwapMessageType::Unspecified => Ok(vec![]),
         SwapMessageType::MakeSwap => {
             // let msg: MakeSwapMsg = from_binary(&packet.data.clone())?;
-            let msg: MakeSwapMsg = decode_make_swap_msg(&packet.data.clone());
+            let msg: MakeSwapMsg = decode_make_swap_msg(&packet.data);
             // let order_id: String = generate_order_id(packet.clone())?;
             // let swap_order: AtomicSwapOrder = SWAP_ORDERS.load(deps.storage, &order_id)?;
             let maker_address: Addr = deps.api.addr_validate(&msg.maker_address)?;
@@ -555,7 +555,7 @@ pub(crate) fn refund_packet_token(
         // This step is executed on the Taker chain when Take Swap request timeout.
         SwapMessageType::TakeSwap => {
             // let msg: TakeSwapMsg = from_binary(&packet.data.clone())?;
-            let msg: TakeSwapMsg = decode_take_swap_msg(&packet.data.clone());
+            let msg: TakeSwapMsg = decode_take_swap_msg(&packet.data);
             let order_id: String = msg.order_id.clone();
             let mut swap_order = get_atomic_order(deps.storage, &order_id)?;
             let taker_address: Addr = deps.api.addr_validate(&msg.taker_address)?;
@@ -571,7 +571,7 @@ pub(crate) fn refund_packet_token(
         // do nothing, only send tokens back when cancel msg is acknowledged.
         SwapMessageType::CancelSwap => Ok(vec![]),
         SwapMessageType::MakeBid => {
-            let msg: MakeBidMsg = from_binary(&packet.data.clone())?;
+            let msg: MakeBidMsg = from_binary(&packet.data)?;
             let taker_address: Addr = deps.api.addr_validate(&msg.taker_address)?;
             let submsg = send_tokens(&taker_address, msg.sell_token)?;
 

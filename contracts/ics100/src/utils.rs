@@ -27,7 +27,7 @@ pub fn generate_order_id(order_path: &str, msg: MakeSwapMsg) -> StdResult<String
         },
         timeout_timestamp: msg.timeout_timestamp.clone().to_string(),
         expiration_timestamp: msg.expiration_timestamp.clone().to_string(),
-        take_bids: msg.take_bids.clone(),
+        take_bids: msg.take_bids,
     };
 
     let binding_output = to_binary(&msg_output)?;
@@ -103,7 +103,7 @@ pub(crate) fn decode_take_swap_msg(data: &Binary) -> TakeSwapMsg {
 
     match msg_res {
         Ok(value) => {
-            msg = value.clone();
+            msg = value;
         }
         Err(_err) => {
             let msg_output: TakeSwapMsgOutput = from_binary(data).unwrap();
@@ -116,13 +116,13 @@ pub(crate) fn decode_take_swap_msg(data: &Binary) -> TakeSwapMsg {
                     revision_number: msg_output
                         .timeout_height
                         .revision_number
-                        .clone()
+                        
                         .parse()
                         .unwrap(),
                     revision_height: msg_output
                         .timeout_height
                         .revision_height
-                        .clone()
+                        
                         .parse()
                         .unwrap(),
                 },
@@ -139,7 +139,7 @@ pub(crate) fn decode_make_swap_msg(data: &Binary) -> MakeSwapMsg {
 
     match msg_res {
         Ok(value) => {
-            msg = value.clone();
+            msg = value;
         }
         Err(_err) => {
             let msg_output: MakeSwapMsgOutput = from_binary(data).unwrap();
@@ -155,13 +155,13 @@ pub(crate) fn decode_make_swap_msg(data: &Binary) -> MakeSwapMsg {
                     revision_number: msg_output
                         .timeout_height
                         .revision_number
-                        .clone()
+                        
                         .parse()
                         .unwrap(),
                     revision_height: msg_output
                         .timeout_height
                         .revision_height
-                        .clone()
+                        
                         .parse()
                         .unwrap(),
                 },
