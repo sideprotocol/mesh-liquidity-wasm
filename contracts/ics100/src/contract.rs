@@ -422,7 +422,7 @@ pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, C
         return Err(StdError::generic_err("Can only upgrade from same type").into());
     }
     // note: better to do proper semver compare, but string compare *usually* works
-    if ver.version >= CONTRACT_VERSION.to_string() {
+    if ver.version.as_str()  >= CONTRACT_VERSION {
         return Err(StdError::generic_err("Cannot upgrade from a newer version").into());
     }
 
