@@ -60,7 +60,7 @@ pub fn execute(
 // MakeSwap is called when the maker wants to make atomic swap. The method create new order and lock tokens.
 // This is the step 1 (Create order & Lock Token) of the atomic swap: https://github.com/cosmos/ibc/tree/main/spec/app/ics-100-atomic-swap
 pub fn execute_make_swap(
-    _deps: DepsMut,
+    deps: DepsMut,
     env: Env,
     info: MessageInfo,
     msg: MakeSwapMsg,
@@ -78,9 +78,8 @@ pub fn execute_make_swap(
     }
 
     // Add swap message 
-
-    let channel_info = CHANNEL_INFO.load(_deps.storage, &msg.source_channel)?;
-    let sequence = SWAP_SEQUENCE.load(_deps.storage).unwrap();
+    let channel_info = CHANNEL_INFO.load(deps.storage, &msg.source_channel)?;
+    let sequence = SWAP_SEQUENCE.load(deps.storage).unwrap();
     let path = order_path(
         msg.source_channel.clone(),
         msg.source_port.clone(),
@@ -101,7 +100,7 @@ pub fn execute_make_swap(
         complete_timestamp: None,
         create_timestamp: env.block.time.seconds()
     };
-    append_atomic_order(_deps.storage, &order_id, &new_order)?;
+    append_atomic_order(deps.storage, &order_id, &new_order)?;
     let ibc_packet = AtomicSwapPacketData {
         r#type: SwapMessageType::MakeSwap,
         data: to_binary(&msg)?,
@@ -111,9 +110,8 @@ pub fn execute_make_swap(
     };
 
     // Increment the sequence counter.
-    let store   = _deps.storage; 
     let new_sequence = sequence+1;
-    let _ = SWAP_SEQUENCE.save(store, &new_sequence);
+    SWAP_SEQUENCE.save(deps.storage, &new_sequence)?;
 
     let ibc_msg = IbcMsg::SendPacket {
         channel_id: msg.source_channel,
@@ -846,8 +844,7 @@ mod tests {
         let sequence = 3;
 
         // Cannot create, no funds
-        // let info = mock_info(&sender, &[]);
-        let create = MakeSwapMsg {
+        let _ = MakeSwapMsg {
             source_port: source_port.clone(),
             source_channel: source_channel.clone(),
             sell_token: balance1,

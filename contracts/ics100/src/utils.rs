@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     atomic_swap_handler::AtomicSwapPacketAcknowledgement,
-    msg::{Height, HeightOutput, MakeSwapMsg, MakeSwapMsgOutput, TakeSwapMsg, TakeSwapMsgOutput},
+    msg::{Height, MakeSwapMsg, MakeSwapMsgOutput, TakeSwapMsg, TakeSwapMsgOutput},
     ContractError, 
 };
 
@@ -22,7 +22,6 @@ pub fn generate_order_id(order_path: &str) -> StdResult<String> {
 
     Ok(id)
 }
-
 
 pub fn order_path(
     source_channel: String,
