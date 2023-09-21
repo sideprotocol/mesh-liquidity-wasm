@@ -106,6 +106,8 @@ pub fn move_order_to_bottom(storage: &mut dyn Storage, order_id: &str) -> StdRes
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub enum BidStatus {
+    Initial,
+    Failed,
     Cancelled,
     Executed,
     Placed,
@@ -117,10 +119,11 @@ pub struct Bid {
     pub status: BidStatus,
     pub bidder: String,
     pub bidder_receiver: String,
+    pub expire_timestamp: u64,
 }
 // Map for order id -> Vec<Bids>
 // Order_id + BID_COUNT
-pub const BIDS: Map<(&str, &str), Bid> = Map::new("swap_order");
+pub const BIDS: Map<(&str, &str), Bid> = Map::new("bids");
 
 // Each order bid count
 pub const ORDER_TOTAL_COUNT: Map<&str, u64> = Map::new("order_total_count");

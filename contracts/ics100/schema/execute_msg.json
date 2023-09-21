@@ -166,12 +166,18 @@
     "MakeBidMsg": {
       "type": "object",
       "required": [
+        "expiration_timestamp",
         "order_id",
         "sell_token",
         "taker_address",
         "taker_receiving_address"
       ],
       "properties": {
+        "expiration_timestamp": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
         "order_id": {
           "type": "string"
         },
