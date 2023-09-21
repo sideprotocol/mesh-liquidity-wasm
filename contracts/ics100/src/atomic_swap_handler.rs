@@ -6,7 +6,7 @@ use crate::{
     msg::{AtomicSwapPacketData, CancelSwapMsg, MakeSwapMsg, SwapMessageType, TakeSwapMsg, MakeBidMsg, TakeBidMsg, CancelBidMsg, Height},
     state::{AtomicSwapOrder, Status, Side, set_atomic_order, get_atomic_order, ORDER_TO_COUNT, append_atomic_order, move_order_to_bottom, ORDER_TOTAL_COUNT, BID_ORDER_TO_COUNT, Bid, BidStatus, BIDS},
     utils::{
-        decode_make_swap_msg, decode_take_swap_msg, generate_order_id, order_path, send_tokens,
+        decode_make_swap_msg, decode_take_swap_msg, send_tokens,
     },
 };
 use cosmwasm_std::{
@@ -81,15 +81,9 @@ pub(crate) fn on_received_make(
     packet: &IbcPacket,
     msg: MakeSwapMsg,
 ) -> Result<IbcReceiveResponse, ContractError> {
-    let path = order_path(
-        msg.source_channel.clone(),
-        msg.source_port.clone(),
-        packet.dest.channel_id.clone(),
-        packet.dest.port_id.clone(),
-        packet.sequence,
-    )?;
-    
-    let order_id = generate_order_id(&path)?;
+    let packet_data: AtomicSwapPacketData = from_binary(&packet.data)?;
+    let order_id = packet_data.order_id.unwrap();
+    let path = packet_data.path.unwrap();
     let swap_order = AtomicSwapOrder {
         id: order_id.clone(),
         side: Side::Remote,
