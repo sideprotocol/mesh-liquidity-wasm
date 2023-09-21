@@ -400,7 +400,7 @@ pub fn execute_take_bid(
     };
 
     let ibc_msg = IbcMsg::SendPacket {
-        channel_id: order.maker.source_channel,
+        channel_id: extract_source_channel_for_taker_msg(&order.path)?,
         data: to_binary(&packet)?,
         timeout: IbcTimeout::from(
             env.block

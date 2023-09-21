@@ -266,7 +266,7 @@ pub(crate) fn on_received_take_bid(
 
     let submsg: Vec<SubMsg> = send_tokens(
         &taker_receiving_address,
-        swap_order.maker.buy_token.clone(),
+        swap_order.maker.sell_token.clone(),
     )?;
 
     let take_msg: TakeSwapMsg = TakeSwapMsg {
@@ -397,31 +397,6 @@ pub(crate) fn on_packet_success(
 
             bid.status = BidStatus::Placed;
             BIDS.save(deps.storage, (&order_id, &bid_count.to_string()), &bid)?;
-
-            // let count = ORDER_TOTAL_COUNT.may_load(deps.storage, &order_id)?;
-            // let mut bid_count = 1;
-            // if let Some(value) = count {
-            //     bid_count = value + 1;
-            //     ORDER_TOTAL_COUNT.save(deps.storage, &order_id, &bid_count)?;
-            // } else {
-            //     ORDER_TOTAL_COUNT.save(deps.storage, &order_id, &bid_count)?;
-            // }
-        
-            // let key = order_id.clone() + &msg.taker_address;
-            // if BID_ORDER_TO_COUNT.has(deps.storage, &key) {
-            //     return Err(ContractError::BidAlreadyExist {});
-            // }
-        
-            // BID_ORDER_TO_COUNT.save(deps.storage, &key, &bid_count)?;
-        
-            // let bid: Bid = Bid {
-            //     bid: msg.sell_token,
-            //     status: BidStatus::Placed,
-            //     bidder: msg.taker_address,
-            //     bidder_receiver: msg.taker_receiving_address,
-            // };
-        
-            // BIDS.save(deps.storage, (&order_id, &bid_count.to_string()), &bid)?;
 
             Ok(IbcBasicResponse::new().add_attributes(attributes))
         }
