@@ -262,6 +262,26 @@ pub enum QueryMsg {
         limit: Option<u32>,
         taker: String,
     },
+    /// Reverse order.
+    ListReverse {
+        start_before: Option<u64>,
+        limit: Option<u32>,
+    },
+    ListByDesiredTakerReverse {
+        start_before: Option<u64>,
+        limit: Option<u32>,
+        desired_taker: String,
+    },
+    ListByMakerReverse {
+        start_before: Option<u64>,
+        limit: Option<u32>,
+        maker: String,
+    },
+    ListByTakerReverse {
+        start_before: Option<u64>,
+        limit: Option<u32>,
+        taker: String,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]

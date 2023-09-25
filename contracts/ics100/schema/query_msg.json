@@ -372,6 +372,145 @@
         }
       },
       "additionalProperties": false
+    },
+    {
+      "description": "Reverse order.",
+      "type": "object",
+      "required": [
+        "list_reverse"
+      ],
+      "properties": {
+        "list_reverse": {
+          "type": "object",
+          "properties": {
+            "limit": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "start_before": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "list_by_desired_taker_reverse"
+      ],
+      "properties": {
+        "list_by_desired_taker_reverse": {
+          "type": "object",
+          "required": [
+            "desired_taker"
+          ],
+          "properties": {
+            "desired_taker": {
+              "type": "string"
+            },
+            "limit": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "start_before": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "list_by_maker_reverse"
+      ],
+      "properties": {
+        "list_by_maker_reverse": {
+          "type": "object",
+          "required": [
+            "maker"
+          ],
+          "properties": {
+            "limit": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "maker": {
+              "type": "string"
+            },
+            "start_before": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "list_by_taker_reverse"
+      ],
+      "properties": {
+        "list_by_taker_reverse": {
+          "type": "object",
+          "required": [
+            "taker"
+          ],
+          "properties": {
+            "limit": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "start_before": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "taker": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
     }
   ]
 }

@@ -12,6 +12,7 @@ use crate::msg::{
     AtomicSwapPacketData, CancelSwapMsg, DetailsResponse, ExecuteMsg, InstantiateMsg, ListResponse,
     MakeSwapMsg, QueryMsg, SwapMessageType, TakeSwapMsg, MigrateMsg, MakeBidMsg, TakeBidMsg, CancelBidMsg,
 };
+use crate::query_reverse::{query_list_reverse, query_list_by_desired_taker_reverse, query_list_by_maker_reverse, query_list_by_taker_reverse};
 use crate::state::{
     AtomicSwapOrder,
     Status,
@@ -536,6 +537,28 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             limit,
             taker,
         } => to_binary(&query_inactive_list_by_taker(deps, start_after, limit, taker)?),
+        // Reverse
+        QueryMsg::ListReverse { start_before, limit } => to_binary(&query_list_reverse(deps, start_before, limit)?),
+        QueryMsg::ListByDesiredTakerReverse {
+            start_before,
+            limit,
+            desired_taker,
+        } => to_binary(&query_list_by_desired_taker_reverse(
+            deps,
+            start_before,
+            limit,
+            desired_taker,
+        )?),
+        QueryMsg::ListByMakerReverse {
+            start_before,
+            limit,
+            maker,
+        } => to_binary(&query_list_by_maker_reverse(deps, start_before, limit, maker)?),
+        QueryMsg::ListByTakerReverse {
+            start_before,
+            limit,
+            taker,
+        } => to_binary(&query_list_by_taker_reverse(deps, start_before, limit, taker)?),
     }
 }
 
@@ -555,8 +578,8 @@ fn query_details(deps: Deps, id: String) -> StdResult<DetailsResponse> {
 }
 
 // Settings for pagination
-const MAX_LIMIT: u32 = 50;
-const DEFAULT_LIMIT: u32 = 20;
+pub const MAX_LIMIT: u32 = 10000;
+pub const DEFAULT_LIMIT: u32 = 20;
 
 fn query_list(
     deps: Deps,
