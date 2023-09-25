@@ -25,7 +25,7 @@ pub fn get_pool_id_with_tokens(tokens: &[Coin], source: String, destination: Str
     let mut res = denoms.join("");
     res = res + &connection;
     let res_bytes = res.as_bytes();
-    let hash = Sha256::digest(res_bytes);
+    let hash = Sha256::digest(&res_bytes);
 
     let pool_id = format!("pool{}", hex::encode(hash));
     pool_id
@@ -34,16 +34,16 @@ pub fn get_pool_id_with_tokens(tokens: &[Coin], source: String, destination: Str
 pub fn get_connection_id(mut chain_ids: Vec<String>) -> String {
     chain_ids.sort();
 
-    
-    chain_ids.join("/")
+    let res = chain_ids.join("/");
+    return res;
 }
 
 pub fn get_order_id(maker: String, count: u64) -> String {
     let res = maker + &count.to_string();
     let res_bytes = res.as_bytes();
-    let hash = Sha256::digest(res_bytes);
+    let hash = Sha256::digest(&res_bytes);
     let order_id = format!("multi_deposit_order{}", hex::encode(hash));
-    order_id
+    return order_id;
 }
 
 /// ## Description
@@ -87,7 +87,7 @@ pub fn get_precision(assets: Vec<PoolAsset>, token: Coin) -> u32 {
     }
     // we already check if asset is present in pool asset vector
     // this code is unreachable
-    1
+    return 1;
 }
 
 pub fn check_slippage(
@@ -165,7 +165,7 @@ pub fn get_coins_from_deposits(deposits: Vec<DepositAsset>) -> Vec<Coin> {
     let mut tokens = vec![];
     tokens.push(deposits[0].balance.clone());
     tokens.push(deposits[1].balance.clone());
-    tokens
+    return tokens;
 }
 
 pub(crate) fn send_tokens_coin(to: &Addr, amount: Coin) -> StdResult<Vec<SubMsg>> {
@@ -178,11 +178,11 @@ pub(crate) fn send_tokens_coin(to: &Addr, amount: Coin) -> StdResult<Vec<SubMsg>
 
 pub fn mint_tokens_cw20(recipient: String, lp_token: String, amount: Uint128) -> StdResult<Vec<SubMsg>> {
     let msg = Cw20ExecuteMsg::Mint {
-        recipient,
-        amount,
+        recipient: recipient.into(),
+        amount: amount,
     };
     let exec = WasmMsg::Execute {
-        contract_addr: lp_token,
+        contract_addr: lp_token.into(),
         msg: to_binary(&msg)?,
         funds: vec![],
     };
@@ -191,10 +191,10 @@ pub fn mint_tokens_cw20(recipient: String, lp_token: String, amount: Uint128) ->
 
 pub fn burn_tokens_cw20(lp_token: String, amount: Uint128) -> StdResult<SubMsg> {
     let msg = Cw20ExecuteMsg::Burn {
-        amount,
+        amount: amount,
     };
     let exec = WasmMsg::Execute {
-        contract_addr: lp_token,
+        contract_addr: lp_token.into(),
         msg: to_binary(&msg)?,
         funds: vec![],
     };
@@ -203,11 +203,11 @@ pub fn burn_tokens_cw20(lp_token: String, amount: Uint128) -> StdResult<SubMsg> 
 
 pub fn send_tokens_cw20(recipient: String, lp_token: String, amount: Uint128) -> StdResult<Vec<SubMsg>> {
     let msg = Cw20ExecuteMsg::Transfer {
-        recipient,
-        amount,
+        recipient: recipient.into(),
+        amount: amount,
     };
     let exec = WasmMsg::Execute {
-        contract_addr: lp_token,
+        contract_addr: lp_token.into(),
         msg: to_binary(&msg)?,
         funds: vec![],
     };

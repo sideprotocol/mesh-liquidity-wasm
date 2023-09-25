@@ -121,6 +121,30 @@
         }
       },
       "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "SetLogAddress"
+      ],
+      "properties": {
+        "SetLogAddress": {
+          "type": "object",
+          "required": [
+            "address",
+            "pool_id"
+          ],
+          "properties": {
+            "address": {
+              "type": "string"
+            },
+            "pool_id": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
     }
   ],
   "definitions": {

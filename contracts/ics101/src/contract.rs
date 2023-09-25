@@ -133,7 +133,9 @@ fn remove_pool(
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     if config.admin != info.sender {
-        return Err(ContractError::Std(StdError::generic_err("not allowed".to_string())));
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "not allowed"
+        ))));
     }
 
     POOL_TOKENS_LIST.remove(deps.storage, &msg.pool_id);
@@ -151,7 +153,9 @@ fn set_log_address(
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     if config.admin != info.sender {
-        return Err(ContractError::Std(StdError::generic_err("not allowed".to_string())));
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "not allowed"
+        ))));
     }
 
     LOG_VOLUME.save(deps.storage, pool_id, &address)?;
@@ -177,11 +181,11 @@ pub fn receive_cw20(
                 // TODO: add sender check
                 let msg: MsgMultiAssetWithdrawRequest = MsgMultiAssetWithdrawRequest {
                     pool_id: pool_id.clone(),
-                    receiver,
-                    counterparty_receiver,
-                    pool_token: Coin {denom: pool_id, amount: cw20_msg.amount},
-                    timeout_height,
-                    timeout_timestamp 
+                    receiver: receiver,
+                    counterparty_receiver: counterparty_receiver,
+                    pool_token: Coin {denom: pool_id.clone(), amount: cw20_msg.amount},
+                    timeout_height: timeout_height,
+                    timeout_timestamp: timeout_timestamp 
                 };
                 multi_asset_withdraw(
                     deps,
@@ -221,7 +225,9 @@ fn make_pool(
     // load pool throw error if not found
     let interchain_pool_temp = POOLS.may_load(deps.storage,&pool_id)?;
     if let Some(_pool) = interchain_pool_temp {
-        return Err(ContractError::Std(StdError::generic_err("Pool already exists".to_string())));
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Pool already exists"
+        ))));
     }
 
     // check if given tokens are received here
@@ -234,7 +240,9 @@ fn make_pool(
         }
     }
     if !ok {
-        return Err(ContractError::Std(StdError::generic_err("Funds mismatch: Funds mismatched to with message and sent values: Make Pool".to_string())));
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Funds mismatch: Funds mismatched to with message and sent values: Make Pool"
+        ))));
     }
 
     let supply: Coin = Coin {amount: Uint128::from(0u64), denom: pool_id.clone()};
@@ -243,7 +251,7 @@ fn make_pool(
         source_creator: msg.creator.clone(),
         destination_creator: msg.counterparty_creator.clone(),
         assets: msg.liquidity.clone(),
-        supply,
+        supply: supply,
         status: PoolStatus::Initialized,
         counter_party_port: msg.source_port.clone(),
         counter_party_channel: msg.source_channel.clone(),
@@ -257,8 +265,10 @@ fn make_pool(
     // Instantiate token
     let config = CONFIG.load(deps.storage)?;
     let sub_msg: Vec<SubMsg>;
-    if let Some(_lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &pool_id)? {
-        return Err(ContractError::Std(StdError::generic_err("Pool token already exist: Make Pool".to_string())));
+    if let Some(_lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &pool_id.clone())? {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Pool token already exist: Make Pool"
+        ))));
         //sub_msg = vec![];
     } else {
         // Create the LP token contract
@@ -299,12 +309,12 @@ fn make_pool(
     let pool_data = to_binary(&msg)?;
     let ibc_packet_data = InterchainSwapPacketData {
         r#type: InterchainMessageType::MakePool,
-        data: pool_data,
+        data: pool_data.clone(),
         state_change: Some(state_change_data),
     };
 
     let ibc_msg = IbcMsg::SendPacket {
-        channel_id: source_channel,
+        channel_id: source_channel.clone(),
         data: to_binary(&ibc_packet_data)?,
         timeout: IbcTimeout::from(
             env.block
@@ -316,7 +326,7 @@ fn make_pool(
     let res = Response::default()
         .add_attribute("pool_id", pool_id.clone())
         .add_attribute("action", "make_pool")
-        .add_attribute("ics101-lp-instantiate", pool_id)
+        .add_attribute("ics101-lp-instantiate", pool_id.clone())
         .add_submessages(sub_msg)
         .add_message(ibc_msg);
     Ok(res)
@@ -342,7 +352,7 @@ fn take_pool(
     let config = CONFIG.load(deps.storage)?;
     // Send cw20 instantiate message
     let sub_msg: Vec<SubMsg>;
-    if let Some(_lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id)? {
+    if let Some(_lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id.clone())? {
         // do nothing
         sub_msg = vec![];
     } else {
@@ -394,18 +404,20 @@ fn take_pool(
         }
     }
     if !ok {
-        return Err(ContractError::Std(StdError::generic_err("Funds mismatch: Funds mismatched to with message and sent values: Take Pool".to_string())));
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Funds mismatch: Funds mismatched to with message and sent values: Take Pool"
+        ))));
     }
 
     let pool_data = to_binary(&msg).unwrap();
     let ibc_packet_data = InterchainSwapPacketData {
         r#type: InterchainMessageType::TakePool,
-        data: pool_data,
+        data: pool_data.clone(),
         state_change: None,
     };
 
     let ibc_msg = IbcMsg::SendPacket {
-        channel_id: interchain_pool.counter_party_channel,
+        channel_id: interchain_pool.counter_party_channel.clone(),
         data: to_binary(&ibc_packet_data)?,
         timeout: IbcTimeout::from(
             env.block
@@ -417,7 +429,7 @@ fn take_pool(
     let res = Response::default()
         .add_submessages(sub_msg)
         .add_message(ibc_msg)
-        .add_attribute("pool_id", msg.pool_id)
+        .add_attribute("pool_id", msg.pool_id.clone())
         .add_attribute("action", "take_pool");
     Ok(res)
 }
@@ -452,12 +464,12 @@ fn cancel_pool(
     let pool_data = to_binary(&msg).unwrap();
     let ibc_packet_data = InterchainSwapPacketData {
         r#type: InterchainMessageType::CancelPool,
-        data: pool_data,
+        data: pool_data.clone(),
         state_change: None,
     };
 
     let ibc_msg = IbcMsg::SendPacket {
-        channel_id: interchain_pool.counter_party_channel,
+        channel_id: interchain_pool.counter_party_channel.clone(),
         data: to_binary(&ibc_packet_data)?,
         timeout: IbcTimeout::from(
             env.block
@@ -468,7 +480,7 @@ fn cancel_pool(
 
     let res = Response::default()
         .add_message(ibc_msg)
-        .add_attribute("pool_id", msg.pool_id)
+        .add_attribute("pool_id", msg.pool_id.clone())
         .add_attribute("action", "take_pool");
     Ok(res)
 }
@@ -495,7 +507,9 @@ pub fn single_asset_deposit(
         }
     }
     if !ok {
-        return Err(ContractError::Std(StdError::generic_err("Funds mismatch: Funds mismatched to with message and sent values: Take Pool".to_string())));
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Funds mismatch: Funds mismatched to with message and sent values: Take Pool"
+        ))));
     }
 
     let pool_id = msg.pool_id.clone();
@@ -503,7 +517,9 @@ pub fn single_asset_deposit(
 
     // If the pool is empty, then return a `Failure` response
     if pool.supply.amount.is_zero() {
-        return Err(ContractError::Std(StdError::generic_err("Single asset cannot be provided to empty pool".to_string())));
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Single asset cannot be provided to empty pool"
+        ))));
     }
 
     if pool.status != PoolStatus::Active {
@@ -512,7 +528,7 @@ pub fn single_asset_deposit(
 
     // Create the interchain market maker (amm).
     let amm = InterchainMarketMaker {
-        pool_id,
+        pool_id: pool_id.clone(),
         pool: pool.clone(),
         fee_rate: pool.swap_fee,
     };
@@ -540,7 +556,7 @@ pub fn single_asset_deposit(
 
     // Send the IBC swap packet.
     let ibc_msg = IbcMsg::SendPacket {
-        channel_id: pool.counter_party_channel,
+        channel_id: pool.counter_party_channel.clone(),
         data: to_binary(&packet_data)?,
         timeout: IbcTimeout::from(
             env.block
@@ -551,7 +567,7 @@ pub fn single_asset_deposit(
 
     let res = Response::default()
         .add_message(ibc_msg)
-        .add_attribute("pool_id", msg.pool_id)
+        .add_attribute("pool_id", msg.pool_id.clone())
         .add_attribute("action", "single_asset_deposit");
     Ok(res)
 }
@@ -589,7 +605,9 @@ fn make_multi_asset_deposit(
         }
     }
     if !ok {
-        return Err(ContractError::Std(StdError::generic_err("Funds mismatch: Funds mismatched to with message and sent values: Make Pool".to_string())));
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Funds mismatch: Funds mismatched to with message and sent values: Make Pool"
+        ))));
     }
 
     // Check the pool status
@@ -605,8 +623,10 @@ fn make_multi_asset_deposit(
     };
 
     // Deposit the assets into the interchain market maker
-    let pool_tokens = amm.deposit_multi_asset(&[msg.deposits[0].balance.clone(),
-        msg.deposits[1].balance.clone()])?;
+    let pool_tokens = amm.deposit_multi_asset(&vec![
+        msg.deposits[0].balance.clone(),
+        msg.deposits[1].balance.clone(),
+    ])?;
 
     let mut config = CONFIG.load(deps.storage)?;
 
@@ -631,12 +651,12 @@ fn make_multi_asset_deposit(
     // if let Some(_order) = multi_asset_order_temp {
     //     return Err(ContractError::ErrPreviousOrderNotCompleted);
     // }
-    config.counter += 1;
+    config.counter = config.counter + 1;
     multi_asset_order.id = get_order_id(msg.deposits[0].sender.clone(), config.counter);
     //}
 
     // save order in source chain
-    let key = msg.pool_id.clone() + "-" + &multi_asset_order.id;
+    let key = msg.pool_id.clone() + "-" + &multi_asset_order.id.clone().to_string();
     MULTI_ASSET_DEPOSIT_ORDERS.save(deps.storage, key, &multi_asset_order)?;
     ACTIVE_ORDERS.save(deps.storage, ac_key, &multi_asset_order)?;
     CONFIG.save(deps.storage, &config)?;
@@ -652,12 +672,12 @@ fn make_multi_asset_deposit(
     })?;
     let packet_data = InterchainSwapPacketData {
         r#type: InterchainMessageType::MakeMultiDeposit,
-        data: to_binary(&msg)?,
+        data: to_binary(&msg.clone())?,
         state_change: Some(state_change_data),
     };
 
     let ibc_msg = IbcMsg::SendPacket {
-        channel_id: interchain_pool.counter_party_channel,
+        channel_id: interchain_pool.clone().counter_party_channel,
         data: to_binary(&packet_data)?,
         timeout: IbcTimeout::from(
             env.block
@@ -668,7 +688,7 @@ fn make_multi_asset_deposit(
 
     let res = Response::default()
         .add_message(ibc_msg)
-        .add_attribute("pool_id", msg.pool_id)
+        .add_attribute("pool_id", msg.pool_id.clone())
         .add_attribute("action", "make_multi_asset_deposit");
     Ok(res)
 }
@@ -691,7 +711,7 @@ fn cancel_multi_asset_deposit(
     }
     // get order
     // load orders
-    let key = msg.pool_id.clone() + "-" + &msg.order_id;
+    let key = msg.pool_id.clone() + "-" + &msg.order_id.clone().to_string();
     let multi_asset_order_temp = MULTI_ASSET_DEPOSIT_ORDERS.may_load(deps.storage, key)?;
     let multi_asset_order;
     if let Some(order) = multi_asset_order_temp {
@@ -710,12 +730,12 @@ fn cancel_multi_asset_deposit(
 
     let packet_data = InterchainSwapPacketData {
         r#type: InterchainMessageType::CancelMultiDeposit,
-        data: to_binary(&msg)?,
+        data: to_binary(&msg.clone())?,
         state_change: None,
     };
 
     let ibc_msg = IbcMsg::SendPacket {
-        channel_id: interchain_pool.counter_party_channel,
+        channel_id: interchain_pool.clone().counter_party_channel,
         data: to_binary(&packet_data)?,
         timeout: IbcTimeout::from(
             env.block
@@ -726,7 +746,7 @@ fn cancel_multi_asset_deposit(
 
     let res = Response::default()
         .add_message(ibc_msg)
-        .add_attribute("pool_id", msg.pool_id)
+        .add_attribute("pool_id", msg.pool_id.clone())
         .add_attribute("action", "cancel_multi_asset_deposit");
     Ok(res)
 }
@@ -749,7 +769,7 @@ fn take_multi_asset_deposit(
     }
     // get order
     // load orders
-    let key = msg.pool_id.clone() + "-" + &msg.order_id;
+    let key = msg.pool_id.clone() + "-" + &msg.order_id.clone().to_string();
     let multi_asset_order_temp = MULTI_ASSET_DEPOSIT_ORDERS.may_load(deps.storage, key)?;
     let multi_asset_order;
     if let Some(order) = multi_asset_order_temp {
@@ -778,7 +798,9 @@ fn take_multi_asset_deposit(
         }
     }
     if !ok {
-        return Err(ContractError::Std(StdError::generic_err("Funds mismatch: Funds mismatched to with message and sent values: Take Multi Asset".to_string())));
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Funds mismatch: Funds mismatched to with message and sent values: Take Multi Asset"
+        ))));
     }
 
     // find number of tokens to be minted
@@ -802,12 +824,12 @@ fn take_multi_asset_deposit(
     })?;
     let packet_data = InterchainSwapPacketData {
         r#type: InterchainMessageType::TakeMultiDeposit,
-        data: to_binary(&msg)?,
+        data: to_binary(&msg.clone())?,
         state_change: Some(state_change_data),
     };
 
     let ibc_msg = IbcMsg::SendPacket {
-        channel_id: interchain_pool.counter_party_channel,
+        channel_id: interchain_pool.clone().counter_party_channel,
         data: to_binary(&packet_data)?,
         timeout: IbcTimeout::from(
             env.block
@@ -818,7 +840,7 @@ fn take_multi_asset_deposit(
 
     let res = Response::default()
         .add_message(ibc_msg)
-        .add_attribute("pool_id", msg.pool_id)
+        .add_attribute("pool_id", msg.pool_id.clone())
         .add_attribute("action", "take_multi_asset_deposit");
     Ok(res)
 }
@@ -832,7 +854,7 @@ fn multi_asset_withdraw(
 ) -> Result<Response, ContractError> {
     // Get liquidity pool
     // load pool throw error if not found
-    let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id)?;
+    let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id.clone())?;
     let interchain_pool;
     if let Some(pool) = interchain_pool_temp {
         interchain_pool = pool
@@ -843,15 +865,15 @@ fn multi_asset_withdraw(
     }
 
     let sub_messages: Vec<SubMsg>;
-    if let Some(lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id)? {
+    if let Some(lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id.clone())? {
          // Transfer tokens from user account to contract
         let msg = Cw20ExecuteMsg::TransferFrom { 
-            owner: info.sender.to_string(), 
-            recipient: env.contract.address.to_string(),
+            owner: info.sender.to_string().clone(), 
+            recipient: env.contract.address.to_string().clone(),
             amount: msg.pool_token.amount
         };
         let exec = WasmMsg::Execute {
-            contract_addr: lp_token,
+            contract_addr: lp_token.into(),
             msg: to_binary(&msg)?,
             funds: vec![],
         };
@@ -859,7 +881,9 @@ fn multi_asset_withdraw(
     } else {
         // throw error token not found, initialization is done in make_pool and
         // take_pool
-        return Err(ContractError::Std(StdError::generic_err("LP Token is not initialized".to_string())));
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "LP Token is not initialized"
+        ))));
     }
 
     // Create the interchain market maker
@@ -922,7 +946,7 @@ fn multi_asset_withdraw(
     let res = Response::default()
         .add_submessages(sub_messages)
         .add_message(ibc_msg)
-        .add_attribute("pool_id", msg.pool_id)
+        .add_attribute("pool_id", msg.pool_id.clone())
         .add_attribute("action", "multi_asset_withdraw");
     Ok(res)
 }
@@ -935,7 +959,7 @@ fn swap(
 ) -> Result<Response, ContractError> {
     // Get liquidity pool
     // load pool throw error if not found
-    let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id)?;
+    let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id.clone())?;
     let interchain_pool;
     if let Some(pool) = interchain_pool_temp {
         interchain_pool = pool
@@ -959,7 +983,9 @@ fn swap(
         }
     }
     if !ok {
-        return Err(ContractError::Std(StdError::generic_err("Funds mismatch: Funds mismatched to with message and sent values: Swap".to_string())));
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Funds mismatch: Funds mismatched to with message and sent values: Swap"
+        ))));
     }
 
     // Create the interchain market maker
@@ -1027,7 +1053,7 @@ fn swap(
 
     let res = Response::default()
         .add_message(ibc_msg)
-        .add_attribute("pool_id", msg.pool_id)
+        .add_attribute("pool_id", msg.pool_id.clone())
         .add_attribute("action", "swap");
     Ok(res)
 }
@@ -1076,7 +1102,7 @@ pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, C
         return Err(StdError::generic_err("Can only upgrade from same type").into());
     }
     // note: better to do proper semver compare, but string compare *usually* works
-    if ver.version.as_str()  >= CONTRACT_VERSION {
+    if ver.version >= CONTRACT_VERSION.to_string() {
         return Err(StdError::generic_err("Cannot upgrade from a newer version").into());
     }
 
@@ -1096,7 +1122,9 @@ fn query_interchain_pool(
     if let Some(pool) = interchain_pool_temp {
         interchain_pool = pool;
     } else {
-        return Err(StdError::generic_err("Pool not found".to_string()));
+        return Err(StdError::generic_err(format!(
+            "Pool not found"
+        )));
     }
 
     Ok(InterchainPoolResponse {
@@ -1141,7 +1169,9 @@ fn query_order(
     if let Some(order) = multi_asset_order_temp {
         multi_asset_order = order;
     } else {
-        return Err(StdError::generic_err("Order not found".to_string()));
+        return Err(StdError::generic_err(format!(
+            "Order not found"
+        )));
     };
 
     Ok(multi_asset_order)
@@ -1168,12 +1198,14 @@ fn query_pool_address(
     pool_id: String
 ) -> StdResult<String> {
     let res;
-    if let Some(lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &pool_id)? {
+    if let Some(lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &pool_id.clone())? {
         res = lp_token
     } else {
         // throw error token not found, initialization is done in make_pool and
         // take_pool
-        return Err(StdError::generic_err("LP Token is not initialized".to_string()));
+        return Err(StdError::generic_err(format!(
+            "LP Token is not initialized"
+        )));
     }
 
     Ok(res)
@@ -1203,7 +1235,7 @@ fn query_left_swap(
 ) -> StdResult<Coin> {
     // Get liquidity pool
     // load pool throw error if not found
-    let interchain_pool_temp = POOLS.may_load(deps.storage, &pool_id)?;
+    let interchain_pool_temp = POOLS.may_load(deps.storage, &pool_id.clone())?;
     let interchain_pool;
     if let Some(pool) = interchain_pool_temp {
         interchain_pool = pool
@@ -1215,7 +1247,9 @@ fn query_left_swap(
 
     // Check the pool status
     if interchain_pool.status != PoolStatus::Active {
-        return Err(StdError::generic_err("Pool not ready for swap!".to_string()));
+        return Err(StdError::generic_err(format!(
+            "Pool not ready for swap!"
+        )));
     }
 
     // Create the interchain market maker
@@ -1224,7 +1258,7 @@ fn query_left_swap(
         pool: interchain_pool.clone(),
         fee_rate: interchain_pool.swap_fee,
     };
-    let result = amm.compute_swap(token_in, &token_out.denom)?;
+    let result = amm.compute_swap(token_in.clone(), &token_out.denom)?;
     Ok(result)
 }
 
@@ -1236,7 +1270,7 @@ fn query_right_swap(
 ) -> StdResult<Coin> {
     // Get liquidity pool
     // load pool throw error if not found
-    let interchain_pool_temp = POOLS.may_load(deps.storage, &pool_id)?;
+    let interchain_pool_temp = POOLS.may_load(deps.storage, &pool_id.clone())?;
     let interchain_pool;
     if let Some(pool) = interchain_pool_temp {
         interchain_pool = pool
@@ -1248,7 +1282,9 @@ fn query_right_swap(
 
     // Check the pool status
     if interchain_pool.status != PoolStatus::Active {
-        return Err(StdError::generic_err("Pool not ready for swap!".to_string()));
+        return Err(StdError::generic_err(format!(
+            "Pool not ready for swap!"
+        )));
     }
 
     // Create the interchain market maker
@@ -1257,7 +1293,7 @@ fn query_right_swap(
         pool: interchain_pool.clone(),
         fee_rate: interchain_pool.swap_fee,
     };
-    let result = amm.compute_offer_amount(token_in, token_out)?;
+    let result = amm.compute_offer_amount(token_in.clone(), token_out)?;
     Ok(result)
 }
 
@@ -1273,7 +1309,9 @@ fn query_active_orders(
     if let Some(order) = multi_asset_order_temp {
         multi_asset_order = order;
     } else {
-        return Err(StdError::generic_err("No active order".to_string()));
+        return Err(StdError::generic_err(format!(
+            "No active order"
+        )));
     };
 
     Ok(multi_asset_order)
@@ -1299,7 +1337,7 @@ fn query_rate(deps: Deps, pool_id: String, amount: Uint128) -> StdResult<Vec<Coi
         fee_rate: interchain_pool.swap_fee,
     };
 
-    amm.multi_asset_withdraw(Coin {amount, denom: pool_id})
+    Ok(amm.multi_asset_withdraw(Coin {amount: amount, denom: pool_id})?)
 }
 
 

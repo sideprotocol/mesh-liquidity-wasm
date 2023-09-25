@@ -40,7 +40,7 @@ pub fn solve_constant_function_invariant(
     };
 
     let amount_y = token_balance_unknown_before.checked_mul(paranthetical)?;
-    Ok(amount_y)
+    return Ok(amount_y);
 }
 
 /// ## Description - Inspired from Osmosis implementaton here - https://github.com/osmosis-labs/osmosis/blob/main/x/gamm/pool-models/balancer/amm.go#L116
@@ -84,13 +84,13 @@ pub fn calc_minted_shares_given_single_asset_in(
         Decimal::DECIMAL_PLACES as u8,
     )?;
 
-    Ok((pool_amount_out_adj, fee_charged))
+    return Ok((pool_amount_out_adj, fee_charged));
 }
 
 // feeRatio returns the fee ratio that is defined as follows:
 // 1 - ((1 - normalizedTokenWeightOut) * swapFee)
 fn fee_ratio(normalized_weight: Decimal, swap_fee: Decimal) -> Decimal {
-    Decimal::one() - ((Decimal::one() - normalized_weight) * swap_fee)
+    return Decimal::one() - ((Decimal::one() - normalized_weight) * swap_fee);
 }
 
 // ## Description

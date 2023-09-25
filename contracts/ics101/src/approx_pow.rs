@@ -7,9 +7,9 @@ const DECIMAL_FRACTIONAL: Uint128 = Uint128::new(1_000_000_000_000_000_000u128);
 /// Returns mod subtraction and boolean indicating if the result is negative
 fn sub_sign(a: Decimal, b: Decimal) -> (Decimal, bool) {
     if a >= b {
-        (a - b, false)
+        return (a - b, false);
     } else {
-        (b - a, true)
+        return (b - a, true);
     }
 }
 
@@ -89,7 +89,7 @@ pub fn pow_approx(base: Decimal, exp: Decimal, precision: Decimal) -> StdResult<
 
     // :-_-: If theres a bug, balancer and osmosis are also wrong here :-_-:
 
-    let base = base;
+    let base = base.clone();
     let (x, xneg) = sub_sign(base, Decimal::one());
     let mut term = Decimal::one();
     let mut sum = Decimal::one();
@@ -131,7 +131,7 @@ pub fn pow_approx(base: Decimal, exp: Decimal, precision: Decimal) -> StdResult<
         }
         i += 1;
     }
-    Ok(sum)
+    return Ok(sum);
 }
 
 #[cfg(test)]

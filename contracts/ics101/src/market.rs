@@ -166,7 +166,7 @@ impl InterchainMarketMaker {
             // Asset weights already normalized
             (issue_amount, _fee_charged) = calc_minted_shares_given_single_asset_in(
                 token.amount,
-                asset.decimal,
+                asset.decimal.into(),
                 pool_asset_weighted,
                 self.pool.supply.amount,
                 Decimal::from_ratio(self.fee_rate, FEE_PRECISION),
@@ -190,7 +190,7 @@ impl InterchainMarketMaker {
             if self.pool.status == PoolStatus::Initialized && self.pool.supply.amount.is_zero() {
                 for asset in &self.pool.assets {
                     let dec_asset_amount = adjust_precision(asset.balance.amount, asset.decimal.try_into().unwrap(), 18)?;
-                    total_asset_amount += dec_asset_amount;
+                    total_asset_amount = total_asset_amount + dec_asset_amount;
                 }
                 let mult_amount = total_asset_amount.checked_mul(asset.weight.into())?;
                 issue_amount = Decimal::from_ratio(mult_amount, Uint128::from(100u128));
@@ -207,11 +207,11 @@ impl InterchainMarketMaker {
             };
             out_tokens.push(output_token)
         }
-        Ok(out_tokens)
+        return Ok(out_tokens)
     }
 
     pub fn multi_asset_withdraw(&self, redeem: Coin) -> StdResult<Vec<Coin>> {
-        let total_share = self.pool.supply.amount;
+        let total_share = self.pool.supply.amount.clone();
 
         // % of share to be burnt from the pool
         let share_out_ratio = Decimal::from_ratio(redeem.amount, total_share);
@@ -353,8 +353,8 @@ impl InterchainMarketMaker {
         let amount_dec = Decimal::from_ratio(amount.u128(), Uint128::one());
         let fee_rate_dec = Decimal::from_ratio(self.fee_rate, Uint128::new(10000));
         let fees = amount_dec * fee_rate_dec;
-        
-        amount_dec - fees
+        let amount_minus_fees = amount_dec - fees;
+        amount_minus_fees
     }
 }
 

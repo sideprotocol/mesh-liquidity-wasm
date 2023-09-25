@@ -85,7 +85,7 @@ impl MsgMakePoolRequest {
         }
 
         if total_weight != 100 {
-            return Err(ContractError::InvalidWeightPair);
+            return Err(ContractError::InvalidWeightPair.into());
         }
 
         Ok(Response::default())
@@ -303,10 +303,11 @@ impl TokenInstantiateMsg {
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct LogObservation {
-    pub token1: Coin,
-    pub token2: Coin,
+pub enum LogExecuteMsg {
+    LogObservation {
+        token1: Coin,
+        token2: Coin,
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
