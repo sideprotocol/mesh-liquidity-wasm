@@ -11,9 +11,11 @@ use crate::{
         get_pool_id_with_tokens, get_coins_from_deposits, mint_tokens_cw20, send_tokens_coin, send_tokens_cw20, burn_tokens_cw20,
     }, msg::{MsgMakePoolRequest, MsgTakePoolRequest, MsgSingleAssetDepositRequest,
      MsgMultiAssetWithdrawRequest, MsgSwapRequest,
-    MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, MsgCancelPoolRequest, MsgCancelMultiAssetDepositRequest, LogObservation}
+    MsgMakeMultiAssetDepositRequest, MsgTakeMultiAssetDepositRequest, MsgCancelPoolRequest, MsgCancelMultiAssetDepositRequest}
     ,market::{InterchainLiquidityPool, PoolStatus::{Initialized, Active, Cancelled}, InterchainMarketMaker, PoolSide},
 };
+use crate::msg::LogExecuteMsg::LogObservation;
+
 use cosmwasm_std::{
     attr, from_binary, to_binary, Binary, DepsMut, Env, IbcBasicResponse, IbcPacket,
     IbcReceiveResponse, SubMsg, Coin, Uint128, StdError, Addr, from_slice, WasmMsg,
