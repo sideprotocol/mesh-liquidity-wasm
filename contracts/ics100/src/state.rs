@@ -117,21 +117,12 @@ pub enum BidStatus {
 pub struct Bid {
     pub bid: Coin,
     pub order: String,
-    pub bid_count: u128,
     pub status: BidStatus,
     pub bidder: String,
     pub bidder_receiver: String,
+    pub receive_timestamp: u64,
     pub expire_timestamp: u64,
 }
-// Map for order id -> Vec<Bids>
-// Order_id + BID_COUNT
-//pub const BIDS: Map<(&str, &str), Bid> = Map::new("bids");
-
-// Each order bid count
-pub const BIDS_TOTAL_COUNT: Map<&str, u128> = Map::new("order_total_count");
-
-// order_id + account address -> order_count
-//pub const BID_ORDER_TO_COUNT: Map<&str, u64> = Map::new("bid_order_to_count");
 
 /// Primary key for asks: (collection, token_id)
 pub type BidKey = (String, String);
@@ -143,12 +134,12 @@ pub fn bid_key(order: &String, bidder: &String) -> BidKey {
 pub struct BidIndicies<'a> {
     pub order: MultiIndex<'a, String, Bid, BidKey>,
     pub order_price: MultiIndex<'a, (String, u128), Bid, BidKey>,
-    pub bid_count: MultiIndex<'a, u128, Bid, BidKey>,
+    pub timestamp: MultiIndex<'a, u64, Bid, BidKey>,
 }
 
 impl<'a> IndexList<Bid> for BidIndicies<'a> {
     fn get_indexes(&'_ self) -> Box<dyn Iterator<Item = &'_ dyn Index<Bid>> + '_> {
-        let v: Vec<&dyn Index<Bid>> = vec![&self.order, &self.order_price, &self.bid_count];
+        let v: Vec<&dyn Index<Bid>> = vec![&self.order, &self.order_price, &self.timestamp];
         Box::new(v.into_iter())
     }
 }
@@ -165,8 +156,8 @@ pub fn bids<'a>() -> IndexedMap<'a, BidKey, Bid, BidIndicies<'a>> {
             "bids",
             "bids__order_price",
         ),
-        bid_count: MultiIndex::new(
-            |_pk: &[u8], d: &Bid| d.bid_count.clone(),
+        timestamp: MultiIndex::new(
+            |_pk: &[u8], d: &Bid| d.receive_timestamp.clone(),
             "bids",
             "bids__count",
         ),

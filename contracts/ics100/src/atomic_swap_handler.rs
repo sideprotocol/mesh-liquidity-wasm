@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     error::ContractError,
     msg::{AtomicSwapPacketData, CancelSwapMsg, MakeSwapMsg, SwapMessageType, TakeSwapMsg, MakeBidMsg, TakeBidMsg, CancelBidMsg, Height},
-    state::{AtomicSwapOrder, Status, Side, set_atomic_order, get_atomic_order, ORDER_TO_COUNT, append_atomic_order, move_order_to_bottom, ORDER_TOTAL_COUNT, BID_ORDER_TO_COUNT, Bid, BidStatus, BIDS},
+    state::{AtomicSwapOrder, Status, Side, set_atomic_order, get_atomic_order, ORDER_TO_COUNT, append_atomic_order, move_order_to_bottom, Bid, BidStatus, bid_key, BIDS_TOTAL_COUNT, bids},
     utils::{
         decode_make_swap_msg, decode_take_swap_msg, send_tokens,
     },
@@ -218,6 +218,8 @@ pub(crate) fn on_received_make_bid(
 
     let bid: Bid = Bid {
         bid: msg.sell_token,
+        order: msg.order_id,
+        bid_count: bid_count,
         status: BidStatus::Placed,
         bidder: msg.taker_address,
         bidder_receiver: msg.taker_receiving_address,
@@ -532,12 +534,9 @@ pub(crate) fn refund_packet_token(
             let submsg = send_tokens(&taker_address, msg.sell_token)?;
             let order_id = msg.order_id;
 
-            let key = order_id.clone() + &msg.taker_address;
-            let bid_count =  BID_ORDER_TO_COUNT.load(deps.storage, &key)?;
-            let mut bid = BIDS.load(deps.storage, (&order_id, &bid_count.to_string()))?;
-
-            bid.status = BidStatus::Placed;
-            BIDS.save(deps.storage, (&order_id, &bid_count.to_string()), &bid)?;
+            // Remove bid
+            let key = bid_key(&order_id, &msg.taker_address);
+            bids().remove(deps.storage, key);
 
             Ok(submsg)
         },
