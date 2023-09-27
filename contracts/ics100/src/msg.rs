@@ -252,14 +252,34 @@ pub enum QueryMsg {
     /// Returns the details of the named swap, error if not created.
     /// Return type: DetailsResponse.
     Details { id: String },
-    BidDetailsbyOrder {
-        start_after: Option<u64>,
+    BidByAmount {
+        order: String,
+        start_after: Option<BidOffset>,
         limit: Option<u32>,
-        order_id: String,
     },
-    BidDetailsbyBidder {
-        order_id: String,
+    BidByAmountReverse {
+        order: String,
+        start_before: Option<BidOffset>,
+        limit: Option<u32>,
+    },
+    BidbyOrder {
+        order: String,
+        start_after: Option<BidOffsetTime>,
+        limit: Option<u32>,
+    },
+    BidbyOrderReverse {
+        order: String,
+        start_before: Option<BidOffsetTime>,
+        limit: Option<u32>,
+    },
+    BidDetails {
+        order: String,
         bidder: String,
+    },
+    BidByBidder {
+        bidder: String,
+        start_after: Option<String>, // order
+        limit: Option<u32>,
     },
     /// Inactive fields query
     InactiveList {

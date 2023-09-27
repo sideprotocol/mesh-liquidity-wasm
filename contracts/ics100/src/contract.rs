@@ -302,13 +302,13 @@ pub fn execute_make_bid(
     }
 
     let key = bid_key(&msg.order_id, &msg.taker_address);
-    if bids().has(deps.storage, key) {
+    if bids().has(deps.storage, key.clone()) {
         return Err(ContractError::BidAlreadyExist {});
     }
 
     let bid: Bid = Bid {
         bid: msg.sell_token.clone(),
-        order: msg.order_id,
+        order: msg.order_id.clone(),
         status: BidStatus::Initial,
         bidder: msg.taker_address.clone(),
         bidder_receiver: msg.taker_receiving_address.clone(),
@@ -371,7 +371,7 @@ pub fn execute_take_bid(
     }
 
     let key = bid_key(&msg.order_id, &msg.bidder);
-    if !bids().has(deps.storage, key) {
+    if !bids().has(deps.storage, key.clone()) {
         return Err(ContractError::BidDoesntExist);
     }
 
@@ -500,10 +500,21 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             taker,
         } => to_binary(&query_list_by_taker(deps, start_after, limit, taker)?),
         QueryMsg::Details { id } => to_binary(&query_details(deps, id)?),
-        QueryMsg::BidDetailsbyOrder { start_after, limit, order_id }
-            => to_binary(&query_bids_by_order(deps, start_after, limit, order_id)?),
-        QueryMsg::BidDetailsbyBidder { order_id, bidder }
-            => to_binary(&query_bids_by_bidder(deps,  order_id, bidder)?),
+        // Bids
+
+        QueryMsg::BidByAmount { order, start_after, limit }
+            => to_binary(&query_bids_sorted_by_amount(deps, order, start_after, limit)?),
+        QueryMsg::BidByAmountReverse { order, start_before, limit }
+            => to_binary(&query_bids_sorted_by_amount_reverse(deps, order, start_before, limit)?),
+        QueryMsg::BidbyOrder { order, start_after, limit }
+            => to_binary(&query_bids_sorted_by_order(deps, order, start_after, limit)?),
+        QueryMsg::BidbyOrderReverse { order, start_before, limit }
+            => to_binary(&query_bids_sorted_by_order_reverse(deps, order, start_before, limit)?),
+        QueryMsg::BidDetails { order, bidder }
+            => to_binary(&query_bid(deps, order, bidder)?),
+        QueryMsg::BidByBidder { bidder, start_after, limit }
+            => to_binary(&query_bids_by_bidder(deps, bidder, start_after, limit)?),
+
         // Inactive fields
         QueryMsg::InactiveList { start_after, limit, order } => to_binary(&query_inactive_list(deps, start_after, limit, order)?),
         QueryMsg::InactiveListByDesiredTaker {

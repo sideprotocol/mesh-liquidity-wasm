@@ -200,7 +200,7 @@ pub(crate) fn on_received_make_bid(
 ) -> Result<IbcReceiveResponse, ContractError> {
     let order_id = msg.order_id.clone();
     let key = bid_key(&msg.order_id, &msg.taker_address);
-    if bids().has(deps.storage, key) {
+    if bids().has(deps.storage, key.clone()) {
         return Err(ContractError::BidAlreadyExist {});
     }
 
@@ -235,11 +235,11 @@ pub(crate) fn on_received_take_bid(
     let mut swap_order = get_atomic_order(deps.storage, &order_id)?;
 
     let key = bid_key(&msg.order_id, &msg.bidder);
-    if !bids().has(deps.storage, key) {
+    if !bids().has(deps.storage, key.clone()) {
         return Err(ContractError::BidDoesntExist);
     }
 
-    let bid = bids().load(deps.storage, key)?;
+    let bid = bids().load(deps.storage, key.clone())?;
 
     if !swap_order.maker.desired_taker.is_empty()
     && swap_order.maker.desired_taker != msg.bidder
@@ -270,7 +270,7 @@ pub(crate) fn on_received_take_bid(
 
     set_atomic_order(deps.storage, &msg.order_id, &swap_order)?;
     move_order_to_bottom(deps.storage, &msg.order_id)?;
-    bids().remove(deps.storage, key);
+    bids().remove(deps.storage, key)?;
 
     let res = IbcReceiveResponse::new()
         .set_ack(ack_success())
@@ -291,10 +291,10 @@ pub(crate) fn on_received_cancel_bid(
     let order_id = msg.order_id.clone();
  
     let key = bid_key(&msg.order_id, &msg.bidder);
-    if !bids().has(deps.storage, key) {
+    if !bids().has(deps.storage, key.clone()) {
         return Err(ContractError::BidDoesntExist);
     }
-    bids().remove(deps.storage, key);
+    bids().remove(deps.storage, key)?;
 
     let res = IbcReceiveResponse::new()
         .set_ack(ack_success())
@@ -375,10 +375,9 @@ pub(crate) fn on_packet_success(
         }
         SwapMessageType::MakeBid => {
             let msg: MakeBidMsg = from_binary(&packet_data.data)?;
-            let order_id = msg.order_id;
 
             let key = bid_key(&msg.order_id, &msg.taker_address);
-            let mut bid = bids().load(deps.storage, key)?;
+            let mut bid = bids().load(deps.storage, key.clone())?;
 
             bid.status = BidStatus::Placed;
             bids().save(deps.storage, key, &bid)?;
@@ -391,12 +390,12 @@ pub(crate) fn on_packet_success(
             let mut swap_order = get_atomic_order(deps.storage, &order_id)?;
 
             let key = bid_key(&msg.order_id, &msg.bidder);
-            if !bids().has(deps.storage, key) {
+            if !bids().has(deps.storage, key.clone()) {
                 return Err(ContractError::BidDoesntExist);
             }
         
-            let bid = bids().load(deps.storage, key)?;
-            bids().remove(deps.storage, key);
+            let bid = bids().load(deps.storage, key.clone())?;
+            bids().remove(deps.storage, key)?;
         
             let maker_receiving_address = deps
                 .api
@@ -427,13 +426,12 @@ pub(crate) fn on_packet_success(
         }
         SwapMessageType::CancelBid => {
             let msg: CancelBidMsg = from_binary(&packet_data.data)?;
-            let order_id = msg.order_id.clone();
-
+          
             let key = bid_key(&msg.order_id, &msg.bidder);
-            if !bids().has(deps.storage, key) {
+            if !bids().has(deps.storage, key.clone()) {
                 return Err(ContractError::BidDoesntExist);
             }
-            let bid = bids().load(deps.storage, key)?;
+            let bid = bids().load(deps.storage, key.clone())?;
 
             let taker_receiving_address = deps
             .api
@@ -444,7 +442,7 @@ pub(crate) fn on_packet_success(
                 bid.bid,
             )?;
 
-            bids().remove(deps.storage, key);
+            bids().remove(deps.storage, key)?;
 
             Ok(IbcBasicResponse::new()
                 .add_submessages(submsg)
@@ -516,7 +514,7 @@ pub(crate) fn refund_packet_token(
 
             // Remove bid
             let key = bid_key(&order_id, &msg.taker_address);
-            bids().remove(deps.storage, key);
+            bids().remove(deps.storage, key)?;
 
             Ok(submsg)
         },
