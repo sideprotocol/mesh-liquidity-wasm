@@ -805,11 +805,7 @@ pub fn query_bids_by_bidder(
 ) -> StdResult<BidsResponse> {
     let limit = limit.unwrap_or(DEFAULT_QUERY_LIMIT).min(MAX_QUERY_LIMIT) as usize;
 
-    let start = if let Some(start) = start_after {
-        Some(Bound::exclusive(bid_key(&start, &bidder)))
-    } else {
-        None
-    };
+    let start = start_after.map(|start| Bound::exclusive(bid_key(&start, &bidder)));
 
     let bids = bids()
         .idx

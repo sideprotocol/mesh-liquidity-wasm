@@ -157,7 +157,7 @@ pub fn bids<'a>() -> IndexedMap<'a, BidKey, Bid, BidIndicies<'a>> {
             "bids__order_price",
         ),
         timestamp: MultiIndex::new(
-            |_pk: &[u8], d: &Bid| (d.order.clone(), d.receive_timestamp.clone()),
+            |_pk: &[u8], d: &Bid| (d.order.clone(), d.receive_timestamp),
             "bids",
             "bids__count",
         ),

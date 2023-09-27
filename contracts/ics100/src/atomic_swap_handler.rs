@@ -322,7 +322,7 @@ pub(crate) fn on_packet_success(
         SwapMessageType::Unspecified => Ok(IbcBasicResponse::new()),
         SwapMessageType::MakeSwap => {
             let order_id = &packet_data.order_id.unwrap();
-            let mut order = get_atomic_order(deps.storage, &order_id)?;
+            let mut order = get_atomic_order(deps.storage, order_id)?;
             order.status = Status::Sync;
             set_atomic_order(deps.storage, order_id, &order)?;
             Ok(IbcBasicResponse::new().add_attributes(attributes))
