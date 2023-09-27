@@ -3,11 +3,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     error::ContractError,
-    msg::{AtomicSwapPacketData, CancelSwapMsg, MakeSwapMsg, SwapMessageType, TakeSwapMsg, MakeBidMsg, TakeBidMsg, CancelBidMsg, Height},
-    state::{AtomicSwapOrder, Status, Side, set_atomic_order, get_atomic_order, ORDER_TO_COUNT, append_atomic_order, move_order_to_bottom, Bid, BidStatus, bid_key, bids},
-    utils::{
-        decode_make_swap_msg, decode_take_swap_msg, send_tokens,
+    msg::{
+        AtomicSwapPacketData, CancelBidMsg, CancelSwapMsg, Height, MakeBidMsg, MakeSwapMsg,
+        SwapMessageType, TakeBidMsg, TakeSwapMsg,
     },
+    state::{
+        append_atomic_order, bid_key, bids, get_atomic_order, move_order_to_bottom,
+        set_atomic_order, AtomicSwapOrder, Bid, BidStatus, Side, Status, ORDER_TO_COUNT,
+    },
+    utils::{decode_make_swap_msg, decode_take_swap_msg, send_tokens},
 };
 use cosmwasm_std::{
     attr, from_binary, to_binary, Addr, Binary, DepsMut, Env, IbcBasicResponse, IbcPacket,
@@ -93,7 +97,7 @@ pub(crate) fn on_received_make(
         cancel_timestamp: None,
         complete_timestamp: None,
         path,
-        create_timestamp: env.block.time.seconds()
+        create_timestamp: env.block.time.seconds(),
     };
 
     let count_check = ORDER_TO_COUNT.may_load(deps.storage, &order_id)?;
@@ -132,9 +136,7 @@ pub(crate) fn on_received_take(
         return Err(ContractError::InvalidTakerAddress);
     }
 
-    let taker_receiving_address = deps
-        .api
-        .addr_validate(&msg.taker_receiving_address)?;
+    let taker_receiving_address = deps.api.addr_validate(&msg.taker_receiving_address)?;
 
     let submsg: Vec<SubMsg> = send_tokens(
         &taker_receiving_address,
@@ -241,15 +243,11 @@ pub(crate) fn on_received_take_bid(
 
     let bid = bids().load(deps.storage, key.clone())?;
 
-    if !swap_order.maker.desired_taker.is_empty()
-    && swap_order.maker.desired_taker != msg.bidder
-    {
+    if !swap_order.maker.desired_taker.is_empty() && swap_order.maker.desired_taker != msg.bidder {
         return Err(ContractError::InvalidTakerAddress);
     }
 
-    let taker_receiving_address = deps
-        .api
-        .addr_validate(&bid.bidder_receiver)?;
+    let taker_receiving_address = deps.api.addr_validate(&bid.bidder_receiver)?;
 
     let submsg: Vec<SubMsg> = send_tokens(
         &taker_receiving_address,
@@ -261,8 +259,11 @@ pub(crate) fn on_received_take_bid(
         sell_token: bid.bid,
         taker_address: bid.bidder,
         taker_receiving_address: bid.bidder_receiver,
-        timeout_height: Height {revision_height: 1, revision_number: 1},
-        timeout_timestamp: 100
+        timeout_height: Height {
+            revision_height: 1,
+            revision_number: 1,
+        },
+        timeout_timestamp: 100,
     };
     swap_order.status = Status::Complete;
     swap_order.taker = Some(take_msg);
@@ -289,7 +290,7 @@ pub(crate) fn on_received_cancel_bid(
     msg: CancelBidMsg,
 ) -> Result<IbcReceiveResponse, ContractError> {
     let order_id = msg.order_id.clone();
- 
+
     let key = bid_key(&msg.order_id, &msg.bidder);
     if !bids().has(deps.storage, key.clone()) {
         return Err(ContractError::BidDoesntExist);
@@ -393,31 +394,31 @@ pub(crate) fn on_packet_success(
             if !bids().has(deps.storage, key.clone()) {
                 return Err(ContractError::BidDoesntExist);
             }
-        
+
             let bid = bids().load(deps.storage, key.clone())?;
             bids().remove(deps.storage, key)?;
-        
+
             let maker_receiving_address = deps
                 .api
                 .addr_validate(&swap_order.maker.maker_receiving_address)?;
-        
-            let submsg: Vec<SubMsg> = send_tokens(
-                &maker_receiving_address,
-                bid.bid.clone(),
-            )?;
-        
+
+            let submsg: Vec<SubMsg> = send_tokens(&maker_receiving_address, bid.bid.clone())?;
+
             let take_msg: TakeSwapMsg = TakeSwapMsg {
                 order_id,
                 sell_token: bid.bid,
                 taker_address: bid.bidder,
                 taker_receiving_address: bid.bidder_receiver,
-                timeout_height: Height {revision_height: 1, revision_number: 1},
-                timeout_timestamp: 100
+                timeout_height: Height {
+                    revision_height: 1,
+                    revision_number: 1,
+                },
+                timeout_timestamp: 100,
             };
             swap_order.status = Status::Complete;
             swap_order.taker = Some(take_msg);
             swap_order.complete_timestamp = Some(Timestamp::from_nanos(env.block.time.nanos()));
-        
+
             set_atomic_order(deps.storage, &msg.order_id, &swap_order)?;
             move_order_to_bottom(deps.storage, &msg.order_id)?;
             Ok(IbcBasicResponse::new()
@@ -426,21 +427,16 @@ pub(crate) fn on_packet_success(
         }
         SwapMessageType::CancelBid => {
             let msg: CancelBidMsg = from_binary(&packet_data.data)?;
-          
+
             let key = bid_key(&msg.order_id, &msg.bidder);
             if !bids().has(deps.storage, key.clone()) {
                 return Err(ContractError::BidDoesntExist);
             }
             let bid = bids().load(deps.storage, key.clone())?;
 
-            let taker_receiving_address = deps
-            .api
-            .addr_validate(&bid.bidder)?;
+            let taker_receiving_address = deps.api.addr_validate(&bid.bidder)?;
             // Refund amount
-            let submsg: Vec<SubMsg> = send_tokens(
-                &taker_receiving_address,
-                bid.bid,
-            )?;
+            let submsg: Vec<SubMsg> = send_tokens(&taker_receiving_address, bid.bid)?;
 
             bids().remove(deps.storage, key)?;
 
@@ -517,7 +513,7 @@ pub(crate) fn refund_packet_token(
             bids().remove(deps.storage, key)?;
 
             Ok(submsg)
-        },
+        }
         SwapMessageType::TakeBid => Ok(vec![]),
         SwapMessageType::CancelBid => Ok(vec![]),
     }

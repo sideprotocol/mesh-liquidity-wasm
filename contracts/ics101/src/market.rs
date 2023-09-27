@@ -1,12 +1,14 @@
-use std::{
-   vec, str::FromStr,
-};
+use std::{str::FromStr, vec};
 
-use cosmwasm_std::{Coin, Decimal, StdError, StdResult, Uint128, Decimal256, Uint256};
+use cosmwasm_std::{Coin, Decimal, Decimal256, StdError, StdResult, Uint128, Uint256};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{math::{calc_minted_shares_given_single_asset_in, solve_constant_function_invariant}, types::WeightedAsset, utils::{decimal2decimal256, adjust_precision} };
+use crate::{
+    math::{calc_minted_shares_given_single_asset_in, solve_constant_function_invariant},
+    types::WeightedAsset,
+    utils::{adjust_precision, decimal2decimal256},
+};
 
 pub const FEE_PRECISION: u16 = 10000;
 pub const FIXED_PRECISION: u8 = 12;
@@ -51,7 +53,7 @@ pub struct InterchainLiquidityPool {
     pub status: PoolStatus,
     pub supply: Coin,
     pub swap_fee: u32,
-    pub pool_price: u64
+    pub pool_price: u64,
 }
 
 impl InterchainLiquidityPool {
@@ -67,7 +69,7 @@ impl InterchainLiquidityPool {
     pub fn find_asset_by_side(&self, side: PoolSide) -> StdResult<PoolAsset> {
         for asset in &self.assets {
             if asset.side == side {
-                return Ok(asset.clone())
+                return Ok(asset.clone());
             }
         }
         Err(StdError::generic_err("Asset side not found in pool"))
@@ -141,7 +143,7 @@ impl InterchainMarketMaker {
             fee_rate,
         }
     }
-    
+
     /// Calculate the amount of LP tokens that should be minted for single asset deposit.
     /// Returns the amount of LP tokens to be minted
     pub fn deposit_single_asset(&self, token: &Coin) -> StdResult<Coin> {
@@ -160,7 +162,7 @@ impl InterchainMarketMaker {
         } else {
             let pool_asset_weighted = &WeightedAsset {
                 asset: token.clone(),
-                weight: Decimal::from_ratio(asset.weight, Uint128::from(100u64))
+                weight: Decimal::from_ratio(asset.weight, Uint128::from(100u64)),
             };
 
             // Asset weights already normalized
@@ -189,7 +191,11 @@ impl InterchainMarketMaker {
             let mut issue_amount;
             if self.pool.status == PoolStatus::Initialized && self.pool.supply.amount.is_zero() {
                 for asset in &self.pool.assets {
-                    let dec_asset_amount = adjust_precision(asset.balance.amount, asset.decimal.try_into().unwrap(), 18)?;
+                    let dec_asset_amount = adjust_precision(
+                        asset.balance.amount,
+                        asset.decimal.try_into().unwrap(),
+                        18,
+                    )?;
                     total_asset_amount += dec_asset_amount;
                 }
                 let mult_amount = total_asset_amount.checked_mul(asset.weight.into())?;
@@ -198,12 +204,13 @@ impl InterchainMarketMaker {
                 let ratio = Decimal::from_ratio(token.amount, asset.balance.amount);
                 issue_amount = Decimal::from_ratio(self.pool.supply.amount, Uint128::from(100u128));
                 issue_amount = issue_amount.checked_mul(ratio)?;
-                issue_amount = issue_amount.checked_mul(Decimal::from_str(&asset.weight.to_string())?)?;
+                issue_amount =
+                    issue_amount.checked_mul(Decimal::from_str(&asset.weight.to_string())?)?;
             }
 
             let output_token = Coin {
                 denom: self.pool.supply.denom.clone(),
-                amount: issue_amount.to_uint_ceil()
+                amount: issue_amount.to_uint_ceil(),
             };
             out_tokens.push(output_token)
         }
@@ -215,7 +222,7 @@ impl InterchainMarketMaker {
 
         // % of share to be burnt from the pool
         let share_out_ratio = Decimal::from_ratio(redeem.amount, total_share);
-    
+
         // Vector of assets to be transferred to the user from the Vault contract
         let mut refund_assets: Vec<Coin> = vec![];
         for asset in &self.pool.assets {
@@ -253,7 +260,8 @@ impl InterchainMarketMaker {
 
         let token_precision = asset_out.decimal as u8;
 
-        let pool_post_swap_in_balance = asset_in.balance.amount + self.minus_fees(amount_in.amount).to_uint_floor();
+        let pool_post_swap_in_balance =
+            asset_in.balance.amount + self.minus_fees(amount_in.amount).to_uint_floor();
 
         //         /**********************************************************************************************
         //         // outGivenIn                                                                                //
@@ -266,12 +274,21 @@ impl InterchainMarketMaker {
         //         **********************************************************************************************/
         // delta balanceOut is positive(tokens inside the pool decreases)
 
-        let token_balance_fixed_before = 
-            adjust_precision(asset_in.balance.amount, asset_in.decimal.try_into().unwrap(), FIXED_PRECISION)?;
-        let token_balance_fixed_after = 
-            adjust_precision(pool_post_swap_in_balance, asset_in.decimal.try_into().unwrap(), FIXED_PRECISION)?;
-        let token_balance_unknown_before = 
-            adjust_precision(asset_out.balance.amount, asset_out.decimal.try_into().unwrap(), FIXED_PRECISION)?;
+        let token_balance_fixed_before = adjust_precision(
+            asset_in.balance.amount,
+            asset_in.decimal.try_into().unwrap(),
+            FIXED_PRECISION,
+        )?;
+        let token_balance_fixed_after = adjust_precision(
+            pool_post_swap_in_balance,
+            asset_in.decimal.try_into().unwrap(),
+            FIXED_PRECISION,
+        )?;
+        let token_balance_unknown_before = adjust_precision(
+            asset_out.balance.amount,
+            asset_out.decimal.try_into().unwrap(),
+            FIXED_PRECISION,
+        )?;
 
         let return_amount = solve_constant_function_invariant(
             Decimal::from_str(&token_balance_fixed_before.to_string())?,
@@ -280,7 +297,7 @@ impl InterchainMarketMaker {
             Decimal::from_str(&token_balance_unknown_before.to_string())?,
             Decimal::from_ratio(asset_out.weight, Uint128::from(100u64)),
         )?;
-    
+
         // adjust return amount to correct precision
         let return_amount = adjust_precision(
             return_amount.to_uint_floor(),
@@ -319,28 +336,35 @@ impl InterchainMarketMaker {
         //         **********************************************************************************************/
         // delta balanceOut is positive(tokens inside the pool decreases)
 
-        let token_balance_fixed_before = 
-            adjust_precision(asset_out.balance.amount, asset_out.decimal.try_into().unwrap(), FIXED_PRECISION)?;
-        let token_balance_fixed_after = 
-            adjust_precision(pool_post_swap_out_balance, asset_out.decimal.try_into().unwrap(), FIXED_PRECISION)?;
-        let token_balance_unknown_before = 
-            adjust_precision(asset_in.balance.amount, asset_in.decimal.try_into().unwrap(), FIXED_PRECISION)?;
+        let token_balance_fixed_before = adjust_precision(
+            asset_out.balance.amount,
+            asset_out.decimal.try_into().unwrap(),
+            FIXED_PRECISION,
+        )?;
+        let token_balance_fixed_after = adjust_precision(
+            pool_post_swap_out_balance,
+            asset_out.decimal.try_into().unwrap(),
+            FIXED_PRECISION,
+        )?;
+        let token_balance_unknown_before = adjust_precision(
+            asset_in.balance.amount,
+            asset_in.decimal.try_into().unwrap(),
+            FIXED_PRECISION,
+        )?;
 
         let real_offer = solve_constant_function_invariant(
-        Decimal::from_str(&token_balance_fixed_before.to_string())?,
-        Decimal::from_str(&token_balance_fixed_after.to_string())?,
-        Decimal::from_ratio(asset_out.weight, Uint128::from(100u64)),
-        Decimal::from_str(&token_balance_unknown_before.to_string())?,
-        Decimal::from_ratio(asset_in.weight, Uint128::from(100u64)),
-        )?; 
-        // adjust return amount to correct precision
-        let real_offer = adjust_precision(
-        real_offer.to_uint_floor(),
-        FIXED_PRECISION,
-        token_precision,
+            Decimal::from_str(&token_balance_fixed_before.to_string())?,
+            Decimal::from_str(&token_balance_fixed_after.to_string())?,
+            Decimal::from_ratio(asset_out.weight, Uint128::from(100u64)),
+            Decimal::from_str(&token_balance_unknown_before.to_string())?,
+            Decimal::from_ratio(asset_in.weight, Uint128::from(100u64)),
         )?;
-       
-        let offer_amount_including_fee = (Uint256::from(real_offer) * inv_one_minus_commission).try_into()?;
+        // adjust return amount to correct precision
+        let real_offer =
+            adjust_precision(real_offer.to_uint_floor(), FIXED_PRECISION, token_precision)?;
+
+        let offer_amount_including_fee =
+            (Uint256::from(real_offer) * inv_one_minus_commission).try_into()?;
         let _total_fee = offer_amount_including_fee - real_offer;
 
         Ok(Coin {
@@ -353,7 +377,7 @@ impl InterchainMarketMaker {
         let amount_dec = Decimal::from_ratio(amount.u128(), Uint128::one());
         let fee_rate_dec = Decimal::from_ratio(self.fee_rate, Uint128::new(10000));
         let fees = amount_dec * fee_rate_dec;
-        
+
         amount_dec - fees
     }
 }

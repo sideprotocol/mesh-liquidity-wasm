@@ -1,6 +1,6 @@
+use crate::utils::adjust_precision;
 use crate::{approx_pow::calculate_pow, types::WeightedAsset};
 use cosmwasm_std::{Decimal, StdError, StdResult, Uint128};
-use crate::utils::adjust_precision;
 
 // Referenced from Balancer Weighted pool implementation by  Osmosis here - https://github.com/osmosis-labs/osmosis/blob/47a2366c5eeee474de9e1cb4777fab0ccfbb9592/x/gamm/pool-models/balancer/amm.go#L94
 // solveConstantFunctionInvariant solves the constant function of an AMM
@@ -111,7 +111,7 @@ mod tests {
     fn test_solve_constant_function_invariant() {
         // Define some example inputs for the function
         let token_balance_fixed_before = Decimal::from_str("500000000000").unwrap();
-        let token_balance_fixed_after = Decimal::from_str( "530000000000").unwrap();
+        let token_balance_fixed_after = Decimal::from_str("530000000000").unwrap();
         let token_weight_fixed = Decimal::from_str("0.5").unwrap();
         let token_balance_unknown_before = Decimal::from_str("500000000000").unwrap();
         let token_weight_unknown = Decimal::from_str("0.5").unwrap();

@@ -7,7 +7,7 @@ use cw20::Cw20Coin;
 
 use cosmwasm_std::{Binary, Coin, Timestamp, Uint128};
 
-use crate::state::{AtomicSwapOrder, Status, Bid};
+use crate::state::{AtomicSwapOrder, Bid, Status};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Height {
@@ -40,8 +40,7 @@ pub fn is_valid_name(name: &str) -> bool {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct MigrateMsg {
-}
+pub struct MigrateMsg {}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub enum SwapMessageType {
@@ -84,8 +83,8 @@ pub struct MakeSwapMsg {
     /// the sender's address on the destination chain
     pub maker_receiving_address: String,
     /// if desired_taker is specified,
-	/// only the desired_taker is allowed to take this order
-	/// this is address on destination chain
+    /// only the desired_taker is allowed to take this order
+    /// this is address on destination chain
     pub desired_taker: String,
     /// Allow makers to receive bids for the order
     pub take_bids: bool,
@@ -128,7 +127,7 @@ pub struct MakeSwapMsgOutput {
     pub timeout_height: HeightOutput,
     pub timeout_timestamp: String,
     pub expiration_timestamp: String,
-    pub take_bids: bool
+    pub take_bids: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug, JsonSchema)]
@@ -149,11 +148,11 @@ pub struct TakeSwapMsg {
     pub taker_receiving_address: String,
 
     /// Timeout height relative to the current block height.
-	/// The timeout is disabled when set to 0.
+    /// The timeout is disabled when set to 0.
     pub timeout_height: Height,
 
     /// Timeout timestamp in absolute nanoseconds since unix epoch.
-	/// The timeout is disabled when set to 0.
+    /// The timeout is disabled when set to 0.
     pub timeout_timestamp: u64,
 }
 
@@ -220,7 +219,7 @@ pub struct BidOffsetTime {
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-pub struct BidOffsetBidder{
+pub struct BidOffsetBidder {
     pub order: String,
     pub bidder: String,
 }
@@ -232,7 +231,7 @@ pub enum QueryMsg {
     List {
         start_after: Option<u64>,
         limit: Option<u32>,
-        order: Option<String>
+        order: Option<String>,
     },
     ListByDesiredTaker {
         start_after: Option<u64>,
@@ -251,7 +250,9 @@ pub enum QueryMsg {
     },
     /// Returns the details of the named swap, error if not created.
     /// Return type: DetailsResponse.
-    Details { id: String },
+    Details {
+        id: String,
+    },
     BidByAmount {
         order: String,
         start_after: Option<BidOffset>,
@@ -285,7 +286,7 @@ pub enum QueryMsg {
     InactiveList {
         start_after: Option<u64>,
         limit: Option<u32>,
-        order: Option<String>
+        order: Option<String>,
     },
     InactiveListByDesiredTaker {
         start_after: Option<u64>,

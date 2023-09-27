@@ -2,7 +2,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use cosmwasm_std::IbcEndpoint;
-use cw_storage_plus::{Map, Item};
+use cw_storage_plus::{Item, Map};
 
 use crate::{market::InterchainLiquidityPool, types::MultiAssetDepositOrder};
 
@@ -39,7 +39,8 @@ pub const TEMP: Item<String> = Item::new("temp");
 pub const POOLS: Map<&str, InterchainLiquidityPool> = Map::new("pools");
 
 // Map from key (pool_id + "-" + order_id) to value multi asset orders
-pub const MULTI_ASSET_DEPOSIT_ORDERS: Map<String, MultiAssetDepositOrder> = Map::new("multi_asset_deposit_orders");
+pub const MULTI_ASSET_DEPOSIT_ORDERS: Map<String, MultiAssetDepositOrder> =
+    Map::new("multi_asset_deposit_orders");
 
 // Map from key (source_makers + "-" + pool_id)
 pub const ACTIVE_ORDERS: Map<String, MultiAssetDepositOrder> = Map::new("active_order");
