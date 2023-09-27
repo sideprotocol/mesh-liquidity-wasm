@@ -924,7 +924,7 @@ fn query_inactive_list_by_taker(
 #[cfg(test)]
 mod tests {
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{coin, from_binary, StdError};
+    use cosmwasm_std::{coin, from_binary, StdError, Coin, Uint128};
 
     use crate::msg::{Height, TakeSwapMsgOutput};
     use crate::utils::{generate_order_id, order_path};
@@ -940,6 +940,58 @@ mod tests {
         let info = mock_info("anyone", &[]);
         let res = instantiate(deps.as_mut(), mock_env(), info, instantiate_msg).unwrap();
         assert_eq!(0, res.messages.len());
+    }
+
+    #[test]
+    fn test_bid_structure() {
+        let mut deps = mock_dependencies();
+
+        // Instantiate an empty contract
+        let instantiate_msg = InstantiateMsg {};
+        let info = mock_info("anyone", &[]);
+        let res = instantiate(deps.as_mut(), mock_env(), info, instantiate_msg).unwrap();
+        assert_eq!(0, res.messages.len());
+
+        let mut order = "some-order".to_owned();
+        let mut bidder = "some-bidder".to_owned();
+        let bid: Bid = Bid {
+            bid: Coin {denom: "ok".to_owned(), amount: Uint128::from(100u64)},
+            order: order.clone(),
+            status: BidStatus::Initial,
+            bidder: bidder.clone(),
+            bidder_receiver: bidder.clone(),
+            receive_timestamp: 50,
+            expire_timestamp: 100,
+        };
+        bids().save(deps.as_mut().storage, bid_key(&order,&bidder), &bid).unwrap();
+
+        let res = query(
+            deps.as_ref(), mock_env(), 
+            QueryMsg::BidByAmount { order:order, start_after: None, limit: Some(10)
+        }).unwrap();
+
+        let value: BidsResponse = from_binary(&res).unwrap();
+        assert_eq!(value.bids[0], bid);
+
+        order = "some-order".to_owned();
+        bidder = "some-bidder-1".to_owned();
+        let bid1: Bid = Bid {
+            bid: Coin {denom: "ok".to_owned(), amount: Uint128::from(1000u64)},
+            order: order.clone(),
+            status: BidStatus::Initial,
+            bidder: bidder.clone(),
+            bidder_receiver: bidder.clone(),
+            receive_timestamp: 50,
+            expire_timestamp: 100,
+        };
+        bids().save(deps.as_mut().storage, bid_key(&order,&bidder), &bid1).unwrap();
+        let res = query(
+            deps.as_ref(), mock_env(), 
+            QueryMsg::BidByAmount { order:order, start_after: None, limit: Some(10)
+        }).unwrap();
+
+        let value: BidsResponse = from_binary(&res).unwrap();
+        assert_eq!(value.bids[0], bid);
     }
 
     #[test]
