@@ -134,7 +134,7 @@ pub fn bid_key(order: &String, bidder: &String) -> BidKey {
 pub struct BidIndicies<'a> {
     pub order: MultiIndex<'a, String, Bid, BidKey>,
     pub order_price: MultiIndex<'a, (String, u128), Bid, BidKey>,
-    pub timestamp: MultiIndex<'a, u64, Bid, BidKey>,
+    pub timestamp: MultiIndex<'a, (String, u64), Bid, BidKey>,
 }
 
 impl<'a> IndexList<Bid> for BidIndicies<'a> {
@@ -157,7 +157,7 @@ pub fn bids<'a>() -> IndexedMap<'a, BidKey, Bid, BidIndicies<'a>> {
             "bids__order_price",
         ),
         timestamp: MultiIndex::new(
-            |_pk: &[u8], d: &Bid| d.receive_timestamp.clone(),
+            |_pk: &[u8], d: &Bid| (d.order.clone(), d.receive_timestamp.clone()),
             "bids",
             "bids__count",
         ),

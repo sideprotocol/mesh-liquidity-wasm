@@ -10,7 +10,7 @@ use cw2::set_contract_version;
 use crate::error::ContractError;
 use crate::msg::{
     AtomicSwapPacketData, CancelSwapMsg, DetailsResponse, ExecuteMsg, InstantiateMsg, ListResponse,
-    MakeSwapMsg, QueryMsg, SwapMessageType, TakeSwapMsg, MigrateMsg, MakeBidMsg, TakeBidMsg, CancelBidMsg,
+    MakeSwapMsg, QueryMsg, SwapMessageType, TakeSwapMsg, MigrateMsg, MakeBidMsg, TakeBidMsg, CancelBidMsg, BidOffset, BidsResponse, BidOffsetTime,
 };
 use crate::query_reverse::{
     query_list_reverse, query_list_by_desired_taker_reverse, query_list_by_maker_reverse,
@@ -18,7 +18,7 @@ use crate::query_reverse::{
 use crate::state::{
     AtomicSwapOrder, Status, SWAP_ORDERS,append_atomic_order, set_atomic_order,
     get_atomic_order, COUNT, move_order_to_bottom, Bid, INACTIVE_SWAP_ORDERS,
-    INACTIVE_COUNT, Side, CHANNEL_INFO, SWAP_SEQUENCE, BidStatus, bid_key, bids,
+    INACTIVE_COUNT, Side, CHANNEL_INFO, SWAP_SEQUENCE, BidStatus, bid_key, bids, BidKey,
 };
 use crate::utils::{extract_source_channel_for_taker_msg, generate_order_id,order_path};
 use cw_storage_plus::Bound;
@@ -570,6 +570,10 @@ fn query_details(deps: Deps, id: String) -> StdResult<DetailsResponse> {
 pub const MAX_LIMIT: u32 = 10000;
 pub const DEFAULT_LIMIT: u32 = 20;
 
+// Query limits
+const DEFAULT_QUERY_LIMIT: u32 = 10;
+const MAX_QUERY_LIMIT: u32 = 100;
+
 fn query_list(
     deps: Deps,
     start_after: Option<u64>,
@@ -670,36 +674,142 @@ fn query_list_by_taker(
     Ok(ListResponse { swaps: swap_orders })
 }
 
-fn query_bids_by_order(
+pub fn query_bids_sorted_by_amount(
     deps: Deps,
-    _start_after: Option<u64>,
-    limit: Option<u32>,
     order: String,
-) -> StdResult<Vec<Bid>> {
-    let limit = limit.unwrap_or(1000) as usize;
-    let bids = BIDS.prefix(&order)
-    .range(deps.storage, None, None, Order::Ascending)
-    .take(limit)
-    .map(|item| {
-        item.map(|(_addr, bid)| {
-            bid
-        })
-    })
-    .collect::<StdResult<_>>()?;
+    start_after: Option<BidOffset>,
+    limit: Option<u32>,
+) -> StdResult<BidsResponse> {
+    let limit = limit.unwrap_or(DEFAULT_QUERY_LIMIT).min(MAX_QUERY_LIMIT) as usize;
 
-    Ok(bids)
+    let start = start_after.map(|offset| {
+        Bound::exclusive((offset.amount.u128(), bid_key(&order, &offset.bidder)))
+    });
+
+    let bids = bids()
+        .idx
+        .order_price
+        .sub_prefix(order)
+        .range(deps.storage, start, None, Order::Ascending)
+        .take(limit)
+        .map(|res| res.map(|item| item.1))
+        .collect::<StdResult<Vec<_>>>()?;
+
+    Ok(BidsResponse { bids })
 }
 
-fn query_bids_by_bidder(
+pub fn query_bids_sorted_by_order(
+    deps: Deps,
+    order: String,
+    start_after: Option<BidOffsetTime>,
+    limit: Option<u32>,
+) -> StdResult<BidsResponse> {
+    let limit = limit.unwrap_or(DEFAULT_QUERY_LIMIT).min(MAX_QUERY_LIMIT) as usize;
+
+    let start = start_after.map(|offset| {
+        Bound::exclusive((offset.time, bid_key(&order, &offset.bidder)))
+    });
+
+    let bids = bids()
+        .idx
+        .timestamp
+        .sub_prefix(order)
+        .range(deps.storage, start, None, Order::Ascending)
+        .take(limit)
+        .map(|res| res.map(|item| item.1))
+        .collect::<StdResult<Vec<_>>>()?;
+
+    Ok(BidsResponse { bids })
+}
+
+pub fn query_bids_sorted_by_amount_reverse(
+    deps: Deps,
+    order: String,
+    start_before: Option<BidOffset>,
+    limit: Option<u32>,
+) -> StdResult<BidsResponse> {
+    let limit = limit.unwrap_or(DEFAULT_QUERY_LIMIT).min(MAX_QUERY_LIMIT) as usize;
+
+    let end: Option<Bound<(u128, BidKey)>> = start_before.map(|offset| {
+        Bound::exclusive((
+            offset.amount.u128(),
+            bid_key(&order, &offset.bidder),
+        ))
+    });
+
+    let bids = bids()
+        .idx
+        .order_price
+        .sub_prefix(order)
+        .range(deps.storage, None, end, Order::Descending)
+        .take(limit)
+        .map(|res| res.map(|item| item.1))
+        .collect::<StdResult<Vec<_>>>()?;
+
+    Ok(BidsResponse { bids })
+}
+
+pub fn query_bids_sorted_by_order_reverse(
+    deps: Deps,
+    order: String,
+    start_before: Option<BidOffsetTime>,
+    limit: Option<u32>,
+) -> StdResult<BidsResponse> {
+    let limit = limit.unwrap_or(DEFAULT_QUERY_LIMIT).min(MAX_QUERY_LIMIT) as usize;
+
+    let end: Option<Bound<(u64, BidKey)>> = start_before.map(|offset| {
+        Bound::exclusive((
+            offset.time,
+            bid_key(&order, &offset.bidder),
+        ))
+    });
+
+    let bids = bids()
+        .idx
+        .timestamp
+        .sub_prefix(order)
+        .range(deps.storage, None, end, Order::Descending)
+        .take(limit)
+        .map(|res| res.map(|item| item.1))
+        .collect::<StdResult<Vec<_>>>()?;
+
+    Ok(BidsResponse { bids })
+}
+
+pub fn query_bid(
     deps: Deps,
     order: String,
     bidder: String,
-) -> StdResult<Bid> {
-    let key = order.clone() + &bidder;
-    let count = BID_ORDER_TO_COUNT.load(deps.storage, &key)?;
-    let bid = BIDS.load(deps.storage, (&order, &count.to_string()))?;
+) -> StdResult<BidsResponse> {
+    let bid = bids().may_load(deps.storage, bid_key(&order, &bidder))?;
 
-    Ok(bid)
+    Ok(BidsResponse { bids: vec![bid.unwrap()] })
+}
+
+pub fn query_bids_by_bidder(
+    deps: Deps,
+    bidder: String,
+    start_after: Option<String>, // order
+    limit: Option<u32>,
+) -> StdResult<BidsResponse> {
+    let limit = limit.unwrap_or(DEFAULT_QUERY_LIMIT).min(MAX_QUERY_LIMIT) as usize;
+
+    let start = if let Some(start) = start_after {
+        Some(Bound::exclusive(bid_key(&start, &bidder)))
+    } else {
+        None
+    };
+
+    let bids = bids()
+        .idx
+        .order
+        .prefix(bidder)
+        .range(deps.storage, start, None, Order::Ascending)
+        .take(limit)
+        .map(|item| item.map(|(_, b)| b))
+        .collect::<StdResult<Vec<_>>>()?;
+
+    Ok(BidsResponse { bids })
 }
 
 // Inactive fields
