@@ -1037,7 +1037,7 @@ mod tests {
             deps.as_ref(),
             mock_env(),
             QueryMsg::BidByAmount {
-                order: order,
+                order,
                 start_after: None,
                 limit: Some(10),
             },
@@ -1068,7 +1068,7 @@ mod tests {
             deps.as_ref(),
             mock_env(),
             QueryMsg::BidByAmount {
-                order: order,
+                order,
                 start_after: None,
                 limit: Some(10),
             },
