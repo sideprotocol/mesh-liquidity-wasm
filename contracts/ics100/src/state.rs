@@ -125,18 +125,18 @@ pub struct Bid {
 }
 // Map for order id -> Vec<Bids>
 // Order_id + BID_COUNT
-pub const BIDS: Map<(&str, &str), Bid> = Map::new("bids");
+//pub const BIDS: Map<(&str, &str), Bid> = Map::new("bids");
 
 // Each order bid count
 pub const BIDS_TOTAL_COUNT: Map<&str, u128> = Map::new("order_total_count");
 
 // order_id + account address -> order_count
-pub const BID_ORDER_TO_COUNT: Map<&str, u64> = Map::new("bid_order_to_count");
+//pub const BID_ORDER_TO_COUNT: Map<&str, u64> = Map::new("bid_order_to_count");
 
 /// Primary key for asks: (collection, token_id)
 pub type BidKey = (String, String);
 /// Convenience bid key constructor
-pub fn ask_key(order: &String, bidder: &String) -> BidKey {
+pub fn bid_key(order: &String, bidder: &String) -> BidKey {
     (order.clone(), bidder.clone())
 }
 /// Defines indices for accessing Bids
@@ -153,7 +153,7 @@ impl<'a> IndexList<Bid> for BidIndicies<'a> {
     }
 }
 
-pub fn asks<'a>() -> IndexedMap<'a, BidKey, Bid, BidIndicies<'a>> {
+pub fn bids<'a>() -> IndexedMap<'a, BidKey, Bid, BidIndicies<'a>> {
     let indexes = BidIndicies {
         order: MultiIndex::new(
             |_pk: &[u8], d: &Bid| d.order.clone(),

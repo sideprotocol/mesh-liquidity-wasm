@@ -17,7 +17,7 @@ use crate::state::{
     AtomicSwapOrder,
     Status,
     // CHANNEL_INFO,
-    SWAP_ORDERS,append_atomic_order, set_atomic_order, get_atomic_order, COUNT, move_order_to_bottom, BID_ORDER_TO_COUNT, Bid, BIDS, INACTIVE_SWAP_ORDERS, INACTIVE_COUNT, Side, CHANNEL_INFO, SWAP_SEQUENCE, ORDER_TOTAL_COUNT, BidStatus,
+    SWAP_ORDERS,append_atomic_order, set_atomic_order, get_atomic_order, COUNT, move_order_to_bottom, Bid, INACTIVE_SWAP_ORDERS, INACTIVE_COUNT, Side, CHANNEL_INFO, SWAP_SEQUENCE, BidStatus, bid_key, bids, BIDS_TOTAL_COUNT,
 };
 use crate::utils::{extract_source_channel_for_taker_msg, generate_order_id,order_path};
 use cw_storage_plus::Bound;
@@ -300,32 +300,32 @@ pub fn execute_make_bid(
         return Err(ContractError::InvalidSender);
     }
 
-    let key = msg.order_id.clone() + &msg.taker_address;
-    if BID_ORDER_TO_COUNT.has(deps.storage, &key) {
+    let key = bid_key(&msg.order_id, &msg.taker_address);
+    if bids().has(deps.storage, key) {
         return Err(ContractError::BidAlreadyExist {});
     }
 
     let order_id = msg.order_id.clone();
-    let count = ORDER_TOTAL_COUNT.may_load(deps.storage, &order_id)?;
+    let count = BIDS_TOTAL_COUNT.may_load(deps.storage, &order_id)?;
     let mut bid_count = 1;
     if let Some(value) = count {
         bid_count = value + 1;
-        ORDER_TOTAL_COUNT.save(deps.storage, &order_id, &bid_count)?;
+        BIDS_TOTAL_COUNT.save(deps.storage, &order_id, &bid_count)?;
     } else {
-        ORDER_TOTAL_COUNT.save(deps.storage, &order_id, &bid_count)?;
+        BIDS_TOTAL_COUNT.save(deps.storage, &order_id, &bid_count)?;
     }
-
-    BID_ORDER_TO_COUNT.save(deps.storage, &key, &bid_count)?;
 
     let bid: Bid = Bid {
         bid: msg.sell_token.clone(),
+        order: msg.order_id,
+        bid_count: bid_count,
         status: BidStatus::Initial,
         bidder: msg.taker_address.clone(),
         bidder_receiver: msg.taker_receiving_address.clone(),
         expire_timestamp: msg.expiration_timestamp,
     };
 
-    BIDS.save(deps.storage, (&order_id, &bid_count.to_string()), &bid)?;
+    bids().save(deps.storage, key, &bid)?;
 
     let packet = AtomicSwapPacketData {
         r#type: SwapMessageType::MakeBid,
