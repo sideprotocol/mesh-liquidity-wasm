@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::msg::{MakeSwapMsg, TakeSwapMsg};
 use cosmwasm_std::{IbcEndpoint, StdResult, Storage, Timestamp, Coin};
-use cw_storage_plus::{Map, Item};
+use cw_storage_plus::{Map, Item, MultiIndex, IndexList, Index, IndexedMap};
 
 pub const CHANNEL_INFO: Map<&str, ChannelInfo> = Map::new("channel_info");
 
@@ -116,18 +116,51 @@ pub enum BidStatus {
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct Bid {
     pub bid: Coin,
+    pub order: String,
     pub status: BidStatus,
     pub bidder: String,
     pub bidder_receiver: String,
+    pub receive_timestamp: u64,
     pub expire_timestamp: u64,
 }
-// Map for order id -> Vec<Bids>
-// Order_id + BID_COUNT
-pub const BIDS: Map<(&str, &str), Bid> = Map::new("bids");
 
-// Each order bid count
-pub const ORDER_TOTAL_COUNT: Map<&str, u64> = Map::new("order_total_count");
+/// Primary key for asks: (collection, token_id)
+pub type BidKey = (String, String);
+/// Convenience bid key constructor
+pub fn bid_key(order: &String, bidder: &String) -> BidKey {
+    (order.clone(), bidder.clone())
+}
+/// Defines indices for accessing Bids
+pub struct BidIndicies<'a> {
+    pub order: MultiIndex<'a, String, Bid, BidKey>,
+    pub order_price: MultiIndex<'a, (String, u128), Bid, BidKey>,
+    pub timestamp: MultiIndex<'a, (String, u64), Bid, BidKey>,
+}
 
-// order_id + account address -> order_count
-pub const BID_ORDER_TO_COUNT: Map<&str, u64> = Map::new("bid_order_to_count");
+impl<'a> IndexList<Bid> for BidIndicies<'a> {
+    fn get_indexes(&'_ self) -> Box<dyn Iterator<Item = &'_ dyn Index<Bid>> + '_> {
+        let v: Vec<&dyn Index<Bid>> = vec![&self.order, &self.order_price, &self.timestamp];
+        Box::new(v.into_iter())
+    }
+}
 
+pub fn bids<'a>() -> IndexedMap<'a, BidKey, Bid, BidIndicies<'a>> {
+    let indexes = BidIndicies {
+        order: MultiIndex::new(
+            |_pk: &[u8], d: &Bid| d.order.clone(),
+            "bids",
+            "bid__order",
+        ),
+        order_price: MultiIndex::new(
+            |_pk: &[u8], d: &Bid| (d.order.clone(), d.bid.amount.u128()),
+            "bids",
+            "bids__order_price",
+        ),
+        timestamp: MultiIndex::new(
+            |_pk: &[u8], d: &Bid| (d.order.clone(), d.receive_timestamp),
+            "bids",
+            "bids__count",
+        ),
+    };
+    IndexedMap::new("bids", indexes)
+}

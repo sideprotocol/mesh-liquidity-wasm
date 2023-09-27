@@ -5,9 +5,9 @@ use serde::{Deserialize, Serialize};
 
 use cw20::Cw20Coin;
 
-use cosmwasm_std::{Binary, Coin, Timestamp};
+use cosmwasm_std::{Binary, Coin, Timestamp, Uint128};
 
-use crate::state::{AtomicSwapOrder, Status};
+use crate::state::{AtomicSwapOrder, Status, Bid};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Height {
@@ -205,6 +205,26 @@ pub enum BalanceHuman {
     Cw20(Cw20Coin),
 }
 
+/// Offset for bid pagination
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct BidOffset {
+    pub amount: Uint128,
+    pub bidder: String,
+}
+
+/// Time Offset for bid pagination
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct BidOffsetTime {
+    pub time: u64,
+    pub bidder: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct BidOffsetBidder{
+    pub order: String,
+    pub bidder: String,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
@@ -232,14 +252,34 @@ pub enum QueryMsg {
     /// Returns the details of the named swap, error if not created.
     /// Return type: DetailsResponse.
     Details { id: String },
-    BidDetailsbyOrder {
-        start_after: Option<u64>,
+    BidByAmount {
+        order: String,
+        start_after: Option<BidOffset>,
         limit: Option<u32>,
-        order_id: String,
     },
-    BidDetailsbyBidder {
-        order_id: String,
+    BidByAmountReverse {
+        order: String,
+        start_before: Option<BidOffset>,
+        limit: Option<u32>,
+    },
+    BidbyOrder {
+        order: String,
+        start_after: Option<BidOffsetTime>,
+        limit: Option<u32>,
+    },
+    BidbyOrderReverse {
+        order: String,
+        start_before: Option<BidOffsetTime>,
+        limit: Option<u32>,
+    },
+    BidDetails {
+        order: String,
         bidder: String,
+    },
+    BidByBidder {
+        bidder: String,
+        start_after: Option<String>, // order
+        limit: Option<u32>,
     },
     /// Inactive fields query
     InactiveList {
@@ -298,4 +338,9 @@ pub struct DetailsResponse {
 pub struct ListResponse {
     /// List all open swap ids
     pub swaps: Vec<AtomicSwapOrder>,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct BidsResponse {
+    pub bids: Vec<Bid>,
 }

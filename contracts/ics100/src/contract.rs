@@ -10,14 +10,15 @@ use cw2::set_contract_version;
 use crate::error::ContractError;
 use crate::msg::{
     AtomicSwapPacketData, CancelSwapMsg, DetailsResponse, ExecuteMsg, InstantiateMsg, ListResponse,
-    MakeSwapMsg, QueryMsg, SwapMessageType, TakeSwapMsg, MigrateMsg, MakeBidMsg, TakeBidMsg, CancelBidMsg,
+    MakeSwapMsg, QueryMsg, SwapMessageType, TakeSwapMsg, MigrateMsg, MakeBidMsg, TakeBidMsg, CancelBidMsg, BidOffset, BidsResponse, BidOffsetTime,
 };
-use crate::query_reverse::{query_list_reverse, query_list_by_desired_taker_reverse, query_list_by_maker_reverse, query_list_by_taker_reverse};
+use crate::query_reverse::{
+    query_list_reverse, query_list_by_desired_taker_reverse, query_list_by_maker_reverse,
+    query_list_by_taker_reverse};
 use crate::state::{
-    AtomicSwapOrder,
-    Status,
-    // CHANNEL_INFO,
-    SWAP_ORDERS,append_atomic_order, set_atomic_order, get_atomic_order, COUNT, move_order_to_bottom, BID_ORDER_TO_COUNT, Bid, BIDS, INACTIVE_SWAP_ORDERS, INACTIVE_COUNT, Side, CHANNEL_INFO, SWAP_SEQUENCE, ORDER_TOTAL_COUNT, BidStatus,
+    AtomicSwapOrder, Status, SWAP_ORDERS,append_atomic_order, set_atomic_order,
+    get_atomic_order, COUNT, move_order_to_bottom, Bid, INACTIVE_SWAP_ORDERS,
+    INACTIVE_COUNT, Side, CHANNEL_INFO, SWAP_SEQUENCE, BidStatus, bid_key, bids, BidKey,
 };
 use crate::utils::{extract_source_channel_for_taker_msg, generate_order_id,order_path};
 use cw_storage_plus::Bound;
@@ -300,32 +301,22 @@ pub fn execute_make_bid(
         return Err(ContractError::InvalidSender);
     }
 
-    let key = msg.order_id.clone() + &msg.taker_address;
-    if BID_ORDER_TO_COUNT.has(deps.storage, &key) {
+    let key = bid_key(&msg.order_id, &msg.taker_address);
+    if bids().has(deps.storage, key.clone()) {
         return Err(ContractError::BidAlreadyExist {});
     }
 
-    let order_id = msg.order_id.clone();
-    let count = ORDER_TOTAL_COUNT.may_load(deps.storage, &order_id)?;
-    let mut bid_count = 1;
-    if let Some(value) = count {
-        bid_count = value + 1;
-        ORDER_TOTAL_COUNT.save(deps.storage, &order_id, &bid_count)?;
-    } else {
-        ORDER_TOTAL_COUNT.save(deps.storage, &order_id, &bid_count)?;
-    }
-
-    BID_ORDER_TO_COUNT.save(deps.storage, &key, &bid_count)?;
-
     let bid: Bid = Bid {
         bid: msg.sell_token.clone(),
+        order: msg.order_id.clone(),
         status: BidStatus::Initial,
         bidder: msg.taker_address.clone(),
         bidder_receiver: msg.taker_receiving_address.clone(),
+        receive_timestamp: env.block.time.seconds(),
         expire_timestamp: msg.expiration_timestamp,
     };
 
-    BIDS.save(deps.storage, (&order_id, &bid_count.to_string()), &bid)?;
+    bids().save(deps.storage, key, &bid)?;
 
     let packet = AtomicSwapPacketData {
         r#type: SwapMessageType::MakeBid,
@@ -379,14 +370,12 @@ pub fn execute_take_bid(
         return Err(ContractError::InvalidSender);
     }
 
-    let key = msg.order_id.clone() + &msg.bidder;
-    if !BID_ORDER_TO_COUNT.has(deps.storage, &key) {
+    let key = bid_key(&msg.order_id, &msg.bidder);
+    if !bids().has(deps.storage, key.clone()) {
         return Err(ContractError::BidDoesntExist);
     }
 
-    let key = msg.order_id.clone() + &msg.bidder;
-    let bid_count =  BID_ORDER_TO_COUNT.load(deps.storage, &key)?;
-    let bid = BIDS.load(deps.storage, (&msg.order_id.clone(), &bid_count.to_string()))?;
+    let bid = bids().load(deps.storage, key)?;
 
     if env.block.time.seconds() > bid.expire_timestamp {
         return Err(ContractError::Expired);
@@ -434,8 +423,8 @@ pub fn execute_cancel_bid(
         return Err(ContractError::TakeBidNotAllowed);
     }
 
-    let key = msg.order_id.clone() + &sender;
-    if !BID_ORDER_TO_COUNT.has(deps.storage, &key) {
+    let key = bid_key(&msg.order_id, &msg.bidder);
+    if !bids().has(deps.storage, key) {
         return Err(ContractError::BidDoesntExist);
     }
 
@@ -511,10 +500,21 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             taker,
         } => to_binary(&query_list_by_taker(deps, start_after, limit, taker)?),
         QueryMsg::Details { id } => to_binary(&query_details(deps, id)?),
-        QueryMsg::BidDetailsbyOrder { start_after, limit, order_id }
-            => to_binary(&query_bids_by_order(deps, start_after, limit, order_id)?),
-        QueryMsg::BidDetailsbyBidder { order_id, bidder }
-            => to_binary(&query_bids_by_bidder(deps,  order_id, bidder)?),
+        // Bids
+
+        QueryMsg::BidByAmount { order, start_after, limit }
+            => to_binary(&query_bids_sorted_by_amount(deps, order, start_after, limit)?),
+        QueryMsg::BidByAmountReverse { order, start_before, limit }
+            => to_binary(&query_bids_sorted_by_amount_reverse(deps, order, start_before, limit)?),
+        QueryMsg::BidbyOrder { order, start_after, limit }
+            => to_binary(&query_bids_sorted_by_order(deps, order, start_after, limit)?),
+        QueryMsg::BidbyOrderReverse { order, start_before, limit }
+            => to_binary(&query_bids_sorted_by_order_reverse(deps, order, start_before, limit)?),
+        QueryMsg::BidDetails { order, bidder }
+            => to_binary(&query_bid(deps, order, bidder)?),
+        QueryMsg::BidByBidder { bidder, start_after, limit }
+            => to_binary(&query_bids_by_bidder(deps, bidder, start_after, limit)?),
+
         // Inactive fields
         QueryMsg::InactiveList { start_after, limit, order } => to_binary(&query_inactive_list(deps, start_after, limit, order)?),
         QueryMsg::InactiveListByDesiredTaker {
@@ -580,6 +580,10 @@ fn query_details(deps: Deps, id: String) -> StdResult<DetailsResponse> {
 // Settings for pagination
 pub const MAX_LIMIT: u32 = 10000;
 pub const DEFAULT_LIMIT: u32 = 20;
+
+// Query limits
+const DEFAULT_QUERY_LIMIT: u32 = 10;
+const MAX_QUERY_LIMIT: u32 = 100;
 
 fn query_list(
     deps: Deps,
@@ -681,36 +685,138 @@ fn query_list_by_taker(
     Ok(ListResponse { swaps: swap_orders })
 }
 
-fn query_bids_by_order(
+pub fn query_bids_sorted_by_amount(
     deps: Deps,
-    _start_after: Option<u64>,
-    limit: Option<u32>,
     order: String,
-) -> StdResult<Vec<Bid>> {
-    let limit = limit.unwrap_or(1000) as usize;
-    let bids = BIDS.prefix(&order)
-    .range(deps.storage, None, None, Order::Ascending)
-    .take(limit)
-    .map(|item| {
-        item.map(|(_addr, bid)| {
-            bid
-        })
-    })
-    .collect::<StdResult<_>>()?;
+    start_after: Option<BidOffset>,
+    limit: Option<u32>,
+) -> StdResult<BidsResponse> {
+    let limit = limit.unwrap_or(DEFAULT_QUERY_LIMIT).min(MAX_QUERY_LIMIT) as usize;
 
-    Ok(bids)
+    let start = start_after.map(|offset| {
+        Bound::exclusive((offset.amount.u128(), bid_key(&order, &offset.bidder)))
+    });
+
+    let bids = bids()
+        .idx
+        .order_price
+        .sub_prefix(order)
+        .range(deps.storage, start, None, Order::Ascending)
+        .take(limit)
+        .map(|res| res.map(|item| item.1))
+        .collect::<StdResult<Vec<_>>>()?;
+
+    Ok(BidsResponse { bids })
 }
 
-fn query_bids_by_bidder(
+pub fn query_bids_sorted_by_order(
+    deps: Deps,
+    order: String,
+    start_after: Option<BidOffsetTime>,
+    limit: Option<u32>,
+) -> StdResult<BidsResponse> {
+    let limit = limit.unwrap_or(DEFAULT_QUERY_LIMIT).min(MAX_QUERY_LIMIT) as usize;
+
+    let start = start_after.map(|offset| {
+        Bound::exclusive((offset.time, bid_key(&order, &offset.bidder)))
+    });
+
+    let bids = bids()
+        .idx
+        .timestamp
+        .sub_prefix(order)
+        .range(deps.storage, start, None, Order::Ascending)
+        .take(limit)
+        .map(|res| res.map(|item| item.1))
+        .collect::<StdResult<Vec<_>>>()?;
+
+    Ok(BidsResponse { bids })
+}
+
+pub fn query_bids_sorted_by_amount_reverse(
+    deps: Deps,
+    order: String,
+    start_before: Option<BidOffset>,
+    limit: Option<u32>,
+) -> StdResult<BidsResponse> {
+    let limit = limit.unwrap_or(DEFAULT_QUERY_LIMIT).min(MAX_QUERY_LIMIT) as usize;
+
+    let end: Option<Bound<(u128, BidKey)>> = start_before.map(|offset| {
+        Bound::exclusive((
+            offset.amount.u128(),
+            bid_key(&order, &offset.bidder),
+        ))
+    });
+
+    let bids = bids()
+        .idx
+        .order_price
+        .sub_prefix(order)
+        .range(deps.storage, None, end, Order::Descending)
+        .take(limit)
+        .map(|res| res.map(|item| item.1))
+        .collect::<StdResult<Vec<_>>>()?;
+
+    Ok(BidsResponse { bids })
+}
+
+pub fn query_bids_sorted_by_order_reverse(
+    deps: Deps,
+    order: String,
+    start_before: Option<BidOffsetTime>,
+    limit: Option<u32>,
+) -> StdResult<BidsResponse> {
+    let limit = limit.unwrap_or(DEFAULT_QUERY_LIMIT).min(MAX_QUERY_LIMIT) as usize;
+
+    let end: Option<Bound<(u64, BidKey)>> = start_before.map(|offset| {
+        Bound::exclusive((
+            offset.time,
+            bid_key(&order, &offset.bidder),
+        ))
+    });
+
+    let bids = bids()
+        .idx
+        .timestamp
+        .sub_prefix(order)
+        .range(deps.storage, None, end, Order::Descending)
+        .take(limit)
+        .map(|res| res.map(|item| item.1))
+        .collect::<StdResult<Vec<_>>>()?;
+
+    Ok(BidsResponse { bids })
+}
+
+pub fn query_bid(
     deps: Deps,
     order: String,
     bidder: String,
-) -> StdResult<Bid> {
-    let key = order.clone() + &bidder;
-    let count = BID_ORDER_TO_COUNT.load(deps.storage, &key)?;
-    let bid = BIDS.load(deps.storage, (&order, &count.to_string()))?;
+) -> StdResult<BidsResponse> {
+    let bid = bids().may_load(deps.storage, bid_key(&order, &bidder))?;
 
-    Ok(bid)
+    Ok(BidsResponse { bids: vec![bid.unwrap()] })
+}
+
+pub fn query_bids_by_bidder(
+    deps: Deps,
+    bidder: String,
+    start_after: Option<String>, // order
+    limit: Option<u32>,
+) -> StdResult<BidsResponse> {
+    let limit = limit.unwrap_or(DEFAULT_QUERY_LIMIT).min(MAX_QUERY_LIMIT) as usize;
+
+    let start = start_after.map(|start| Bound::exclusive(bid_key(&start, &bidder)));
+
+    let bids = bids()
+        .idx
+        .order
+        .prefix(bidder)
+        .range(deps.storage, start, None, Order::Ascending)
+        .take(limit)
+        .map(|item| item.map(|(_, b)| b))
+        .collect::<StdResult<Vec<_>>>()?;
+
+    Ok(BidsResponse { bids })
 }
 
 // Inactive fields
