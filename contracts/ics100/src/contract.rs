@@ -872,7 +872,7 @@ pub fn query_bids_by_bidder(
 
     let bids = bids()
         .idx
-        .order
+        .bidder
         .prefix(bidder)
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
@@ -1026,7 +1026,7 @@ mod tests {
             status: BidStatus::Initial,
             bidder: bidder.clone(),
             bidder_receiver: bidder.clone(),
-            receive_timestamp: 50,
+            receive_timestamp: 10,
             expire_timestamp: 100,
         };
         bids()
@@ -1058,7 +1058,7 @@ mod tests {
             status: BidStatus::Initial,
             bidder: bidder.clone(),
             bidder_receiver: bidder.clone(),
-            receive_timestamp: 50,
+            receive_timestamp: 20,
             expire_timestamp: 100,
         };
         bids()
@@ -1077,6 +1077,80 @@ mod tests {
 
         let value: BidsResponse = from_binary(&res).unwrap();
         assert_eq!(value.bids[0], bid);
+
+        order = "some-order".to_owned();
+        bidder = "some-bidder-2".to_owned();
+        let bid2: Bid = Bid {
+            bid: Coin {
+                denom: "ok".to_owned(),
+                amount: Uint128::from(100u64),
+            },
+            order: order.clone(),
+            status: BidStatus::Initial,
+            bidder: bidder.clone(),
+            bidder_receiver: bidder.clone(),
+            receive_timestamp: 30,
+            expire_timestamp: 100,
+        };
+        bids()
+            .save(deps.as_mut().storage, bid_key(&order, &bidder), &bid2)
+            .unwrap();
+        let res = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::BidByAmount {
+                order: order.clone(),
+                start_after: Some(BidOffset { amount: Uint128::from(100u64), bidder: "some-bidder".to_owned() }),
+                limit: Some(10),
+            },
+        )
+        .unwrap();
+
+        let value: BidsResponse = from_binary(&res).unwrap();
+        assert_eq!(value.bids, vec![bid2.clone(), bid1]);
+
+        let res = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::BidByAmountReverse {
+                order,
+                start_before: Some(BidOffset { amount: Uint128::from(1000u64), bidder: "some-bidder-1".to_owned() }),
+                limit: Some(10),
+            },
+        )
+        .unwrap();
+
+        let value: BidsResponse = from_binary(&res).unwrap();
+        assert_eq!(value.bids, vec![bid2, bid.clone()]);
+
+        // Query by bidder
+        order = "some-order-1".to_owned();
+        bidder = "some-bidder".to_owned();
+        let bid3: Bid = Bid {
+            bid: Coin {
+                denom: "ok".to_owned(),
+                amount: Uint128::from(100u64),
+            },
+            order: order.clone(),
+            status: BidStatus::Initial,
+            bidder: bidder.clone(),
+            bidder_receiver: bidder.clone(),
+            receive_timestamp: 40,
+            expire_timestamp: 100,
+        };
+        bids()
+            .save(deps.as_mut().storage, bid_key(&order, &bidder), &bid3)
+            .unwrap();
+        
+        let res = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::BidByBidder { bidder:bidder, start_after: None, limit: None },
+        )
+        .unwrap();
+
+        let value: BidsResponse = from_binary(&res).unwrap();
+        assert_eq!(value.bids, vec![bid.clone(), bid3]);
     }
 
     #[test]
