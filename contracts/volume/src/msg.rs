@@ -1,23 +1,18 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{Coin};
+use cosmwasm_std::Coin;
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct InstantiateMsg {
     pub contract: String,
-    pub max_length: u64
+    pub max_length: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub enum ExecuteMsg {
-    LogObservation {
-        token1: Coin,
-        token2: Coin
-    },
-    SetContract {
-        address: String
-    }
+    LogObservation { token1: Coin, token2: Coin },
+    SetContract { address: String },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -34,9 +29,7 @@ pub enum QueryMsg {
     /// Returns total volume till latest timestamp
     TotalVolume {},
     /// Returns total volume till given timestamp
-    TotalVolumeAt {
-        timestamp: u64
-    },
+    TotalVolumeAt { timestamp: u64 },
     /// Returns contract address for which volume is tracked
     Contract {},
 }

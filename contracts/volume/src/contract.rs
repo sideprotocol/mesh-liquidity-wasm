@@ -3,17 +3,14 @@ use std::cmp::min;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response,
-    StdResult, StdError, Coin,
+    to_binary, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult,
 };
 
 use cw2::set_contract_version;
 
 use crate::error::ContractError;
-use crate::msg::{ ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
-use crate::state::{
-  CONFIG, OBSERVATIONS, Observation, Config,
-};
+use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
+use crate::state::{Config, Observation, CONFIG, OBSERVATIONS};
 
 // Version info, for migration info
 const CONTRACT_NAME: &str = "volume";
@@ -34,7 +31,7 @@ pub fn instantiate(
         pivoted: true,
         current_idx: 0,
         is_new: true,
-        counter: 0
+        counter: 0,
     };
     CONFIG.save(deps.storage, &config)?;
     Ok(Response::default())
@@ -48,7 +45,9 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::LogObservation { token1, token2 } => execute_log_observation(deps, env, info, token1, token2),
+        ExecuteMsg::LogObservation { token1, token2 } => {
+            execute_log_observation(deps, env, info, token1, token2)
+        }
         ExecuteMsg::SetContract { address } => execute_set_contract(deps, env, info, address),
     }
 }
@@ -58,7 +57,7 @@ pub fn execute_log_observation(
     env: Env,
     info: MessageInfo,
     token1: Coin,
-    token2: Coin
+    token2: Coin,
 ) -> Result<Response, ContractError> {
     let mut config = CONFIG.load(deps.storage)?;
     if info.sender != config.contract_address {
@@ -82,12 +81,11 @@ pub fn execute_log_observation(
             deps,
             env.block.time.nanos(),
             token1.amount.u128(),
-            token2.amount.u128()
+            token2.amount.u128(),
         )?;
     }
 
-    let res = Response::new()
-        .add_attribute("action", "log_observation");
+    let res = Response::new().add_attribute("action", "log_observation");
     Ok(res)
 }
 
@@ -95,7 +93,7 @@ pub fn execute_set_contract(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
-    address: String
+    address: String,
 ) -> Result<Response, ContractError> {
     let mut config = CONFIG.load(deps.storage)?;
     if info.sender != config.admin {
@@ -107,8 +105,7 @@ pub fn execute_set_contract(
     config.contract_address = address;
     CONFIG.save(deps.storage, &config)?;
 
-    let res = Response::new()
-        .add_attribute("action", "set_contract");
+    let res = Response::new().add_attribute("action", "set_contract");
     Ok(res)
 }
 
@@ -120,7 +117,12 @@ Parameters:
 + `volume1`: volume of first token.
 + `volume2`: volume of second token.
 */
-fn write(deps: DepsMut, block_timestamp: u64, volume1: u128, volume2: u128) -> Result<u64, ContractError> {
+fn write(
+    deps: DepsMut,
+    block_timestamp: u64,
+    volume1: u128,
+    volume2: u128,
+) -> Result<u64, ContractError> {
     let mut config = CONFIG.load(deps.storage)?;
     let obs = OBSERVATIONS.load(deps.storage, config.current_idx)?;
 
@@ -179,8 +181,7 @@ pub fn binary_search(deps: Deps, block_timestamp: u64) -> StdResult<u64> {
     let config = CONFIG.load(deps.storage)?;
     // edge case when all values are less than required
     let obs = OBSERVATIONS.load(deps.storage, config.current_idx)?;
-    if obs.block_timestamp < block_timestamp
-    {
+    if obs.block_timestamp < block_timestamp {
         panic!("Observation after this timestamp doesn't exist");
     }
 
@@ -239,33 +240,27 @@ pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, C
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::Contract {  } => to_binary(&query_contract(deps)?),
-        QueryMsg::TotalVolume { } => to_binary(&query_total_volume(deps, env)?),
-        QueryMsg::TotalVolumeAt { timestamp } => to_binary(&query_total_volume_at(deps, timestamp)?),
+        QueryMsg::Contract {} => to_binary(&query_contract(deps)?),
+        QueryMsg::TotalVolume {} => to_binary(&query_total_volume(deps, env)?),
+        QueryMsg::TotalVolumeAt { timestamp } => {
+            to_binary(&query_total_volume_at(deps, timestamp)?)
+        }
         //QueryMsg::VolumeInterval { start, end } => to_binary(&query_total_volume_interval(deps, start, end)?),
     }
 }
 
-fn query_contract(
-    deps: Deps,
-) -> StdResult<String> {
+fn query_contract(deps: Deps) -> StdResult<String> {
     let config = CONFIG.load(deps.storage)?;
 
     Ok(config.contract_address)
 }
 
-fn query_total_volume(
-    deps: Deps,
-    env: Env
-) -> StdResult<Observation> {
+fn query_total_volume(deps: Deps, env: Env) -> StdResult<Observation> {
     let res = binary_search(deps, env.block.time.nanos())?;
     Ok(OBSERVATIONS.load(deps.storage, res)?)
 }
 
-fn query_total_volume_at(
-    deps: Deps,
-    timestamp: u64
-) -> StdResult<Observation> {
+fn query_total_volume_at(deps: Deps, timestamp: u64) -> StdResult<Observation> {
     let res = binary_search(deps, timestamp)?;
     Ok(OBSERVATIONS.load(deps.storage, res)?)
 }

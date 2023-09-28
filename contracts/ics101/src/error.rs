@@ -109,5 +109,5 @@ pub enum ContractError {
     ErrOrderNotFound,
 
     #[error("Error failed multi asset deposit")]
-    ErrFailedMultiAssetDeposit
+    ErrFailedMultiAssetDeposit,
 }

@@ -12,7 +12,7 @@ pub struct Observation {
     // volume cumulative token1
     pub volume1: u128,
     // volume cumulative token2
-    pub volume2: u128
+    pub volume2: u128,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -30,9 +30,8 @@ pub struct Config {
     // Is new
     pub is_new: bool,
     // total observations in map
-    pub counter: u64
+    pub counter: u64,
 }
 pub const OBSERVATIONS: Map<u64, Observation> = Map::new("observations");
 
 pub const CONFIG: Item<Config> = Item::new("config");
-

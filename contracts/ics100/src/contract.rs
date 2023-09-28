@@ -2,25 +2,27 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     to_binary, Binary, Deps, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Order, Response,
-    StdResult, StdError,
+    StdError, StdResult,
 };
 
 use cw2::set_contract_version;
 
 use crate::error::ContractError;
 use crate::msg::{
-    AtomicSwapPacketData, CancelSwapMsg, DetailsResponse, ExecuteMsg, InstantiateMsg, ListResponse,
-    MakeSwapMsg, QueryMsg, SwapMessageType, TakeSwapMsg, MigrateMsg, MakeBidMsg, TakeBidMsg, CancelBidMsg, BidOffset, BidsResponse, BidOffsetTime,
+    AtomicSwapPacketData, BidOffset, BidOffsetTime, BidsResponse, CancelBidMsg, CancelSwapMsg,
+    DetailsResponse, ExecuteMsg, InstantiateMsg, ListResponse, MakeBidMsg, MakeSwapMsg, MigrateMsg,
+    QueryMsg, SwapMessageType, TakeBidMsg, TakeSwapMsg,
 };
 use crate::query_reverse::{
-    query_list_reverse, query_list_by_desired_taker_reverse, query_list_by_maker_reverse,
-    query_list_by_taker_reverse};
-use crate::state::{
-    AtomicSwapOrder, Status, SWAP_ORDERS,append_atomic_order, set_atomic_order,
-    get_atomic_order, COUNT, move_order_to_bottom, Bid, INACTIVE_SWAP_ORDERS,
-    INACTIVE_COUNT, Side, CHANNEL_INFO, SWAP_SEQUENCE, BidStatus, bid_key, bids, BidKey,
+    query_list_by_desired_taker_reverse, query_list_by_maker_reverse, query_list_by_taker_reverse,
+    query_list_reverse,
 };
-use crate::utils::{extract_source_channel_for_taker_msg, generate_order_id,order_path};
+use crate::state::{
+    append_atomic_order, bid_key, bids, get_atomic_order, move_order_to_bottom, set_atomic_order,
+    AtomicSwapOrder, Bid, BidKey, BidStatus, Side, Status, CHANNEL_INFO, COUNT, INACTIVE_COUNT,
+    INACTIVE_SWAP_ORDERS, SWAP_ORDERS, SWAP_SEQUENCE,
+};
+use crate::utils::{extract_source_channel_for_taker_msg, generate_order_id, order_path};
 use cw_storage_plus::Bound;
 
 // Version info, for migration info
@@ -76,10 +78,13 @@ pub fn execute_make_swap(
         }
     }
     if !ok {
-        return Err(ContractError::Std(StdError::generic_err("Funds mismatch: Funds mismatched to with message and sent values: Make swap".to_string())));
+        return Err(ContractError::Std(StdError::generic_err(
+            "Funds mismatch: Funds mismatched to with message and sent values: Make swap"
+                .to_string(),
+        )));
     }
 
-    // Add swap message 
+    // Add swap message
     let channel_info = CHANNEL_INFO.load(deps.storage, &msg.source_channel)?;
     let sequence = SWAP_SEQUENCE.load(deps.storage)?;
     let path = order_path(
@@ -87,9 +92,9 @@ pub fn execute_make_swap(
         msg.source_port.clone(),
         channel_info.counterparty_endpoint.channel_id,
         channel_info.counterparty_endpoint.port_id,
-        sequence
+        sequence,
     )?;
-   
+
     let order_id = generate_order_id(&path)?;
     let new_order = AtomicSwapOrder {
         id: order_id.clone(),
@@ -100,7 +105,7 @@ pub fn execute_make_swap(
         taker: None,
         cancel_timestamp: None,
         complete_timestamp: None,
-        create_timestamp: env.block.time.seconds()
+        create_timestamp: env.block.time.seconds(),
     };
     append_atomic_order(deps.storage, &order_id, &new_order)?;
     let ibc_packet = AtomicSwapPacketData {
@@ -112,7 +117,7 @@ pub fn execute_make_swap(
     };
 
     // Increment the sequence counter.
-    let new_sequence = sequence+1;
+    let new_sequence = sequence + 1;
     SWAP_SEQUENCE.save(deps.storage, &new_sequence)?;
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -148,7 +153,10 @@ pub fn execute_take_swap(
         }
     }
     if !ok {
-        return Err(ContractError::Std(StdError::generic_err("Funds mismatch: Funds mismatched to with message and sent values: Make swap".to_string())));
+        return Err(ContractError::Std(StdError::generic_err(
+            "Funds mismatch: Funds mismatched to with message and sent values: Make swap"
+                .to_string(),
+        )));
     }
 
     let mut order = get_atomic_order(deps.storage, &msg.order_id)?;
@@ -238,7 +246,7 @@ pub fn execute_cancel_swap(
         data: to_binary(&msg)?,
         memo: String::new(),
         order_id: None,
-        path: None
+        path: None,
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -280,7 +288,10 @@ pub fn execute_make_bid(
         }
     }
     if !ok {
-        return Err(ContractError::Std(StdError::generic_err("Funds mismatch: Funds mismatched to with message and sent values: Make swap".to_string())));
+        return Err(ContractError::Std(StdError::generic_err(
+            "Funds mismatch: Funds mismatched to with message and sent values: Make swap"
+                .to_string(),
+        )));
     }
 
     if !order.maker.take_bids {
@@ -323,7 +334,7 @@ pub fn execute_make_bid(
         data: to_binary(&msg)?,
         memo: String::new(),
         order_id: None,
-        path: None
+        path: None,
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -386,7 +397,7 @@ pub fn execute_take_bid(
         data: to_binary(&msg)?,
         memo: String::new(),
         order_id: None,
-        path: None
+        path: None,
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -437,7 +448,7 @@ pub fn execute_cancel_bid(
         data: to_binary(&msg)?,
         memo: String::new(),
         order_id: None,
-        path: None
+        path: None,
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -465,7 +476,7 @@ pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, C
         return Err(StdError::generic_err("Can only upgrade from same type").into());
     }
     // note: better to do proper semver compare, but string compare *usually* works
-    if ver.version.as_str()  >= CONTRACT_VERSION {
+    if ver.version.as_str() >= CONTRACT_VERSION {
         return Err(StdError::generic_err("Cannot upgrade from a newer version").into());
     }
 
@@ -478,7 +489,11 @@ pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, C
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::List { start_after, limit, order } => to_binary(&query_list(deps, start_after, limit, order)?),
+        QueryMsg::List {
+            start_after,
+            limit,
+            order,
+        } => to_binary(&query_list(deps, start_after, limit, order)?),
         QueryMsg::ListByDesiredTaker {
             start_after,
             limit,
@@ -501,22 +516,59 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         } => to_binary(&query_list_by_taker(deps, start_after, limit, taker)?),
         QueryMsg::Details { id } => to_binary(&query_details(deps, id)?),
         // Bids
-
-        QueryMsg::BidByAmount { order, start_after, limit }
-            => to_binary(&query_bids_sorted_by_amount(deps, order, start_after, limit)?),
-        QueryMsg::BidByAmountReverse { order, start_before, limit }
-            => to_binary(&query_bids_sorted_by_amount_reverse(deps, order, start_before, limit)?),
-        QueryMsg::BidbyOrder { order, start_after, limit }
-            => to_binary(&query_bids_sorted_by_order(deps, order, start_after, limit)?),
-        QueryMsg::BidbyOrderReverse { order, start_before, limit }
-            => to_binary(&query_bids_sorted_by_order_reverse(deps, order, start_before, limit)?),
-        QueryMsg::BidDetails { order, bidder }
-            => to_binary(&query_bid(deps, order, bidder)?),
-        QueryMsg::BidByBidder { bidder, start_after, limit }
-            => to_binary(&query_bids_by_bidder(deps, bidder, start_after, limit)?),
+        QueryMsg::BidByAmount {
+            order,
+            start_after,
+            limit,
+        } => to_binary(&query_bids_sorted_by_amount(
+            deps,
+            order,
+            start_after,
+            limit,
+        )?),
+        QueryMsg::BidByAmountReverse {
+            order,
+            start_before,
+            limit,
+        } => to_binary(&query_bids_sorted_by_amount_reverse(
+            deps,
+            order,
+            start_before,
+            limit,
+        )?),
+        QueryMsg::BidbyOrder {
+            order,
+            start_after,
+            limit,
+        } => to_binary(&query_bids_sorted_by_order(
+            deps,
+            order,
+            start_after,
+            limit,
+        )?),
+        QueryMsg::BidbyOrderReverse {
+            order,
+            start_before,
+            limit,
+        } => to_binary(&query_bids_sorted_by_order_reverse(
+            deps,
+            order,
+            start_before,
+            limit,
+        )?),
+        QueryMsg::BidDetails { order, bidder } => to_binary(&query_bid(deps, order, bidder)?),
+        QueryMsg::BidByBidder {
+            bidder,
+            start_after,
+            limit,
+        } => to_binary(&query_bids_by_bidder(deps, bidder, start_after, limit)?),
 
         // Inactive fields
-        QueryMsg::InactiveList { start_after, limit, order } => to_binary(&query_inactive_list(deps, start_after, limit, order)?),
+        QueryMsg::InactiveList {
+            start_after,
+            limit,
+            order,
+        } => to_binary(&query_inactive_list(deps, start_after, limit, order)?),
         QueryMsg::InactiveListByDesiredTaker {
             start_after,
             limit,
@@ -531,14 +583,27 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             start_after,
             limit,
             maker,
-        } => to_binary(&query_inactive_list_by_maker(deps, start_after, limit, maker)?),
+        } => to_binary(&query_inactive_list_by_maker(
+            deps,
+            start_after,
+            limit,
+            maker,
+        )?),
         QueryMsg::InactiveListByTaker {
             start_after,
             limit,
             taker,
-        } => to_binary(&query_inactive_list_by_taker(deps, start_after, limit, taker)?),
+        } => to_binary(&query_inactive_list_by_taker(
+            deps,
+            start_after,
+            limit,
+            taker,
+        )?),
         // Reverse
-        QueryMsg::ListReverse { start_before, limit } => to_binary(&query_list_reverse(deps, start_before, limit)?),
+        QueryMsg::ListReverse {
+            start_before,
+            limit,
+        } => to_binary(&query_list_reverse(deps, start_before, limit)?),
         QueryMsg::ListByDesiredTakerReverse {
             start_before,
             limit,
@@ -553,12 +618,22 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             start_before,
             limit,
             maker,
-        } => to_binary(&query_list_by_maker_reverse(deps, start_before, limit, maker)?),
+        } => to_binary(&query_list_by_maker_reverse(
+            deps,
+            start_before,
+            limit,
+            maker,
+        )?),
         QueryMsg::ListByTakerReverse {
             start_before,
             limit,
             taker,
-        } => to_binary(&query_list_by_taker_reverse(deps, start_before, limit, taker)?),
+        } => to_binary(&query_list_by_taker_reverse(
+            deps,
+            start_before,
+            limit,
+            taker,
+        )?),
     }
 }
 
@@ -589,7 +664,7 @@ fn query_list(
     deps: Deps,
     start_after: Option<u64>,
     limit: Option<u32>,
-    order: Option<String>
+    order: Option<String>,
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
     let start;
@@ -693,9 +768,8 @@ pub fn query_bids_sorted_by_amount(
 ) -> StdResult<BidsResponse> {
     let limit = limit.unwrap_or(DEFAULT_QUERY_LIMIT).min(MAX_QUERY_LIMIT) as usize;
 
-    let start = start_after.map(|offset| {
-        Bound::exclusive((offset.amount.u128(), bid_key(&order, &offset.bidder)))
-    });
+    let start = start_after
+        .map(|offset| Bound::exclusive((offset.amount.u128(), bid_key(&order, &offset.bidder))));
 
     let bids = bids()
         .idx
@@ -717,9 +791,8 @@ pub fn query_bids_sorted_by_order(
 ) -> StdResult<BidsResponse> {
     let limit = limit.unwrap_or(DEFAULT_QUERY_LIMIT).min(MAX_QUERY_LIMIT) as usize;
 
-    let start = start_after.map(|offset| {
-        Bound::exclusive((offset.time, bid_key(&order, &offset.bidder)))
-    });
+    let start =
+        start_after.map(|offset| Bound::exclusive((offset.time, bid_key(&order, &offset.bidder))));
 
     let bids = bids()
         .idx
@@ -741,12 +814,8 @@ pub fn query_bids_sorted_by_amount_reverse(
 ) -> StdResult<BidsResponse> {
     let limit = limit.unwrap_or(DEFAULT_QUERY_LIMIT).min(MAX_QUERY_LIMIT) as usize;
 
-    let end: Option<Bound<(u128, BidKey)>> = start_before.map(|offset| {
-        Bound::exclusive((
-            offset.amount.u128(),
-            bid_key(&order, &offset.bidder),
-        ))
-    });
+    let end: Option<Bound<(u128, BidKey)>> = start_before
+        .map(|offset| Bound::exclusive((offset.amount.u128(), bid_key(&order, &offset.bidder))));
 
     let bids = bids()
         .idx
@@ -768,12 +837,8 @@ pub fn query_bids_sorted_by_order_reverse(
 ) -> StdResult<BidsResponse> {
     let limit = limit.unwrap_or(DEFAULT_QUERY_LIMIT).min(MAX_QUERY_LIMIT) as usize;
 
-    let end: Option<Bound<(u64, BidKey)>> = start_before.map(|offset| {
-        Bound::exclusive((
-            offset.time,
-            bid_key(&order, &offset.bidder),
-        ))
-    });
+    let end: Option<Bound<(u64, BidKey)>> =
+        start_before.map(|offset| Bound::exclusive((offset.time, bid_key(&order, &offset.bidder))));
 
     let bids = bids()
         .idx
@@ -787,14 +852,12 @@ pub fn query_bids_sorted_by_order_reverse(
     Ok(BidsResponse { bids })
 }
 
-pub fn query_bid(
-    deps: Deps,
-    order: String,
-    bidder: String,
-) -> StdResult<BidsResponse> {
+pub fn query_bid(deps: Deps, order: String, bidder: String) -> StdResult<BidsResponse> {
     let bid = bids().may_load(deps.storage, bid_key(&order, &bidder))?;
 
-    Ok(BidsResponse { bids: vec![bid.unwrap()] })
+    Ok(BidsResponse {
+        bids: vec![bid.unwrap()],
+    })
 }
 
 pub fn query_bids_by_bidder(
@@ -825,7 +888,7 @@ fn query_inactive_list(
     deps: Deps,
     start_after: Option<u64>,
     limit: Option<u32>,
-    order: Option<String>
+    order: Option<String>,
 ) -> StdResult<ListResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
     let start;
@@ -924,7 +987,7 @@ fn query_inactive_list_by_taker(
 #[cfg(test)]
 mod tests {
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{coin, from_binary, StdError};
+    use cosmwasm_std::{coin, from_binary, Coin, StdError, Uint128};
 
     use crate::msg::{Height, TakeSwapMsgOutput};
     use crate::utils::{generate_order_id, order_path};
@@ -940,6 +1003,80 @@ mod tests {
         let info = mock_info("anyone", &[]);
         let res = instantiate(deps.as_mut(), mock_env(), info, instantiate_msg).unwrap();
         assert_eq!(0, res.messages.len());
+    }
+
+    #[test]
+    fn test_bid_structure() {
+        let mut deps = mock_dependencies();
+
+        // Instantiate an empty contract
+        let instantiate_msg = InstantiateMsg {};
+        let info = mock_info("anyone", &[]);
+        let res = instantiate(deps.as_mut(), mock_env(), info, instantiate_msg).unwrap();
+        assert_eq!(0, res.messages.len());
+
+        let mut order = "some-order".to_owned();
+        let mut bidder = "some-bidder".to_owned();
+        let bid: Bid = Bid {
+            bid: Coin {
+                denom: "ok".to_owned(),
+                amount: Uint128::from(100u64),
+            },
+            order: order.clone(),
+            status: BidStatus::Initial,
+            bidder: bidder.clone(),
+            bidder_receiver: bidder.clone(),
+            receive_timestamp: 50,
+            expire_timestamp: 100,
+        };
+        bids()
+            .save(deps.as_mut().storage, bid_key(&order, &bidder), &bid)
+            .unwrap();
+
+        let res = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::BidByAmount {
+                order,
+                start_after: None,
+                limit: Some(10),
+            },
+        )
+        .unwrap();
+
+        let value: BidsResponse = from_binary(&res).unwrap();
+        assert_eq!(value.bids[0], bid);
+
+        order = "some-order".to_owned();
+        bidder = "some-bidder-1".to_owned();
+        let bid1: Bid = Bid {
+            bid: Coin {
+                denom: "ok".to_owned(),
+                amount: Uint128::from(1000u64),
+            },
+            order: order.clone(),
+            status: BidStatus::Initial,
+            bidder: bidder.clone(),
+            bidder_receiver: bidder.clone(),
+            receive_timestamp: 50,
+            expire_timestamp: 100,
+        };
+        bids()
+            .save(deps.as_mut().storage, bid_key(&order, &bidder), &bid1)
+            .unwrap();
+        let res = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::BidByAmount {
+                order,
+                start_after: None,
+                limit: Some(10),
+            },
+        )
+        .unwrap();
+
+        let value: BidsResponse = from_binary(&res).unwrap();
+        assert_eq!(value.bids[0], bid);
     }
 
     #[test]
@@ -973,15 +1110,9 @@ mod tests {
                 revision_height: 0,
             },
             timeout_timestamp: env.block.time.plus_seconds(100).nanos(),
-            take_bids: false
+            take_bids: false,
         };
-        let err = execute(
-            deps.as_mut(),
-            env,
-            info,
-            ExecuteMsg::MakeSwap(create),
-        )
-        .unwrap_err();
+        let err = execute(deps.as_mut(), env, info, ExecuteMsg::MakeSwap(create)).unwrap_err();
         assert_eq!(err, ContractError::EmptyBalance {});
     }
 
@@ -1017,7 +1148,7 @@ mod tests {
                 revision_height: 0,
             },
             timeout_timestamp: 1693399799000000000,
-            take_bids: false
+            take_bids: false,
         };
 
         let path = order_path(
@@ -1082,18 +1213,8 @@ mod tests {
                     taker_address: msg_output.taker_address.clone(),
                     taker_receiving_address: msg_output.taker_receiving_address.clone(),
                     timeout_height: Height {
-                        revision_number: msg_output
-                            .timeout_height
-                            .revision_number
-                            
-                            .parse()
-                            .unwrap(),
-                        revision_height: msg_output
-                            .timeout_height
-                            .revision_height
-                            
-                            .parse()
-                            .unwrap(),
+                        revision_number: msg_output.timeout_height.revision_number.parse().unwrap(),
+                        revision_height: msg_output.timeout_height.revision_height.parse().unwrap(),
                     },
                     timeout_timestamp: msg_output.timeout_timestamp.parse().unwrap(),
                 }

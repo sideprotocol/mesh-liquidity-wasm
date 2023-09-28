@@ -1,7 +1,11 @@
-use cosmwasm_std::{Deps, StdResult, Order};
+use cosmwasm_std::{Deps, Order, StdResult};
 use cw_storage_plus::Bound;
 
-use crate::{msg::ListResponse, contract::{DEFAULT_LIMIT, MAX_LIMIT}, state::{SWAP_ORDERS, AtomicSwapOrder}};
+use crate::{
+    contract::{DEFAULT_LIMIT, MAX_LIMIT},
+    msg::ListResponse,
+    state::{AtomicSwapOrder, SWAP_ORDERS},
+};
 
 pub fn query_list_reverse(
     deps: Deps,

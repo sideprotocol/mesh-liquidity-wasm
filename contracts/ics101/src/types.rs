@@ -64,7 +64,7 @@ pub const MULTI_DEPOSIT_PENDING_LIMIT: u64 = 10;
 pub enum OrderStatus {
     Pending = 0,
     Complete = 1,
-    Cancelled = 2
+    Cancelled = 2,
 }
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -77,7 +77,7 @@ pub struct MultiAssetDepositOrder {
     pub deposits: Vec<Coin>,
     //pub pool_tokens: Vec<Coin>,
     pub status: OrderStatus,
-    pub created_at: u64
+    pub created_at: u64,
 }
 
 /// ## Description - This struct describes a asset (native or CW20) and its normalized weight

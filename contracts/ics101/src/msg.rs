@@ -1,4 +1,4 @@
-use cw20::{MinterResponse, Cw20Coin, Logo};
+use cw20::{Cw20Coin, Logo, MinterResponse};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -7,11 +7,11 @@ use cosmwasm_std::{Coin, Response, StdError, StdResult, Uint128};
 use crate::error::ContractError;
 use crate::market::{InterchainLiquidityPool, InterchainMarketMaker, PoolAsset, PoolStatus};
 use crate::types::MultiAssetDepositOrder;
-use crate::utils::{is_valid_symbol, is_valid_name};
+use crate::utils::{is_valid_name, is_valid_symbol};
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct InstantiateMsg {
-    pub token_code_id: u64
+    pub token_code_id: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -26,16 +26,11 @@ pub enum ExecuteMsg {
     MultiAssetWithdraw(MsgMultiAssetWithdrawRequest),
     Swap(MsgSwapRequest),
     RemovePool(MsgRemovePool),
-    SetLogAddress {
-        pool_id: String,
-        address: String,
-    }
-   // Receive(Cw20ReceiveMsg)
+    SetLogAddress { pool_id: String, address: String }, // Receive(Cw20ReceiveMsg)
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct MigrateMsg {
-}
+pub struct MigrateMsg {}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub enum Cw20HookMsg {
@@ -44,14 +39,14 @@ pub enum Cw20HookMsg {
         receiver: String,
         counterparty_receiver: String,
         timeout_height: u64,
-        timeout_timestamp: u64
+        timeout_timestamp: u64,
     },
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct MsgRemovePool {
-   pub pool_id: String
+    pub pool_id: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -64,10 +59,10 @@ pub struct MsgMakePoolRequest {
     pub counterparty_channel: String,
     pub creator: String,
     pub counterparty_creator: String,
-    pub liquidity:  Vec<PoolAsset>,
+    pub liquidity: Vec<PoolAsset>,
     pub swap_fee: u32,
     pub timeout_height: u64,
-    pub timeout_timestamp: u64
+    pub timeout_timestamp: u64,
 }
 
 impl MsgMakePoolRequest {
@@ -95,7 +90,7 @@ impl MsgMakePoolRequest {
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct MsgMakePoolResponse {
-    pool_id: String
+    pool_id: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -105,7 +100,7 @@ pub struct MsgTakePoolRequest {
     pub creator: String,
     pub pool_id: String,
     pub timeout_height: u64,
-    pub timeout_timestamp: u64
+    pub timeout_timestamp: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -113,7 +108,7 @@ pub struct MsgTakePoolRequest {
 pub struct MsgCancelPoolRequest {
     pub pool_id: String,
     pub timeout_height: u64,
-    pub timeout_timestamp: u64
+    pub timeout_timestamp: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -123,7 +118,7 @@ pub struct MsgSingleAssetDepositRequest {
     pub sender: String,
     pub token: Coin,
     pub timeout_height: u64,
-    pub timeout_timestamp: u64
+    pub timeout_timestamp: u64,
 }
 
 impl MsgSingleAssetDepositRequest {
@@ -141,14 +136,14 @@ impl MsgSingleAssetDepositRequest {
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct MsgSingleAssetDepositResponse {
-    pub pool_token: Coin
+    pub pool_token: Coin,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct DepositAsset {
     pub sender: String,
-    pub balance: Coin
+    pub balance: Coin,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -158,7 +153,7 @@ pub struct MsgMakeMultiAssetDepositRequest {
     pub deposits: Vec<DepositAsset>,
     pub chain_id: String,
     pub timeout_height: u64,
-    pub timeout_timestamp: u64
+    pub timeout_timestamp: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -168,7 +163,7 @@ pub struct MsgTakeMultiAssetDepositRequest {
     pub pool_id: String,
     pub order_id: String,
     pub timeout_height: u64,
-    pub timeout_timestamp: u64
+    pub timeout_timestamp: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -178,20 +173,20 @@ pub struct MsgCancelMultiAssetDepositRequest {
     pub pool_id: String,
     pub order_id: String,
     pub timeout_height: u64,
-    pub timeout_timestamp: u64
+    pub timeout_timestamp: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct MsgMultiAssetDepositResponse {
-    pub pool_token: Vec<Coin>
+    pub pool_token: Vec<Coin>,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct WithdrawAsset {
     pub receiver: String,
-    pub balance: Coin
+    pub balance: Coin,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -202,13 +197,13 @@ pub struct MsgMultiAssetWithdrawRequest {
     pub counterparty_receiver: String,
     pub pool_token: Coin,
     pub timeout_height: u64,
-    pub timeout_timestamp: u64
+    pub timeout_timestamp: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct MsgMultiAssetWithdrawResponse {
-    pub tokens: Vec<Coin>
+    pub tokens: Vec<Coin>,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -241,7 +236,7 @@ pub struct MsgSwapRequest {
     #[serde(rename = "timeoutHeight")]
     pub timeout_height: u64,
     #[serde(rename = "timeoutTimestamp")]
-    pub timeout_timestamp: u64
+    pub timeout_timestamp: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -261,7 +256,6 @@ pub struct InstantiateMarketingInfo {
     /// The token logo
     pub logo: Option<Logo>,
 }
-
 
 /// This structure describes the parameters used for creating a token contract.
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -304,10 +298,7 @@ impl TokenInstantiateMsg {
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub enum LogExecuteMsg {
-    LogObservation {
-        token1: Coin,
-        token2: Coin,
-    }
+    LogObservation { token1: Coin, token2: Coin },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -329,10 +320,10 @@ pub enum QueryMsg {
         limit: Option<u32>,
     },
     PoolAddressByToken {
-        pool_id: String
+        pool_id: String,
     },
     InterchainPool {
-        pool_id: String
+        pool_id: String,
     },
     InterchainPoolList {
         start_after: Option<String>,
@@ -355,8 +346,8 @@ pub enum QueryMsg {
     },
     Rate {
         amount: Uint128,
-        pool_id: String
-    }
+        pool_id: String,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -374,7 +365,6 @@ pub struct InterchainPoolResponse {
     pub counter_party_channel: String,
 }
 
-
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct InterchainListResponse {
     pub pools: Vec<InterchainLiquidityPool>,
@@ -384,7 +374,6 @@ pub struct InterchainListResponse {
 pub struct OrderListResponse {
     pub orders: Vec<MultiAssetDepositOrder>,
 }
-
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct PoolListResponse {
@@ -478,7 +467,7 @@ pub struct QueryConfigResponse {
     /// For order save in state
     pub counter: u64,
     /// For Instantiating cw20 tokens
-    pub token_code_id: u64
+    pub token_code_id: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

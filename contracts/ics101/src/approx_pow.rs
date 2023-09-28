@@ -23,12 +23,13 @@ pub fn calculate_pow(
     precision: Option<Decimal>,
 ) -> StdResult<Decimal> {
     let precision = precision.unwrap_or(Decimal::from_str("0.00000001").unwrap());
-    if base.is_zero() && !exp.is_zero(){
-        return Ok(base)
+    if base.is_zero() && !exp.is_zero() {
+        return Ok(base);
     }
 
     // we can adjust the algorithm in this setting.
-    if base > Decimal::from_ratio(2u128, 1u128) { // 2 / 1 = 2
+    if base > Decimal::from_ratio(2u128, 1u128) {
+        // 2 / 1 = 2
         return Err(StdError::generic_err(
             "calculate_pow : base must be less than 2",
         ));
@@ -38,8 +39,9 @@ pub fn calculate_pow(
     // Since computing an integer power is easy, we split up the exponent into
     // an integer component and a fractional component.
     let integer = exp.atomics() / DECIMAL_FRACTIONAL;
-    let fractional = Decimal::from_atomics(exp.atomics() % DECIMAL_FRACTIONAL, Decimal::DECIMAL_PLACES)
-        .map_err(|e| StdError::generic_err(e.to_string()))?;
+    let fractional =
+        Decimal::from_atomics(exp.atomics() % DECIMAL_FRACTIONAL, Decimal::DECIMAL_PLACES)
+            .map_err(|e| StdError::generic_err(e.to_string()))?;
     let integer_pow = base.checked_pow(integer.u128() as u32)?;
 
     if fractional.is_zero() {
@@ -58,8 +60,8 @@ pub fn calculate_pow(
 pub fn pow_approx(base: Decimal, exp: Decimal, precision: Decimal) -> StdResult<Decimal> {
     // Common case optimization
     // Optimize for it being equal to one-half
-    if exp.eq(&Decimal::from_ratio(1u128,2u128)) {
-        return Ok(base.sqrt())
+    if exp.eq(&Decimal::from_ratio(1u128, 2u128)) {
+        return Ok(base.sqrt());
     }
 
     // We compute this via taking the maclaurin series of (1 + x)^a

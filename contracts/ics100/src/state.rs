@@ -2,8 +2,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::msg::{MakeSwapMsg, TakeSwapMsg};
-use cosmwasm_std::{IbcEndpoint, StdResult, Storage, Timestamp, Coin};
-use cw_storage_plus::{Map, Item, MultiIndex, IndexList, Index, IndexedMap};
+use cosmwasm_std::{Coin, IbcEndpoint, StdResult, Storage, Timestamp};
+use cw_storage_plus::{Index, IndexList, IndexedMap, Item, Map, MultiIndex};
 
 pub const CHANNEL_INFO: Map<&str, ChannelInfo> = Map::new("channel_info");
 
@@ -20,9 +20,9 @@ pub struct ChannelInfo {
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Status {
-    Initial,  // initialised on maker chain
-    Sync,     // synced to the taker chain
-    Cancel,   // cancelled
+    Initial, // initialised on maker chain
+    Sync,    // synced to the taker chain
+    Cancel,  // cancelled
     Failed,
     Complete, // completed
 }
@@ -58,18 +58,26 @@ pub const INACTIVE_COUNT: Item<u64> = Item::new("inactive_count");
 pub const INACTIVE_SWAP_ORDERS: Map<u64, AtomicSwapOrder> = Map::new("inactive_swap_order");
 
 // append order to end of list
-pub fn append_atomic_order(storage: &mut dyn Storage, order_id: &str, order: &AtomicSwapOrder) -> StdResult<u64> {
+pub fn append_atomic_order(
+    storage: &mut dyn Storage,
+    order_id: &str,
+    order: &AtomicSwapOrder,
+) -> StdResult<u64> {
     let count = COUNT.load(storage)?;
 
     SWAP_ORDERS.save(storage, count, order)?;
     ORDER_TO_COUNT.save(storage, order_id, &count)?;
     COUNT.save(storage, &(count + 1))?;
-    
+
     Ok(count)
 }
 
 // set specific order
-pub fn set_atomic_order(storage: &mut dyn Storage, order_id: &str, order: &AtomicSwapOrder) -> StdResult<u64> {
+pub fn set_atomic_order(
+    storage: &mut dyn Storage,
+    order_id: &str,
+    order: &AtomicSwapOrder,
+) -> StdResult<u64> {
     let id = ORDER_TO_COUNT.load(storage, order_id)?;
     SWAP_ORDERS.save(storage, id, order)?;
     Ok(id)
@@ -146,11 +154,7 @@ impl<'a> IndexList<Bid> for BidIndicies<'a> {
 
 pub fn bids<'a>() -> IndexedMap<'a, BidKey, Bid, BidIndicies<'a>> {
     let indexes = BidIndicies {
-        order: MultiIndex::new(
-            |_pk: &[u8], d: &Bid| d.order.clone(),
-            "bids",
-            "bid__order",
-        ),
+        order: MultiIndex::new(|_pk: &[u8], d: &Bid| d.order.clone(), "bids", "bid__order"),
         order_price: MultiIndex::new(
             |_pk: &[u8], d: &Bid| (d.order.clone(), d.bid.amount.u128()),
             "bids",

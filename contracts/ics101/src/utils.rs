@@ -1,13 +1,16 @@
-use std::{ops::{Div}, vec, str::FromStr};
+use std::{ops::Div, str::FromStr, vec};
 
 use cosmwasm_std::{
-    from_binary, Addr, BankMsg, Coin, IbcAcknowledgement, IbcChannel, IbcOrder, StdResult,
-    SubMsg, Uint128, WasmMsg, to_binary, Decimal, Decimal256, StdError,
+    from_binary, to_binary, Addr, BankMsg, Coin, Decimal, Decimal256, IbcAcknowledgement,
+    IbcChannel, IbcOrder, StdError, StdResult, SubMsg, Uint128, WasmMsg,
 };
 use cw20::Cw20ExecuteMsg;
 use sha2::{Digest, Sha256};
 
-use crate::{interchainswap_handler::InterchainSwapPacketAcknowledgement, ContractError, msg::{DepositAsset}, market::PoolAsset};
+use crate::{
+    interchainswap_handler::InterchainSwapPacketAcknowledgement, market::PoolAsset,
+    msg::DepositAsset, ContractError,
+};
 use hex;
 
 pub const MULTIPLIER: u128 = 1e18 as u128;
@@ -34,7 +37,6 @@ pub fn get_pool_id_with_tokens(tokens: &[Coin], source: String, destination: Str
 pub fn get_connection_id(mut chain_ids: Vec<String>) -> String {
     chain_ids.sort();
 
-    
     chain_ids.join("/")
 }
 
@@ -82,7 +84,7 @@ pub fn decimal2decimal256(dec_value: Decimal) -> StdResult<Decimal256> {
 pub fn get_precision(assets: Vec<PoolAsset>, token: Coin) -> u32 {
     for asset in assets {
         if asset.balance.denom == token.denom {
-            return asset.decimal
+            return asset.decimal;
         }
     }
     // we already check if asset is present in pool asset vector
@@ -116,7 +118,10 @@ pub fn check_slippage(
     };
 
     // Calculate slippage percentage (slippage = ratio_diff/expect * 100)
-    let slippage = ratio_diff.div(expect).checked_mul(Decimal::from_str("10000")?).unwrap();
+    let slippage = ratio_diff
+        .div(expect)
+        .checked_mul(Decimal::from_str("10000")?)
+        .unwrap();
 
     // Check if the slippage is within the tolerance
     if slippage.to_uint_ceil() >= slippage_tolerance {
@@ -176,11 +181,12 @@ pub(crate) fn send_tokens_coin(to: &Addr, amount: Coin) -> StdResult<Vec<SubMsg>
     Ok(vec![SubMsg::new(msg)])
 }
 
-pub fn mint_tokens_cw20(recipient: String, lp_token: String, amount: Uint128) -> StdResult<Vec<SubMsg>> {
-    let msg = Cw20ExecuteMsg::Mint {
-        recipient,
-        amount,
-    };
+pub fn mint_tokens_cw20(
+    recipient: String,
+    lp_token: String,
+    amount: Uint128,
+) -> StdResult<Vec<SubMsg>> {
+    let msg = Cw20ExecuteMsg::Mint { recipient, amount };
     let exec = WasmMsg::Execute {
         contract_addr: lp_token,
         msg: to_binary(&msg)?,
@@ -190,9 +196,7 @@ pub fn mint_tokens_cw20(recipient: String, lp_token: String, amount: Uint128) ->
 }
 
 pub fn burn_tokens_cw20(lp_token: String, amount: Uint128) -> StdResult<SubMsg> {
-    let msg = Cw20ExecuteMsg::Burn {
-        amount,
-    };
+    let msg = Cw20ExecuteMsg::Burn { amount };
     let exec = WasmMsg::Execute {
         contract_addr: lp_token,
         msg: to_binary(&msg)?,
@@ -201,11 +205,12 @@ pub fn burn_tokens_cw20(lp_token: String, amount: Uint128) -> StdResult<SubMsg> 
     Ok(SubMsg::new(exec))
 }
 
-pub fn send_tokens_cw20(recipient: String, lp_token: String, amount: Uint128) -> StdResult<Vec<SubMsg>> {
-    let msg = Cw20ExecuteMsg::Transfer {
-        recipient,
-        amount,
-    };
+pub fn send_tokens_cw20(
+    recipient: String,
+    lp_token: String,
+    amount: Uint128,
+) -> StdResult<Vec<SubMsg>> {
+    let msg = Cw20ExecuteMsg::Transfer { recipient, amount };
     let exec = WasmMsg::Execute {
         contract_addr: lp_token,
         msg: to_binary(&msg)?,
@@ -241,4 +246,3 @@ pub fn is_valid_symbol(symbol: &str, max_length: Option<usize>) -> bool {
     }
     true
 }
-

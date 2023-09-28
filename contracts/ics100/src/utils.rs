@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    from_binary, Addr, BankMsg, Binary, Coin, IbcAcknowledgement, IbcChannel, IbcOrder,
-    StdError, StdResult, SubMsg,
+    from_binary, Addr, BankMsg, Binary, Coin, IbcAcknowledgement, IbcChannel, IbcOrder, StdError,
+    StdResult, SubMsg,
 };
 
 use sha2::{Digest, Sha256};
@@ -8,7 +8,7 @@ use sha2::{Digest, Sha256};
 use crate::{
     atomic_swap_handler::AtomicSwapPacketAcknowledgement,
     msg::{Height, MakeSwapMsg, MakeSwapMsgOutput, TakeSwapMsg, TakeSwapMsgOutput},
-    ContractError, 
+    ContractError,
 };
 
 pub fn generate_order_id(order_path: &str) -> StdResult<String> {
@@ -28,11 +28,11 @@ pub fn order_path(
     source_port: String,
     destination_channel: String,
     destination_port: String,
-    sequence:u64,
+    sequence: u64,
 ) -> StdResult<String> {
     let path = format!(
         "channel/{}/port/{}/channel/{}/port/{}/{}",
-        source_channel, source_port, destination_channel, destination_port,sequence
+        source_channel, source_port, destination_channel, destination_port, sequence
     );
     Ok(path)
 }
@@ -96,18 +96,8 @@ pub(crate) fn decode_take_swap_msg(data: &Binary) -> TakeSwapMsg {
                 taker_address: msg_output.taker_address.clone(),
                 taker_receiving_address: msg_output.taker_receiving_address.clone(),
                 timeout_height: Height {
-                    revision_number: msg_output
-                        .timeout_height
-                        .revision_number
-                        
-                        .parse()
-                        .unwrap(),
-                    revision_height: msg_output
-                        .timeout_height
-                        .revision_height
-                        
-                        .parse()
-                        .unwrap(),
+                    revision_number: msg_output.timeout_height.revision_number.parse().unwrap(),
+                    revision_height: msg_output.timeout_height.revision_height.parse().unwrap(),
                 },
                 timeout_timestamp: msg_output.timeout_timestamp.parse().unwrap(),
             }
@@ -135,18 +125,8 @@ pub(crate) fn decode_make_swap_msg(data: &Binary) -> MakeSwapMsg {
                 maker_receiving_address: msg_output.maker_receiving_address.clone(),
                 desired_taker: msg_output.desired_taker.clone(),
                 timeout_height: Height {
-                    revision_number: msg_output
-                        .timeout_height
-                        .revision_number
-                        
-                        .parse()
-                        .unwrap(),
-                    revision_height: msg_output
-                        .timeout_height
-                        .revision_height
-                        
-                        .parse()
-                        .unwrap(),
+                    revision_number: msg_output.timeout_height.revision_number.parse().unwrap(),
+                    revision_height: msg_output.timeout_height.revision_height.parse().unwrap(),
                 },
                 timeout_timestamp: msg_output.timeout_timestamp.parse().unwrap(),
                 expiration_timestamp: msg_output.expiration_timestamp.parse().unwrap(),
