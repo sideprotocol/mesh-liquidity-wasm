@@ -313,8 +313,10 @@ pub fn execute_make_bid(
     }
 
     let key = bid_key(&msg.order_id, &msg.taker_address);
-    if bids().has(deps.storage, key.clone()) {
-        return Err(ContractError::BidAlreadyExist {});
+    if let Some(bid) = bids().may_load(deps.storage, key.clone())? {
+        if bid.status == BidStatus::Initial || bid.status == BidStatus::Placed {
+            return Err(ContractError::BidAlreadyExist {});
+        }
     }
 
     let bid: Bid = Bid {
