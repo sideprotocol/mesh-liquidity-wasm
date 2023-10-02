@@ -244,8 +244,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::TotalVolume {} => to_binary(&query_total_volume(deps, env)?),
         QueryMsg::TotalVolumeAt { timestamp } => {
             to_binary(&query_total_volume_at(deps, timestamp)?)
-        }
-        //QueryMsg::VolumeInterval { start, end } => to_binary(&query_total_volume_interval(deps, start, end)?),
+        } //QueryMsg::VolumeInterval { start, end } => to_binary(&query_total_volume_interval(deps, start, end)?),
     }
 }
 

@@ -148,7 +148,12 @@ pub struct BidIndicies<'a> {
 
 impl<'a> IndexList<Bid> for BidIndicies<'a> {
     fn get_indexes(&'_ self) -> Box<dyn Iterator<Item = &'_ dyn Index<Bid>> + '_> {
-        let v: Vec<&dyn Index<Bid>> = vec![&self.order, &self.order_price, &self.timestamp, &self.bidder];
+        let v: Vec<&dyn Index<Bid>> = vec![
+            &self.order,
+            &self.order_price,
+            &self.timestamp,
+            &self.bidder,
+        ];
         Box::new(v.into_iter())
     }
 }
@@ -166,7 +171,11 @@ pub fn bids<'a>() -> IndexedMap<'a, BidKey, Bid, BidIndicies<'a>> {
             "bids",
             "bids__count",
         ),
-        bidder: MultiIndex::new(|_pk: &[u8], d: &Bid| d.bidder.clone(), "bids", "bid__bidder"),
+        bidder: MultiIndex::new(
+            |_pk: &[u8], d: &Bid| d.bidder.clone(),
+            "bids",
+            "bid__bidder",
+        ),
     };
     IndexedMap::new("bids", indexes)
 }

@@ -20,7 +20,7 @@ use crate::query_reverse::{
 use crate::state::{
     append_atomic_order, bid_key, bids, get_atomic_order, move_order_to_bottom, set_atomic_order,
     AtomicSwapOrder, Bid, BidKey, BidStatus, Side, Status, CHANNEL_INFO, COUNT, INACTIVE_COUNT,
-    INACTIVE_SWAP_ORDERS, SWAP_ORDERS, SWAP_SEQUENCE, ORDER_TO_COUNT,
+    INACTIVE_SWAP_ORDERS, ORDER_TO_COUNT, SWAP_ORDERS, SWAP_SEQUENCE,
 };
 use crate::utils::{extract_source_channel_for_taker_msg, generate_order_id, order_path};
 use cw_storage_plus::Bound;
@@ -687,7 +687,10 @@ fn query_list(
         .collect::<Vec<AtomicSwapOrder>>();
 
     let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
-    Ok(ListResponse { swaps: swap_orders, last_order_id: count_check })
+    Ok(ListResponse {
+        swaps: swap_orders,
+        last_order_id: count_check,
+    })
 }
 
 fn query_list_by_desired_taker(
@@ -711,7 +714,10 @@ fn query_list_by_desired_taker(
         .collect::<Vec<AtomicSwapOrder>>();
 
     let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
-    Ok(ListResponse { swaps: swap_orders, last_order_id: count_check })
+    Ok(ListResponse {
+        swaps: swap_orders,
+        last_order_id: count_check,
+    })
 }
 
 fn query_list_by_maker(
@@ -735,7 +741,10 @@ fn query_list_by_maker(
         .collect::<Vec<AtomicSwapOrder>>();
 
     let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
-    Ok(ListResponse { swaps: swap_orders, last_order_id: count_check })
+    Ok(ListResponse {
+        swaps: swap_orders,
+        last_order_id: count_check,
+    })
 }
 
 fn query_list_by_taker(
@@ -761,7 +770,10 @@ fn query_list_by_taker(
         .collect::<Vec<AtomicSwapOrder>>();
 
     let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
-    Ok(ListResponse { swaps: swap_orders, last_order_id: count_check })
+    Ok(ListResponse {
+        swaps: swap_orders,
+        last_order_id: count_check,
+    })
 }
 
 pub fn query_bids_sorted_by_amount(
@@ -915,7 +927,10 @@ fn query_inactive_list(
         .collect::<Vec<AtomicSwapOrder>>();
 
     let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
-    Ok(ListResponse { swaps: swap_orders, last_order_id: count_check })
+    Ok(ListResponse {
+        swaps: swap_orders,
+        last_order_id: count_check,
+    })
 }
 
 fn query_inactive_list_by_desired_taker(
@@ -939,7 +954,10 @@ fn query_inactive_list_by_desired_taker(
         .collect::<Vec<AtomicSwapOrder>>();
 
     let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
-    Ok(ListResponse { swaps: swap_orders, last_order_id: count_check })
+    Ok(ListResponse {
+        swaps: swap_orders,
+        last_order_id: count_check,
+    })
 }
 
 fn query_inactive_list_by_maker(
@@ -963,7 +981,10 @@ fn query_inactive_list_by_maker(
         .collect::<Vec<AtomicSwapOrder>>();
 
     let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
-    Ok(ListResponse { swaps: swap_orders, last_order_id: count_check })
+    Ok(ListResponse {
+        swaps: swap_orders,
+        last_order_id: count_check,
+    })
 }
 
 fn query_inactive_list_by_taker(
@@ -989,7 +1010,10 @@ fn query_inactive_list_by_taker(
         .collect::<Vec<AtomicSwapOrder>>();
 
     let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
-    Ok(ListResponse { swaps: swap_orders, last_order_id: count_check })
+    Ok(ListResponse {
+        swaps: swap_orders,
+        last_order_id: count_check,
+    })
 }
 
 #[cfg(test)]
@@ -1108,7 +1132,10 @@ mod tests {
             mock_env(),
             QueryMsg::BidByAmount {
                 order: order.clone(),
-                start_after: Some(BidOffset { amount: Uint128::from(100u64), bidder: "some-bidder".to_owned() }),
+                start_after: Some(BidOffset {
+                    amount: Uint128::from(100u64),
+                    bidder: "some-bidder".to_owned(),
+                }),
                 limit: Some(10),
             },
         )
@@ -1122,7 +1149,10 @@ mod tests {
             mock_env(),
             QueryMsg::BidByAmountReverse {
                 order,
-                start_before: Some(BidOffset { amount: Uint128::from(1000u64), bidder: "some-bidder-1".to_owned() }),
+                start_before: Some(BidOffset {
+                    amount: Uint128::from(1000u64),
+                    bidder: "some-bidder-1".to_owned(),
+                }),
                 limit: Some(10),
             },
         )
@@ -1149,11 +1179,15 @@ mod tests {
         bids()
             .save(deps.as_mut().storage, bid_key(&order, &bidder), &bid3)
             .unwrap();
-        
+
         let res = query(
             deps.as_ref(),
             mock_env(),
-            QueryMsg::BidByBidder { bidder:bidder, start_after: None, limit: None },
+            QueryMsg::BidByBidder {
+                bidder: bidder,
+                start_after: None,
+                limit: None,
+            },
         )
         .unwrap();
 

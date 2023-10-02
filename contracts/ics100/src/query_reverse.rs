@@ -4,7 +4,7 @@ use cw_storage_plus::Bound;
 use crate::{
     contract::{DEFAULT_LIMIT, MAX_LIMIT},
     msg::ListResponse,
-    state::{AtomicSwapOrder, SWAP_ORDERS, ORDER_TO_COUNT},
+    state::{AtomicSwapOrder, ORDER_TO_COUNT, SWAP_ORDERS},
 };
 
 pub fn query_list_reverse(
@@ -26,7 +26,10 @@ pub fn query_list_reverse(
         .collect::<Vec<AtomicSwapOrder>>();
 
     let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
-    Ok(ListResponse { swaps: swap_orders, last_order_id: count_check })
+    Ok(ListResponse {
+        swaps: swap_orders,
+        last_order_id: count_check,
+    })
 }
 
 pub fn query_list_by_desired_taker_reverse(
@@ -50,7 +53,10 @@ pub fn query_list_by_desired_taker_reverse(
         .collect::<Vec<AtomicSwapOrder>>();
 
     let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
-    Ok(ListResponse { swaps: swap_orders, last_order_id: count_check })
+    Ok(ListResponse {
+        swaps: swap_orders,
+        last_order_id: count_check,
+    })
 }
 
 pub fn query_list_by_maker_reverse(
@@ -74,7 +80,10 @@ pub fn query_list_by_maker_reverse(
         .collect::<Vec<AtomicSwapOrder>>();
 
     let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
-    Ok(ListResponse { swaps: swap_orders, last_order_id: count_check })
+    Ok(ListResponse {
+        swaps: swap_orders,
+        last_order_id: count_check,
+    })
 }
 
 pub fn query_list_by_taker_reverse(
@@ -100,5 +109,8 @@ pub fn query_list_by_taker_reverse(
         .collect::<Vec<AtomicSwapOrder>>();
 
     let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
-    Ok(ListResponse { swaps: swap_orders, last_order_id: count_check })
+    Ok(ListResponse {
+        swaps: swap_orders,
+        last_order_id: count_check,
+    })
 }
