@@ -1184,7 +1184,7 @@ mod tests {
             deps.as_ref(),
             mock_env(),
             QueryMsg::BidByBidder {
-                bidder: bidder,
+                bidder,
                 start_after: None,
                 limit: None,
             },
@@ -1192,7 +1192,7 @@ mod tests {
         .unwrap();
 
         let value: BidsResponse = from_binary(&res).unwrap();
-        assert_eq!(value.bids, vec![bid.clone(), bid3]);
+        assert_eq!(value.bids, vec![bid, bid3]);
     }
 
     #[test]
