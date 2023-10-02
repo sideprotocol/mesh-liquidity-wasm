@@ -532,40 +532,53 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         )?),
         QueryMsg::BidByAmountReverse {
             order,
+            status,
             start_before,
             limit,
         } => to_binary(&query_bids_sorted_by_amount_reverse(
             deps,
             order,
+            status,
             start_before,
             limit,
         )?),
         QueryMsg::BidbyOrder {
             order,
+            status,
             start_after,
             limit,
         } => to_binary(&query_bids_sorted_by_order(
             deps,
             order,
+            status,
             start_after,
             limit,
         )?),
         QueryMsg::BidbyOrderReverse {
             order,
+            status,
             start_before,
             limit,
         } => to_binary(&query_bids_sorted_by_order_reverse(
             deps,
             order,
+            status,
             start_before,
             limit,
         )?),
         QueryMsg::BidDetails { order, bidder } => to_binary(&query_bid(deps, order, bidder)?),
         QueryMsg::BidByBidder {
             bidder,
+            status,
             start_after,
             limit,
-        } => to_binary(&query_bids_by_bidder(deps, bidder, start_after, limit)?),
+        } => to_binary(&query_bids_by_bidder(
+            deps,
+            bidder,
+            status,
+            start_after,
+            limit,
+        )?),
 
         // Inactive fields
         QueryMsg::InactiveList {
@@ -797,9 +810,9 @@ pub fn query_bids_sorted_by_amount(
         .order_price
         .sub_prefix(order)
         .range(deps.storage, start, None, Order::Ascending)
+        .filter(|bid| bid.as_ref().unwrap().1.status == status)
         .take(limit)
         .map(|res| res.map(|item| item.1))
-        .filter(|bid| bid.as_ref().unwrap().status == status)
         .collect::<StdResult<Vec<_>>>()?;
 
     Ok(BidsResponse { bids })
@@ -808,6 +821,7 @@ pub fn query_bids_sorted_by_amount(
 pub fn query_bids_sorted_by_order(
     deps: Deps,
     order: String,
+    status: BidStatus,
     start_after: Option<BidOffsetTime>,
     limit: Option<u32>,
 ) -> StdResult<BidsResponse> {
@@ -821,6 +835,7 @@ pub fn query_bids_sorted_by_order(
         .timestamp
         .sub_prefix(order)
         .range(deps.storage, start, None, Order::Ascending)
+        .filter(|bid| bid.as_ref().unwrap().1.status == status)
         .take(limit)
         .map(|res| res.map(|item| item.1))
         .collect::<StdResult<Vec<_>>>()?;
@@ -831,6 +846,7 @@ pub fn query_bids_sorted_by_order(
 pub fn query_bids_sorted_by_amount_reverse(
     deps: Deps,
     order: String,
+    status: BidStatus,
     start_before: Option<BidOffset>,
     limit: Option<u32>,
 ) -> StdResult<BidsResponse> {
@@ -844,6 +860,7 @@ pub fn query_bids_sorted_by_amount_reverse(
         .order_price
         .sub_prefix(order)
         .range(deps.storage, None, end, Order::Descending)
+        .filter(|bid| bid.as_ref().unwrap().1.status == status)
         .take(limit)
         .map(|res| res.map(|item| item.1))
         .collect::<StdResult<Vec<_>>>()?;
@@ -854,6 +871,7 @@ pub fn query_bids_sorted_by_amount_reverse(
 pub fn query_bids_sorted_by_order_reverse(
     deps: Deps,
     order: String,
+    status: BidStatus,
     start_before: Option<BidOffsetTime>,
     limit: Option<u32>,
 ) -> StdResult<BidsResponse> {
@@ -867,6 +885,7 @@ pub fn query_bids_sorted_by_order_reverse(
         .timestamp
         .sub_prefix(order)
         .range(deps.storage, None, end, Order::Descending)
+        .filter(|bid| bid.as_ref().unwrap().1.status == status)
         .take(limit)
         .map(|res| res.map(|item| item.1))
         .collect::<StdResult<Vec<_>>>()?;
@@ -885,6 +904,7 @@ pub fn query_bid(deps: Deps, order: String, bidder: String) -> StdResult<BidsRes
 pub fn query_bids_by_bidder(
     deps: Deps,
     bidder: String,
+    status: BidStatus,
     start_after: Option<String>, // order
     limit: Option<u32>,
 ) -> StdResult<BidsResponse> {
@@ -897,6 +917,7 @@ pub fn query_bids_by_bidder(
         .bidder
         .prefix(bidder)
         .range(deps.storage, start, None, Order::Ascending)
+        .filter(|bid| bid.as_ref().unwrap().1.status == status)
         .take(limit)
         .map(|item| item.map(|(_, b)| b))
         .collect::<StdResult<Vec<_>>>()?;
@@ -1163,6 +1184,7 @@ mod tests {
                     bidder: "some-bidder-1".to_owned(),
                 }),
                 limit: Some(10),
+                status: BidStatus::Placed,
             },
         )
         .unwrap();
@@ -1195,6 +1217,7 @@ mod tests {
             QueryMsg::BidByBidder {
                 bidder,
                 start_after: None,
+                status: BidStatus::Placed,
                 limit: None,
             },
         )
