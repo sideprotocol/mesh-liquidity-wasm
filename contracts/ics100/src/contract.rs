@@ -520,11 +520,13 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         // Bids
         QueryMsg::BidByAmount {
             order,
+            status,
             start_after,
             limit,
         } => to_binary(&query_bids_sorted_by_amount(
             deps,
             order,
+            status,
             start_after,
             limit,
         )?),
@@ -781,6 +783,7 @@ fn query_list_by_taker(
 pub fn query_bids_sorted_by_amount(
     deps: Deps,
     order: String,
+    status: BidStatus,
     start_after: Option<BidOffset>,
     limit: Option<u32>,
 ) -> StdResult<BidsResponse> {
@@ -796,6 +799,7 @@ pub fn query_bids_sorted_by_amount(
         .range(deps.storage, start, None, Order::Ascending)
         .take(limit)
         .map(|res| res.map(|item| item.1))
+        .filter(|bid| bid.as_ref().unwrap().status == status)
         .collect::<StdResult<Vec<_>>>()?;
 
     Ok(BidsResponse { bids })
@@ -1057,7 +1061,7 @@ mod tests {
                 amount: Uint128::from(100u64),
             },
             order: order.clone(),
-            status: BidStatus::Initial,
+            status: BidStatus::Placed,
             bidder: bidder.clone(),
             bidder_receiver: bidder.clone(),
             receive_timestamp: 10,
@@ -1072,6 +1076,7 @@ mod tests {
             mock_env(),
             QueryMsg::BidByAmount {
                 order,
+                status: BidStatus::Placed,
                 start_after: None,
                 limit: Some(10),
             },
@@ -1089,7 +1094,7 @@ mod tests {
                 amount: Uint128::from(1000u64),
             },
             order: order.clone(),
-            status: BidStatus::Initial,
+            status: BidStatus::Placed,
             bidder: bidder.clone(),
             bidder_receiver: bidder.clone(),
             receive_timestamp: 20,
@@ -1103,6 +1108,7 @@ mod tests {
             mock_env(),
             QueryMsg::BidByAmount {
                 order,
+                status: BidStatus::Placed,
                 start_after: None,
                 limit: Some(10),
             },
@@ -1120,7 +1126,7 @@ mod tests {
                 amount: Uint128::from(100u64),
             },
             order: order.clone(),
-            status: BidStatus::Initial,
+            status: BidStatus::Placed,
             bidder: bidder.clone(),
             bidder_receiver: bidder.clone(),
             receive_timestamp: 30,
@@ -1134,6 +1140,7 @@ mod tests {
             mock_env(),
             QueryMsg::BidByAmount {
                 order: order.clone(),
+                status: BidStatus::Placed,
                 start_after: Some(BidOffset {
                     amount: Uint128::from(100u64),
                     bidder: "some-bidder".to_owned(),
@@ -1172,7 +1179,7 @@ mod tests {
                 amount: Uint128::from(100u64),
             },
             order: order.clone(),
-            status: BidStatus::Initial,
+            status: BidStatus::Placed,
             bidder: bidder.clone(),
             bidder_receiver: bidder.clone(),
             receive_timestamp: 40,

@@ -7,7 +7,7 @@ use cw20::Cw20Coin;
 
 use cosmwasm_std::{Binary, Coin, Timestamp, Uint128};
 
-use crate::state::{AtomicSwapOrder, Bid, Status};
+use crate::state::{AtomicSwapOrder, Bid, Status, BidStatus};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Height {
@@ -255,6 +255,7 @@ pub enum QueryMsg {
     },
     BidByAmount {
         order: String,
+        status: BidStatus,
         start_after: Option<BidOffset>,
         limit: Option<u32>,
     },
