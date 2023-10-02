@@ -20,7 +20,7 @@ use crate::query_reverse::{
 use crate::state::{
     append_atomic_order, bid_key, bids, get_atomic_order, move_order_to_bottom, set_atomic_order,
     AtomicSwapOrder, Bid, BidKey, BidStatus, Side, Status, CHANNEL_INFO, COUNT, INACTIVE_COUNT,
-    INACTIVE_SWAP_ORDERS, SWAP_ORDERS, SWAP_SEQUENCE,
+    INACTIVE_SWAP_ORDERS, SWAP_ORDERS, SWAP_SEQUENCE, ORDER_TO_COUNT,
 };
 use crate::utils::{extract_source_channel_for_taker_msg, generate_order_id, order_path};
 use cw_storage_plus::Bound;
@@ -686,7 +686,8 @@ fn query_list(
         .map(|item: Result<(u64, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
         .collect::<Vec<AtomicSwapOrder>>();
 
-    Ok(ListResponse { swaps: swap_orders })
+    let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
+    Ok(ListResponse { swaps: swap_orders, last_order_id: count_check })
 }
 
 fn query_list_by_desired_taker(
@@ -709,7 +710,8 @@ fn query_list_by_desired_taker(
         .filter(|swap_order| swap_order.maker.desired_taker == desired_taker)
         .collect::<Vec<AtomicSwapOrder>>();
 
-    Ok(ListResponse { swaps: swap_orders })
+    let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
+    Ok(ListResponse { swaps: swap_orders, last_order_id: count_check })
 }
 
 fn query_list_by_maker(
@@ -732,7 +734,8 @@ fn query_list_by_maker(
         .filter(|swap_order| swap_order.maker.maker_address == maker)
         .collect::<Vec<AtomicSwapOrder>>();
 
-    Ok(ListResponse { swaps: swap_orders })
+    let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
+    Ok(ListResponse { swaps: swap_orders, last_order_id: count_check })
 }
 
 fn query_list_by_taker(
@@ -757,7 +760,8 @@ fn query_list_by_taker(
         })
         .collect::<Vec<AtomicSwapOrder>>();
 
-    Ok(ListResponse { swaps: swap_orders })
+    let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
+    Ok(ListResponse { swaps: swap_orders, last_order_id: count_check })
 }
 
 pub fn query_bids_sorted_by_amount(
@@ -910,7 +914,8 @@ fn query_inactive_list(
         .map(|item: Result<(u64, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
         .collect::<Vec<AtomicSwapOrder>>();
 
-    Ok(ListResponse { swaps: swap_orders })
+    let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
+    Ok(ListResponse { swaps: swap_orders, last_order_id: count_check })
 }
 
 fn query_inactive_list_by_desired_taker(
@@ -933,7 +938,8 @@ fn query_inactive_list_by_desired_taker(
         .filter(|swap_order| swap_order.maker.desired_taker == desired_taker)
         .collect::<Vec<AtomicSwapOrder>>();
 
-    Ok(ListResponse { swaps: swap_orders })
+    let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
+    Ok(ListResponse { swaps: swap_orders, last_order_id: count_check })
 }
 
 fn query_inactive_list_by_maker(
@@ -956,7 +962,8 @@ fn query_inactive_list_by_maker(
         .filter(|swap_order| swap_order.maker.maker_address == maker)
         .collect::<Vec<AtomicSwapOrder>>();
 
-    Ok(ListResponse { swaps: swap_orders })
+    let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
+    Ok(ListResponse { swaps: swap_orders, last_order_id: count_check })
 }
 
 fn query_inactive_list_by_taker(
@@ -981,7 +988,8 @@ fn query_inactive_list_by_taker(
         })
         .collect::<Vec<AtomicSwapOrder>>();
 
-    Ok(ListResponse { swaps: swap_orders })
+    let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
+    Ok(ListResponse { swaps: swap_orders, last_order_id: count_check })
 }
 
 #[cfg(test)]

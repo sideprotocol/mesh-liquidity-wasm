@@ -339,6 +339,8 @@ pub struct DetailsResponse {
 pub struct ListResponse {
     /// List all open swap ids
     pub swaps: Vec<AtomicSwapOrder>,
+
+    pub last_order_id: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
