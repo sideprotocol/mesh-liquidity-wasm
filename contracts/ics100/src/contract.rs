@@ -389,6 +389,9 @@ pub fn execute_take_bid(
     }
 
     let bid = bids().load(deps.storage, key)?;
+    if bid.status != BidStatus::Placed {
+        return Err(ContractError::BidDoesntExist);
+    }
 
     if env.block.time.seconds() > bid.expire_timestamp {
         return Err(ContractError::Expired);

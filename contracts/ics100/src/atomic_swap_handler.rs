@@ -238,7 +238,9 @@ pub(crate) fn on_received_take_bid(
         return Err(ContractError::BidDoesntExist);
     }
 
-    let bid = bids().load(deps.storage, key.clone())?;
+    let mut bid = bids().load(deps.storage, key.clone())?;
+    bid.status = BidStatus::Executed;
+    bids().save(deps.storage, key, &bid)?;
 
     if !swap_order.maker.desired_taker.is_empty() && swap_order.maker.desired_taker != msg.bidder {
         return Err(ContractError::InvalidTakerAddress);
@@ -268,7 +270,7 @@ pub(crate) fn on_received_take_bid(
 
     set_atomic_order(deps.storage, &msg.order_id, &swap_order)?;
     move_order_to_bottom(deps.storage, &msg.order_id)?;
-    bids().remove(deps.storage, key)?;
+    // bids().remove(deps.storage, key)?;
 
     let res = IbcReceiveResponse::new()
         .set_ack(ack_success())
@@ -293,7 +295,6 @@ pub(crate) fn on_received_cancel_bid(
         return Err(ContractError::BidDoesntExist);
     }
     let mut bid = bids().load(deps.storage, key.clone())?;
-    //bids().remove(deps.storage, key)?;
     bid.status = BidStatus::Cancelled;
     bids().save(deps.storage, key, &bid)?;
 
