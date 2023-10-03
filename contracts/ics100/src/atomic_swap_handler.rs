@@ -202,9 +202,6 @@ pub(crate) fn on_received_make_bid(
 ) -> Result<IbcReceiveResponse, ContractError> {
     let order_id = msg.order_id.clone();
     let key = bid_key(&msg.order_id, &msg.taker_address);
-    if bids().has(deps.storage, key.clone()) {
-        return Err(ContractError::BidAlreadyExist {});
-    }
 
     let bid: Bid = Bid {
         bid: msg.sell_token,
@@ -295,7 +292,10 @@ pub(crate) fn on_received_cancel_bid(
     if !bids().has(deps.storage, key.clone()) {
         return Err(ContractError::BidDoesntExist);
     }
-    bids().remove(deps.storage, key)?;
+    let mut bid = bids().load(deps.storage, key.clone())?;
+    //bids().remove(deps.storage, key)?;
+    bid.status = BidStatus::Cancelled;
+    bids().save(deps.storage, key, &bid)?;
 
     let res = IbcReceiveResponse::new()
         .set_ack(ack_success())
@@ -395,8 +395,10 @@ pub(crate) fn on_packet_success(
                 return Err(ContractError::BidDoesntExist);
             }
 
-            let bid = bids().load(deps.storage, key.clone())?;
-            bids().remove(deps.storage, key)?;
+            let mut bid = bids().load(deps.storage, key.clone())?;
+            bid.status = BidStatus::Executed;
+            bids().save(deps.storage, key, &bid)?;
+            //bids().remove(deps.storage, key)?;
 
             let maker_receiving_address = deps
                 .api
@@ -432,13 +434,15 @@ pub(crate) fn on_packet_success(
             if !bids().has(deps.storage, key.clone()) {
                 return Err(ContractError::BidDoesntExist);
             }
-            let bid = bids().load(deps.storage, key.clone())?;
+            let mut bid = bids().load(deps.storage, key.clone())?;
 
             let taker_receiving_address = deps.api.addr_validate(&bid.bidder)?;
             // Refund amount
-            let submsg: Vec<SubMsg> = send_tokens(&taker_receiving_address, bid.bid)?;
+            let submsg: Vec<SubMsg> = send_tokens(&taker_receiving_address, bid.bid.clone())?;
 
-            bids().remove(deps.storage, key)?;
+            bid.status = BidStatus::Cancelled;
+            bids().save(deps.storage, key, &bid)?;
+            //bids().remove(deps.storage, key)?;
 
             Ok(IbcBasicResponse::new()
                 .add_submessages(submsg)
@@ -510,7 +514,10 @@ pub(crate) fn refund_packet_token(
 
             // Remove bid
             let key = bid_key(&order_id, &msg.taker_address);
-            bids().remove(deps.storage, key)?;
+            let mut bid = bids().load(deps.storage, key.clone())?;
+            bid.status = BidStatus::Failed;
+            bids().save(deps.storage, key, &bid)?;
+            //bids().remove(deps.storage, key)?;
 
             Ok(submsg)
         }

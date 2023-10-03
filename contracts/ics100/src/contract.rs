@@ -20,7 +20,7 @@ use crate::query_reverse::{
 use crate::state::{
     append_atomic_order, bid_key, bids, get_atomic_order, move_order_to_bottom, set_atomic_order,
     AtomicSwapOrder, Bid, BidKey, BidStatus, Side, Status, CHANNEL_INFO, COUNT, INACTIVE_COUNT,
-    INACTIVE_SWAP_ORDERS, SWAP_ORDERS, SWAP_SEQUENCE,
+    INACTIVE_SWAP_ORDERS, ORDER_TO_COUNT, SWAP_ORDERS, SWAP_SEQUENCE,
 };
 use crate::utils::{extract_source_channel_for_taker_msg, generate_order_id, order_path};
 use cw_storage_plus::Bound;
@@ -313,8 +313,10 @@ pub fn execute_make_bid(
     }
 
     let key = bid_key(&msg.order_id, &msg.taker_address);
-    if bids().has(deps.storage, key.clone()) {
-        return Err(ContractError::BidAlreadyExist {});
+    if let Some(bid) = bids().may_load(deps.storage, key.clone())? {
+        if bid.status == BidStatus::Initial || bid.status == BidStatus::Placed {
+            return Err(ContractError::BidAlreadyExist {});
+        }
     }
 
     let bid: Bid = Bid {
@@ -518,50 +520,65 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         // Bids
         QueryMsg::BidByAmount {
             order,
+            status,
             start_after,
             limit,
         } => to_binary(&query_bids_sorted_by_amount(
             deps,
             order,
+            status,
             start_after,
             limit,
         )?),
         QueryMsg::BidByAmountReverse {
             order,
+            status,
             start_before,
             limit,
         } => to_binary(&query_bids_sorted_by_amount_reverse(
             deps,
             order,
+            status,
             start_before,
             limit,
         )?),
         QueryMsg::BidbyOrder {
             order,
+            status,
             start_after,
             limit,
         } => to_binary(&query_bids_sorted_by_order(
             deps,
             order,
+            status,
             start_after,
             limit,
         )?),
         QueryMsg::BidbyOrderReverse {
             order,
+            status,
             start_before,
             limit,
         } => to_binary(&query_bids_sorted_by_order_reverse(
             deps,
             order,
+            status,
             start_before,
             limit,
         )?),
         QueryMsg::BidDetails { order, bidder } => to_binary(&query_bid(deps, order, bidder)?),
         QueryMsg::BidByBidder {
             bidder,
+            status,
             start_after,
             limit,
-        } => to_binary(&query_bids_by_bidder(deps, bidder, start_after, limit)?),
+        } => to_binary(&query_bids_by_bidder(
+            deps,
+            bidder,
+            status,
+            start_after,
+            limit,
+        )?),
 
         // Inactive fields
         QueryMsg::InactiveList {
@@ -686,7 +703,11 @@ fn query_list(
         .map(|item: Result<(u64, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
         .collect::<Vec<AtomicSwapOrder>>();
 
-    Ok(ListResponse { swaps: swap_orders })
+    let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
+    Ok(ListResponse {
+        swaps: swap_orders,
+        last_order_id: count_check,
+    })
 }
 
 fn query_list_by_desired_taker(
@@ -709,7 +730,11 @@ fn query_list_by_desired_taker(
         .filter(|swap_order| swap_order.maker.desired_taker == desired_taker)
         .collect::<Vec<AtomicSwapOrder>>();
 
-    Ok(ListResponse { swaps: swap_orders })
+    let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
+    Ok(ListResponse {
+        swaps: swap_orders,
+        last_order_id: count_check,
+    })
 }
 
 fn query_list_by_maker(
@@ -732,7 +757,11 @@ fn query_list_by_maker(
         .filter(|swap_order| swap_order.maker.maker_address == maker)
         .collect::<Vec<AtomicSwapOrder>>();
 
-    Ok(ListResponse { swaps: swap_orders })
+    let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
+    Ok(ListResponse {
+        swaps: swap_orders,
+        last_order_id: count_check,
+    })
 }
 
 fn query_list_by_taker(
@@ -757,12 +786,17 @@ fn query_list_by_taker(
         })
         .collect::<Vec<AtomicSwapOrder>>();
 
-    Ok(ListResponse { swaps: swap_orders })
+    let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
+    Ok(ListResponse {
+        swaps: swap_orders,
+        last_order_id: count_check,
+    })
 }
 
 pub fn query_bids_sorted_by_amount(
     deps: Deps,
     order: String,
+    status: BidStatus,
     start_after: Option<BidOffset>,
     limit: Option<u32>,
 ) -> StdResult<BidsResponse> {
@@ -776,6 +810,7 @@ pub fn query_bids_sorted_by_amount(
         .order_price
         .sub_prefix(order)
         .range(deps.storage, start, None, Order::Ascending)
+        .filter(|bid| bid.as_ref().unwrap().1.status == status)
         .take(limit)
         .map(|res| res.map(|item| item.1))
         .collect::<StdResult<Vec<_>>>()?;
@@ -786,6 +821,7 @@ pub fn query_bids_sorted_by_amount(
 pub fn query_bids_sorted_by_order(
     deps: Deps,
     order: String,
+    status: BidStatus,
     start_after: Option<BidOffsetTime>,
     limit: Option<u32>,
 ) -> StdResult<BidsResponse> {
@@ -799,6 +835,7 @@ pub fn query_bids_sorted_by_order(
         .timestamp
         .sub_prefix(order)
         .range(deps.storage, start, None, Order::Ascending)
+        .filter(|bid| bid.as_ref().unwrap().1.status == status)
         .take(limit)
         .map(|res| res.map(|item| item.1))
         .collect::<StdResult<Vec<_>>>()?;
@@ -809,6 +846,7 @@ pub fn query_bids_sorted_by_order(
 pub fn query_bids_sorted_by_amount_reverse(
     deps: Deps,
     order: String,
+    status: BidStatus,
     start_before: Option<BidOffset>,
     limit: Option<u32>,
 ) -> StdResult<BidsResponse> {
@@ -822,6 +860,7 @@ pub fn query_bids_sorted_by_amount_reverse(
         .order_price
         .sub_prefix(order)
         .range(deps.storage, None, end, Order::Descending)
+        .filter(|bid| bid.as_ref().unwrap().1.status == status)
         .take(limit)
         .map(|res| res.map(|item| item.1))
         .collect::<StdResult<Vec<_>>>()?;
@@ -832,6 +871,7 @@ pub fn query_bids_sorted_by_amount_reverse(
 pub fn query_bids_sorted_by_order_reverse(
     deps: Deps,
     order: String,
+    status: BidStatus,
     start_before: Option<BidOffsetTime>,
     limit: Option<u32>,
 ) -> StdResult<BidsResponse> {
@@ -845,6 +885,7 @@ pub fn query_bids_sorted_by_order_reverse(
         .timestamp
         .sub_prefix(order)
         .range(deps.storage, None, end, Order::Descending)
+        .filter(|bid| bid.as_ref().unwrap().1.status == status)
         .take(limit)
         .map(|res| res.map(|item| item.1))
         .collect::<StdResult<Vec<_>>>()?;
@@ -863,6 +904,7 @@ pub fn query_bid(deps: Deps, order: String, bidder: String) -> StdResult<BidsRes
 pub fn query_bids_by_bidder(
     deps: Deps,
     bidder: String,
+    status: BidStatus,
     start_after: Option<String>, // order
     limit: Option<u32>,
 ) -> StdResult<BidsResponse> {
@@ -875,6 +917,7 @@ pub fn query_bids_by_bidder(
         .bidder
         .prefix(bidder)
         .range(deps.storage, start, None, Order::Ascending)
+        .filter(|bid| bid.as_ref().unwrap().1.status == status)
         .take(limit)
         .map(|item| item.map(|(_, b)| b))
         .collect::<StdResult<Vec<_>>>()?;
@@ -910,7 +953,11 @@ fn query_inactive_list(
         .map(|item: Result<(u64, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
         .collect::<Vec<AtomicSwapOrder>>();
 
-    Ok(ListResponse { swaps: swap_orders })
+    let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
+    Ok(ListResponse {
+        swaps: swap_orders,
+        last_order_id: count_check,
+    })
 }
 
 fn query_inactive_list_by_desired_taker(
@@ -933,7 +980,11 @@ fn query_inactive_list_by_desired_taker(
         .filter(|swap_order| swap_order.maker.desired_taker == desired_taker)
         .collect::<Vec<AtomicSwapOrder>>();
 
-    Ok(ListResponse { swaps: swap_orders })
+    let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
+    Ok(ListResponse {
+        swaps: swap_orders,
+        last_order_id: count_check,
+    })
 }
 
 fn query_inactive_list_by_maker(
@@ -956,7 +1007,11 @@ fn query_inactive_list_by_maker(
         .filter(|swap_order| swap_order.maker.maker_address == maker)
         .collect::<Vec<AtomicSwapOrder>>();
 
-    Ok(ListResponse { swaps: swap_orders })
+    let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
+    Ok(ListResponse {
+        swaps: swap_orders,
+        last_order_id: count_check,
+    })
 }
 
 fn query_inactive_list_by_taker(
@@ -981,7 +1036,11 @@ fn query_inactive_list_by_taker(
         })
         .collect::<Vec<AtomicSwapOrder>>();
 
-    Ok(ListResponse { swaps: swap_orders })
+    let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
+    Ok(ListResponse {
+        swaps: swap_orders,
+        last_order_id: count_check,
+    })
 }
 
 #[cfg(test)]
@@ -1023,7 +1082,7 @@ mod tests {
                 amount: Uint128::from(100u64),
             },
             order: order.clone(),
-            status: BidStatus::Initial,
+            status: BidStatus::Placed,
             bidder: bidder.clone(),
             bidder_receiver: bidder.clone(),
             receive_timestamp: 10,
@@ -1038,6 +1097,7 @@ mod tests {
             mock_env(),
             QueryMsg::BidByAmount {
                 order,
+                status: BidStatus::Placed,
                 start_after: None,
                 limit: Some(10),
             },
@@ -1055,7 +1115,7 @@ mod tests {
                 amount: Uint128::from(1000u64),
             },
             order: order.clone(),
-            status: BidStatus::Initial,
+            status: BidStatus::Placed,
             bidder: bidder.clone(),
             bidder_receiver: bidder.clone(),
             receive_timestamp: 20,
@@ -1069,6 +1129,7 @@ mod tests {
             mock_env(),
             QueryMsg::BidByAmount {
                 order,
+                status: BidStatus::Placed,
                 start_after: None,
                 limit: Some(10),
             },
@@ -1086,7 +1147,7 @@ mod tests {
                 amount: Uint128::from(100u64),
             },
             order: order.clone(),
-            status: BidStatus::Initial,
+            status: BidStatus::Placed,
             bidder: bidder.clone(),
             bidder_receiver: bidder.clone(),
             receive_timestamp: 30,
@@ -1100,7 +1161,11 @@ mod tests {
             mock_env(),
             QueryMsg::BidByAmount {
                 order: order.clone(),
-                start_after: Some(BidOffset { amount: Uint128::from(100u64), bidder: "some-bidder".to_owned() }),
+                status: BidStatus::Placed,
+                start_after: Some(BidOffset {
+                    amount: Uint128::from(100u64),
+                    bidder: "some-bidder".to_owned(),
+                }),
                 limit: Some(10),
             },
         )
@@ -1114,8 +1179,12 @@ mod tests {
             mock_env(),
             QueryMsg::BidByAmountReverse {
                 order,
-                start_before: Some(BidOffset { amount: Uint128::from(1000u64), bidder: "some-bidder-1".to_owned() }),
+                start_before: Some(BidOffset {
+                    amount: Uint128::from(1000u64),
+                    bidder: "some-bidder-1".to_owned(),
+                }),
                 limit: Some(10),
+                status: BidStatus::Placed,
             },
         )
         .unwrap();
@@ -1132,7 +1201,7 @@ mod tests {
                 amount: Uint128::from(100u64),
             },
             order: order.clone(),
-            status: BidStatus::Initial,
+            status: BidStatus::Placed,
             bidder: bidder.clone(),
             bidder_receiver: bidder.clone(),
             receive_timestamp: 40,
@@ -1141,16 +1210,21 @@ mod tests {
         bids()
             .save(deps.as_mut().storage, bid_key(&order, &bidder), &bid3)
             .unwrap();
-        
+
         let res = query(
             deps.as_ref(),
             mock_env(),
-            QueryMsg::BidByBidder { bidder:bidder, start_after: None, limit: None },
+            QueryMsg::BidByBidder {
+                bidder,
+                start_after: None,
+                status: BidStatus::Placed,
+                limit: None,
+            },
         )
         .unwrap();
 
         let value: BidsResponse = from_binary(&res).unwrap();
-        assert_eq!(value.bids, vec![bid.clone(), bid3]);
+        assert_eq!(value.bids, vec![bid, bid3]);
     }
 
     #[test]
