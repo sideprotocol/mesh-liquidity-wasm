@@ -97,8 +97,7 @@ pub(crate) fn do_ibc_packet_receive(
         }
         InterchainMessageType::CancelMultiDeposit => {
             let msg: MsgCancelMultiAssetDepositRequest = from_slice(&packet_data.data)?;
-            let state_change_data: StateChange = from_slice(&packet_data.state_change.unwrap())?;
-            on_received_cancel_multi_deposit(deps, env, packet, msg, state_change_data)
+            on_received_cancel_multi_deposit(deps, env, packet, msg)
         }
         InterchainMessageType::MultiWithdraw => {
             let msg: MsgMultiAssetWithdrawRequest = from_slice(&packet_data.data)?;
@@ -472,7 +471,6 @@ pub(crate) fn on_received_cancel_multi_deposit(
     _env: Env,
     _packet: &IbcPacket,
     msg: MsgCancelMultiAssetDepositRequest,
-    _state_change: StateChange,
 ) -> Result<IbcReceiveResponse, ContractError> {
     // load pool throw error if found
     let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id)?;
