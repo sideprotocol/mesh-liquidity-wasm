@@ -706,6 +706,12 @@ fn query_list(
         .map(|item: Result<(u64, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
         .collect::<Vec<AtomicSwapOrder>>();
 
+    if swap_orders.is_empty() {
+        return Ok(ListResponse {
+            swaps: vec![],
+            last_order_id: 0,
+        });
+    }
     let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
     Ok(ListResponse {
         swaps: swap_orders,
@@ -733,6 +739,12 @@ fn query_list_by_desired_taker(
         .filter(|swap_order| swap_order.maker.desired_taker == desired_taker)
         .collect::<Vec<AtomicSwapOrder>>();
 
+    if swap_orders.is_empty() {
+        return Ok(ListResponse {
+            swaps: vec![],
+            last_order_id: 0,
+        });
+    }
     let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
     Ok(ListResponse {
         swaps: swap_orders,
@@ -760,6 +772,12 @@ fn query_list_by_maker(
         .filter(|swap_order| swap_order.maker.maker_address == maker)
         .collect::<Vec<AtomicSwapOrder>>();
 
+    if swap_orders.is_empty() {
+        return Ok(ListResponse {
+            swaps: vec![],
+            last_order_id: 0,
+        });
+    }
     let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
     Ok(ListResponse {
         swaps: swap_orders,
@@ -789,6 +807,12 @@ fn query_list_by_taker(
         })
         .collect::<Vec<AtomicSwapOrder>>();
 
+    if swap_orders.is_empty() {
+        return Ok(ListResponse {
+            swaps: vec![],
+            last_order_id: 0,
+        });
+    }
     let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
     Ok(ListResponse {
         swaps: swap_orders,
@@ -956,6 +980,12 @@ fn query_inactive_list(
         .map(|item: Result<(u64, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
         .collect::<Vec<AtomicSwapOrder>>();
 
+    if swap_orders.is_empty() {
+        return Ok(ListResponse {
+            swaps: vec![],
+            last_order_id: 0,
+        });
+    }
     let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
     Ok(ListResponse {
         swaps: swap_orders,
@@ -983,6 +1013,12 @@ fn query_inactive_list_by_desired_taker(
         .filter(|swap_order| swap_order.maker.desired_taker == desired_taker)
         .collect::<Vec<AtomicSwapOrder>>();
 
+    if swap_orders.is_empty() {
+        return Ok(ListResponse {
+            swaps: vec![],
+            last_order_id: 0,
+        });
+    }
     let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
     Ok(ListResponse {
         swaps: swap_orders,
@@ -1010,6 +1046,12 @@ fn query_inactive_list_by_maker(
         .filter(|swap_order| swap_order.maker.maker_address == maker)
         .collect::<Vec<AtomicSwapOrder>>();
 
+    if swap_orders.is_empty() {
+        return Ok(ListResponse {
+            swaps: vec![],
+            last_order_id: 0,
+        });
+    }
     let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
     Ok(ListResponse {
         swaps: swap_orders,
@@ -1039,6 +1081,12 @@ fn query_inactive_list_by_taker(
         })
         .collect::<Vec<AtomicSwapOrder>>();
 
+    if swap_orders.is_empty() {
+        return Ok(ListResponse {
+            swaps: vec![],
+            last_order_id: 0,
+        });
+    }
     let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
     Ok(ListResponse {
         swaps: swap_orders,

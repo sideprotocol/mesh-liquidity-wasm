@@ -1,3 +1,5 @@
+use std::vec;
+
 use cosmwasm_std::{Deps, Order, StdResult};
 use cw_storage_plus::Bound;
 
@@ -25,6 +27,12 @@ pub fn query_list_reverse(
         .map(|item: Result<(u64, AtomicSwapOrder), cosmwasm_std::StdError>| item.unwrap().1)
         .collect::<Vec<AtomicSwapOrder>>();
 
+    if swap_orders.is_empty() {
+        return Ok(ListResponse {
+            swaps: vec![],
+            last_order_id: 0,
+        });
+    }
     let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
     Ok(ListResponse {
         swaps: swap_orders,
@@ -52,6 +60,12 @@ pub fn query_list_by_desired_taker_reverse(
         .filter(|swap_order| swap_order.maker.desired_taker == desired_taker)
         .collect::<Vec<AtomicSwapOrder>>();
 
+    if swap_orders.is_empty() {
+        return Ok(ListResponse {
+            swaps: vec![],
+            last_order_id: 0,
+        });
+    }
     let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
     Ok(ListResponse {
         swaps: swap_orders,
@@ -79,6 +93,12 @@ pub fn query_list_by_maker_reverse(
         .filter(|swap_order| swap_order.maker.maker_address == maker)
         .collect::<Vec<AtomicSwapOrder>>();
 
+    if swap_orders.is_empty() {
+        return Ok(ListResponse {
+            swaps: vec![],
+            last_order_id: 0,
+        });
+    }
     let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
     Ok(ListResponse {
         swaps: swap_orders,
@@ -108,6 +128,12 @@ pub fn query_list_by_taker_reverse(
         })
         .collect::<Vec<AtomicSwapOrder>>();
 
+    if swap_orders.is_empty() {
+        return Ok(ListResponse {
+            swaps: vec![],
+            last_order_id: 0,
+        });
+    }
     let count_check = ORDER_TO_COUNT.load(deps.storage, &swap_orders.last().unwrap().id)?;
     Ok(ListResponse {
         swaps: swap_orders,
