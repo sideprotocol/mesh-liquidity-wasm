@@ -1,14 +1,6 @@
-use cosmwasm_std::{
-    from_binary, Addr, BankMsg, Binary, Coin, IbcAcknowledgement, IbcChannel, IbcOrder, StdError,
-    StdResult, SubMsg,
-};
+use cosmwasm_std::{Addr, BankMsg, Coin, StdError, StdResult, SubMsg};
 
 use sha2::{Digest, Sha256};
-
-use crate::{
-    msg::{Height, MakeSwapMsg, MakeSwapMsgOutput, TakeSwapMsg, TakeSwapMsgOutput},
-    ContractError,
-};
 
 pub fn generate_order_id(order_path: &str) -> StdResult<String> {
     // Generate random bytes

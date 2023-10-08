@@ -1,17 +1,17 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Binary, Deps, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Order, Response,
-    StdError, StdResult,
+    to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Order, Response, StdError, StdResult,
+    SubMsg, Timestamp,
 };
 
 use cw2::set_contract_version;
 
 use crate::error::ContractError;
 use crate::msg::{
-    AtomicSwapPacketData, BidOffset, BidOffsetTime, BidsResponse, CancelBidMsg, CancelSwapMsg,
-    DetailsResponse, ExecuteMsg, InstantiateMsg, ListResponse, MakeBidMsg, MakeSwapMsg, MigrateMsg,
-    QueryMsg, SwapMessageType, TakeBidMsg, TakeSwapMsg,
+    BidOffset, BidOffsetTime, BidsResponse, CancelBidMsg, CancelSwapMsg, DetailsResponse,
+    ExecuteMsg, InstantiateMsg, ListResponse, MakeBidMsg, MakeSwapMsg, MigrateMsg, QueryMsg,
+    TakeBidMsg, TakeSwapMsg,
 };
 use crate::query_reverse::{
     query_list_by_desired_taker_reverse, query_list_by_maker_reverse, query_list_by_taker_reverse,
@@ -19,16 +19,15 @@ use crate::query_reverse::{
 };
 use crate::state::{
     append_atomic_order, bid_key, bids, get_atomic_order, move_order_to_bottom, set_atomic_order,
-    AtomicSwapOrder, Bid, BidKey, BidStatus, Side, Status, COUNT, INACTIVE_COUNT,
-    INACTIVE_SWAP_ORDERS, ORDER_TO_COUNT, SWAP_ORDERS, SWAP_SEQUENCE,
+    AtomicSwapOrder, Bid, BidKey, BidStatus, Status, COUNT, INACTIVE_COUNT, INACTIVE_SWAP_ORDERS,
+    ORDER_TO_COUNT, SWAP_ORDERS, SWAP_SEQUENCE,
 };
-use crate::utils::{extract_source_channel_for_taker_msg, generate_order_id, order_path};
+use crate::utils::send_tokens;
 use cw_storage_plus::Bound;
 
 // Version info, for migration info
-const CONTRACT_NAME: &str = "ics100-swap";
+const CONTRACT_NAME: &str = "ics100-swap-inchain";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
-const DEFAULT_TIMEOUT_TIMESTAMP_OFFSET: u64 = 600;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -85,52 +84,24 @@ pub fn execute_make_swap(
     }
 
     let sequence = SWAP_SEQUENCE.load(deps.storage)?;
-    let path = order_path(
-        msg.source_channel.clone(),
-        msg.source_port.clone(),
-        channel_info.counterparty_endpoint.channel_id,
-        channel_info.counterparty_endpoint.port_id,
-        sequence,
-    )?;
 
-    let order_id = generate_order_id(&path)?;
+    let order_id = sequence.to_string();
     let new_order = AtomicSwapOrder {
         id: order_id.clone(),
-        side: Side::Native,
         maker: msg.clone(),
-        status: Status::Initial,
-        path: path.clone(),
+        status: Status::Sync,
         taker: None,
         cancel_timestamp: None,
         complete_timestamp: None,
         create_timestamp: env.block.time.seconds(),
     };
     append_atomic_order(deps.storage, &order_id, &new_order)?;
-    let ibc_packet = AtomicSwapPacketData {
-        r#type: SwapMessageType::MakeSwap,
-        data: to_binary(&msg)?,
-        order_id: Some(order_id),
-        path: Some(path),
-        memo: String::new(),
-    };
 
     // Increment the sequence counter.
     let new_sequence = sequence + 1;
     SWAP_SEQUENCE.save(deps.storage, &new_sequence)?;
 
-    let ibc_msg = IbcMsg::SendPacket {
-        channel_id: msg.source_channel,
-        data: to_binary(&ibc_packet)?,
-        timeout: IbcTimeout::from(
-            env.block
-                .time
-                .plus_seconds(DEFAULT_TIMEOUT_TIMESTAMP_OFFSET),
-        ),
-    };
-
-    let res = Response::new()
-        .add_message(ibc_msg)
-        .add_attribute("action", "make_swap");
+    let res = Response::new().add_attribute("action", "make_swap");
     Ok(res)
 }
 
@@ -159,8 +130,12 @@ pub fn execute_take_swap(
 
     let mut order = get_atomic_order(deps.storage, &msg.order_id)?;
 
-    if order.status != Status::Initial && order.status != Status::Sync {
+    if order.status != Status::Sync {
         return Err(ContractError::OrderTaken);
+    }
+
+    if msg.sell_token != order.maker.buy_token {
+        return Err(ContractError::InvalidSellToken);
     }
 
     // Make sure the maker's buy token matches the taker's sell token
@@ -183,34 +158,21 @@ pub fn execute_take_swap(
         return Err(ContractError::Expired);
     }
 
+    let make_address = deps.api.addr_validate(&order.maker.maker_address)?;
+
+    let submsg = send_tokens(&make_address, msg.sell_token.clone())?;
+
+    order.status = Status::Complete;
     order.taker = Some(msg.clone());
-
-    let ibc_packet = AtomicSwapPacketData {
-        r#type: SwapMessageType::TakeSwap,
-        data: to_binary(&msg)?,
-        order_id: None,
-        path: None,
-        memo: String::new(),
-    };
-
-    let ibc_msg = IbcMsg::SendPacket {
-        channel_id: extract_source_channel_for_taker_msg(&order.path)?,
-        data: to_binary(&ibc_packet)?,
-        timeout: IbcTimeout::from(
-            env.block
-                .time
-                .plus_seconds(DEFAULT_TIMEOUT_TIMESTAMP_OFFSET),
-        ),
-    };
+    order.complete_timestamp = Some(Timestamp::from_nanos(env.block.time.nanos()));
 
     // Save order
     set_atomic_order(deps.storage, &order.id, &order)?;
+    move_order_to_bottom(deps.storage, &msg.order_id)?;
 
     let res = Response::new()
-        .add_message(ibc_msg)
         .add_attribute("order_id", msg.order_id)
-        .add_attribute("action", "take_swap")
-        .add_attribute("order_id", order.id.clone());
+        .add_attribute("action", "take_swap");
     Ok(res)
 }
 
@@ -223,7 +185,7 @@ pub fn execute_cancel_swap(
     msg: CancelSwapMsg,
 ) -> Result<Response, ContractError> {
     let sender = info.sender.to_string();
-    let order = get_atomic_order(deps.storage, &msg.order_id)?;
+    let mut order = get_atomic_order(deps.storage, &msg.order_id)?;
 
     if sender != order.maker.maker_address {
         return Err(ContractError::InvalidSender);
@@ -239,26 +201,20 @@ pub fn execute_cancel_swap(
         return Err(ContractError::InvalidStatus);
     }
 
-    let packet = AtomicSwapPacketData {
-        r#type: SwapMessageType::CancelSwap,
-        data: to_binary(&msg)?,
-        memo: String::new(),
-        order_id: None,
-        path: None,
-    };
+    if order.taker.is_some() {
+        return Err(ContractError::AlreadyTakenOrder);
+    }
 
-    let ibc_msg = IbcMsg::SendPacket {
-        channel_id: order.maker.source_channel,
-        data: to_binary(&packet)?,
-        timeout: IbcTimeout::from(
-            env.block
-                .time
-                .plus_seconds(DEFAULT_TIMEOUT_TIMESTAMP_OFFSET),
-        ),
-    };
+    let maker_address = deps.api.addr_validate(&order.maker.maker_address)?;
+    let maker_msg = order.maker.clone();
+
+    let submsg = send_tokens(&maker_address, maker_msg.sell_token)?;
+
+    order.status = Status::Cancel;
+    order.cancel_timestamp = Some(Timestamp::from_nanos(env.block.time.nanos()));
+    set_atomic_order(deps.storage, &msg.order_id, &order)?;
 
     let res = Response::new()
-        .add_message(ibc_msg)
         .add_attribute("order_id", msg.order_id)
         .add_attribute("action", "cancel_swap")
         .add_attribute("order_id", order.id);
@@ -320,35 +276,15 @@ pub fn execute_make_bid(
     let bid: Bid = Bid {
         bid: msg.sell_token.clone(),
         order: msg.order_id.clone(),
-        status: BidStatus::Initial,
+        status: BidStatus::Placed,
         bidder: msg.taker_address.clone(),
-        bidder_receiver: msg.taker_receiving_address.clone(),
         receive_timestamp: env.block.time.seconds(),
         expire_timestamp: msg.expiration_timestamp,
     };
 
     bids().save(deps.storage, key, &bid)?;
 
-    let packet = AtomicSwapPacketData {
-        r#type: SwapMessageType::MakeBid,
-        data: to_binary(&msg)?,
-        memo: String::new(),
-        order_id: None,
-        path: None,
-    };
-
-    let ibc_msg = IbcMsg::SendPacket {
-        channel_id: extract_source_channel_for_taker_msg(&order.path)?,
-        data: to_binary(&packet)?,
-        timeout: IbcTimeout::from(
-            env.block
-                .time
-                .plus_seconds(DEFAULT_TIMEOUT_TIMESTAMP_OFFSET),
-        ),
-    };
-
     let res = Response::new()
-        .add_message(ibc_msg)
         .add_attribute("order_id", msg.order_id)
         .add_attribute("action", "make_bid");
     Ok(res)
@@ -366,7 +302,7 @@ pub fn execute_take_bid(
     msg: TakeBidMsg,
 ) -> Result<Response, ContractError> {
     let sender = info.sender.to_string();
-    let order = get_atomic_order(deps.storage, &msg.order_id)?;
+    let mut order = get_atomic_order(deps.storage, &msg.order_id)?;
 
     if !order.maker.take_bids {
         return Err(ContractError::TakeBidNotAllowed);
@@ -377,8 +313,12 @@ pub fn execute_take_bid(
         return Err(ContractError::OrderTaken);
     }
 
-    if sender != order.maker.maker_receiving_address {
+    if sender != order.maker.maker_address {
         return Err(ContractError::InvalidSender);
+    }
+
+    if !order.maker.desired_taker.is_empty() && order.maker.desired_taker != msg.bidder {
+        return Err(ContractError::InvalidTakerAddress);
     }
 
     let key = bid_key(&msg.order_id, &msg.bidder);
@@ -395,26 +335,24 @@ pub fn execute_take_bid(
         return Err(ContractError::Expired);
     }
 
-    let packet = AtomicSwapPacketData {
-        r#type: SwapMessageType::TakeBid,
-        data: to_binary(&msg)?,
-        memo: String::new(),
-        order_id: None,
-        path: None,
-    };
+    let taker_receiving_address = deps.api.addr_validate(&bid.bidder)?;
 
-    let ibc_msg = IbcMsg::SendPacket {
-        channel_id: extract_source_channel_for_taker_msg(&order.path)?,
-        data: to_binary(&packet)?,
-        timeout: IbcTimeout::from(
-            env.block
-                .time
-                .plus_seconds(DEFAULT_TIMEOUT_TIMESTAMP_OFFSET),
-        ),
+    let submsg: Vec<SubMsg> =
+        send_tokens(&taker_receiving_address, order.maker.sell_token.clone())?;
+
+    let take_msg: TakeSwapMsg = TakeSwapMsg {
+        order_id: order.id.clone(),
+        sell_token: bid.bid,
+        taker_address: bid.bidder,
     };
+    order.status = Status::Complete;
+    order.taker = Some(take_msg);
+    order.complete_timestamp = Some(Timestamp::from_nanos(env.block.time.nanos()));
+
+    set_atomic_order(deps.storage, &msg.order_id, &order)?;
+    move_order_to_bottom(deps.storage, &msg.order_id)?;
 
     let res = Response::new()
-        .add_message(ibc_msg)
         .add_attribute("order_id", msg.order_id)
         .add_attribute("action", "take_bid");
     Ok(res)
@@ -426,7 +364,7 @@ pub fn execute_take_bid(
 /// bid doesn't exist
 pub fn execute_cancel_bid(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
     msg: CancelBidMsg,
 ) -> Result<Response, ContractError> {
@@ -438,34 +376,23 @@ pub fn execute_cancel_bid(
     }
 
     let key = bid_key(&msg.order_id, &msg.bidder);
-    if !bids().has(deps.storage, key) {
+    if !bids().has(deps.storage, key.clone()) {
         return Err(ContractError::BidDoesntExist);
     }
+    let mut bid = bids().load(deps.storage, key.clone())?;
 
     if sender != msg.bidder {
         return Err(ContractError::InvalidSender);
     }
 
-    let packet = AtomicSwapPacketData {
-        r#type: SwapMessageType::CancelBid,
-        data: to_binary(&msg)?,
-        memo: String::new(),
-        order_id: None,
-        path: None,
-    };
+    let taker_receiving_address = deps.api.addr_validate(&bid.bidder)?;
+    // Refund amount
+    let submsg: Vec<SubMsg> = send_tokens(&taker_receiving_address, bid.bid.clone())?;
 
-    let ibc_msg = IbcMsg::SendPacket {
-        channel_id: extract_source_channel_for_taker_msg(&order.path)?,
-        data: to_binary(&packet)?,
-        timeout: IbcTimeout::from(
-            env.block
-                .time
-                .plus_seconds(DEFAULT_TIMEOUT_TIMESTAMP_OFFSET),
-        ),
-    };
+    bid.status = BidStatus::Cancelled;
+    bids().save(deps.storage, key, &bid)?;
 
     let res = Response::new()
-        .add_message(ibc_msg)
         .add_attribute("order_id", msg.order_id)
         .add_attribute("action", "make_bid");
     Ok(res)
@@ -662,7 +589,6 @@ fn query_details(deps: Deps, id: String) -> StdResult<DetailsResponse> {
         id,
         maker: swap_order.maker.clone(),
         status: swap_order.status.clone(),
-        path: swap_order.path.clone(),
         taker: swap_order.taker.clone(),
         cancel_timestamp: swap_order.cancel_timestamp,
         complete_timestamp: swap_order.complete_timestamp,
@@ -1097,7 +1023,7 @@ mod tests {
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
     use cosmwasm_std::{coin, from_binary, Coin, StdError, Uint128};
 
-    use crate::msg::{Height, TakeSwapMsgOutput};
+    use crate::msg::TakeSwapMsgOutput;
     use crate::utils::{generate_order_id, order_path};
 
     use super::*;
@@ -1133,7 +1059,6 @@ mod tests {
             order: order.clone(),
             status: BidStatus::Placed,
             bidder: bidder.clone(),
-            bidder_receiver: bidder.clone(),
             receive_timestamp: 10,
             expire_timestamp: 100,
         };
@@ -1166,7 +1091,6 @@ mod tests {
             order: order.clone(),
             status: BidStatus::Placed,
             bidder: bidder.clone(),
-            bidder_receiver: bidder.clone(),
             receive_timestamp: 20,
             expire_timestamp: 100,
         };
@@ -1198,7 +1122,6 @@ mod tests {
             order: order.clone(),
             status: BidStatus::Placed,
             bidder: bidder.clone(),
-            bidder_receiver: bidder.clone(),
             receive_timestamp: 30,
             expire_timestamp: 100,
         };
@@ -1252,7 +1175,6 @@ mod tests {
             order: order.clone(),
             status: BidStatus::Placed,
             bidder: bidder.clone(),
-            bidder_receiver: bidder.clone(),
             receive_timestamp: 40,
             expire_timestamp: 100,
         };
@@ -1288,25 +1210,15 @@ mod tests {
         // let balance = coins(100, "tokens");
         let balance1 = coin(100, "token1");
         let balance2 = coin(200, "token2");
-        let source_port = String::from("100");
-        let source_channel = String::from("ics100-1");
 
         // Cannot create, no funds
         let info = mock_info(&sender, &[]);
         let create = MakeSwapMsg {
-            source_port,
-            source_channel,
             sell_token: balance1,
             buy_token: balance2,
             maker_address: "maker0001".to_string(),
-            maker_receiving_address: "makerrcpt0001".to_string(),
             desired_taker: "".to_string(),
             expiration_timestamp: env.block.time.plus_seconds(100).nanos(),
-            timeout_height: Height {
-                revision_number: 0,
-                revision_height: 0,
-            },
-            timeout_timestamp: env.block.time.plus_seconds(100).nanos(),
             take_bids: false,
         };
         let err = execute(deps.as_mut(), env, info, ExecuteMsg::MakeSwap(create)).unwrap_err();
@@ -1332,19 +1244,11 @@ mod tests {
 
         // Cannot create, no funds
         let _ = MakeSwapMsg {
-            source_port: source_port.clone(),
-            source_channel: source_channel.clone(),
             sell_token: balance1,
             buy_token: balance2,
             maker_address: "wasm1kj2t5txvwznrdx32v6xsw46yqztsyahqwxwlve".to_string(),
-            maker_receiving_address: "wasm1kj2t5txvwznrdx32v6xsw46yqztsyahqwxwlve".to_string(),
             desired_taker: "".to_string(),
             expiration_timestamp: 1693399749000000000,
-            timeout_height: Height {
-                revision_number: 0,
-                revision_height: 0,
-            },
-            timeout_timestamp: 1693399799000000000,
             take_bids: false,
         };
 
@@ -1371,7 +1275,6 @@ mod tests {
         // let balance = coins(100, "tokens");
         let balance2 = coin(100, "aside");
         let taker_address = String::from("side1lqd386kze5355mgpncu5y52jcdhs85ckj7kdv0");
-        let taker_receiving_address = String::from("wasm19zl4l2hafcdw6p99kc00znttgpdyk32a02puj2");
 
         let create = TakeSwapMsg {
             order_id: String::from(
@@ -1379,12 +1282,6 @@ mod tests {
             ),
             sell_token: balance2,
             taker_address,
-            taker_receiving_address,
-            timeout_height: Height {
-                revision_number: 0,
-                revision_height: 0,
-            },
-            timeout_timestamp: 1693399799000000000,
         };
 
         let create_bytes = to_binary(&create).unwrap();
@@ -1408,12 +1305,6 @@ mod tests {
                     order_id: msg_output.order_id.clone(),
                     sell_token: msg_output.sell_token.clone(),
                     taker_address: msg_output.taker_address.clone(),
-                    taker_receiving_address: msg_output.taker_receiving_address.clone(),
-                    timeout_height: Height {
-                        revision_number: msg_output.timeout_height.revision_number.parse().unwrap(),
-                        revision_height: msg_output.timeout_height.revision_height.parse().unwrap(),
-                    },
-                    timeout_timestamp: msg_output.timeout_timestamp.parse().unwrap(),
                 }
             }
         }

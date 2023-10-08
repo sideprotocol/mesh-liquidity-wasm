@@ -25,11 +25,8 @@ pub enum Side {
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct AtomicSwapOrder {
     pub id: String,
-    pub side: Side,
     pub maker: MakeSwapMsg,
     pub status: Status,
-    // an IBC path, define channel and port on both Maker Chain and Taker Chain
-    pub path: String,
     pub taker: Option<TakeSwapMsg>,
     // In seconds
     pub create_timestamp: u64,
@@ -115,7 +112,6 @@ pub struct Bid {
     pub order: String,
     pub status: BidStatus,
     pub bidder: String,
-    pub bidder_receiver: String,
     pub receive_timestamp: u64,
     pub expire_timestamp: u64,
 }

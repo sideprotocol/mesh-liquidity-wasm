@@ -287,7 +287,6 @@ pub struct DetailsResponse {
     pub id: String,
     pub maker: MakeSwapMsg,
     pub status: Status,
-    pub path: String,
     pub taker: Option<TakeSwapMsg>,
     pub cancel_timestamp: Option<Timestamp>,
     pub complete_timestamp: Option<Timestamp>,
