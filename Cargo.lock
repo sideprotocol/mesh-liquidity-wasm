@@ -483,6 +483,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "ics100-inchain"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-storage-plus",
+ "cw-utils",
+ "cw2",
+ "cw20",
+ "hex 0.3.2",
+ "schemars",
+ "serde",
+ "sha2 0.8.2",
+ "thiserror",
+]
+
+[[package]]
 name = "ics101"
 version = "0.1.0"
 dependencies = [
