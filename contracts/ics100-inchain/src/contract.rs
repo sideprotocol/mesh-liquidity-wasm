@@ -134,10 +134,6 @@ pub fn execute_take_swap(
         return Err(ContractError::OrderTaken);
     }
 
-    if msg.sell_token != order.maker.buy_token {
-        return Err(ContractError::InvalidSellToken);
-    }
-
     // Make sure the maker's buy token matches the taker's sell token
     if order.maker.buy_token != msg.sell_token {
         return Err(ContractError::InvalidSellToken);
@@ -159,8 +155,15 @@ pub fn execute_take_swap(
     }
 
     let make_address = deps.api.addr_validate(&order.maker.maker_address)?;
+    let taker_address = deps.api.addr_validate(&msg.taker_address)?;
 
-    let submsg = send_tokens(&make_address, msg.sell_token.clone())?;
+    let mut submsg = send_tokens(&make_address, msg.sell_token.clone())?;
+    submsg.push(
+        send_tokens(&taker_address, order.maker.sell_token.clone())?
+            .last()
+            .unwrap()
+            .clone(),
+    );
 
     order.status = Status::Complete;
     order.taker = Some(msg.clone());
@@ -171,6 +174,7 @@ pub fn execute_take_swap(
     move_order_to_bottom(deps.storage, &msg.order_id)?;
 
     let res = Response::new()
+        .add_submessages(submsg)
         .add_attribute("order_id", msg.order_id)
         .add_attribute("action", "take_swap");
     Ok(res)
@@ -215,9 +219,9 @@ pub fn execute_cancel_swap(
     set_atomic_order(deps.storage, &msg.order_id, &order)?;
 
     let res = Response::new()
+        .add_submessages(submsg)
         .add_attribute("order_id", msg.order_id)
-        .add_attribute("action", "cancel_swap")
-        .add_attribute("order_id", order.id);
+        .add_attribute("action", "cancel_swap");
     Ok(res)
 }
 
@@ -335,10 +339,17 @@ pub fn execute_take_bid(
         return Err(ContractError::Expired);
     }
 
+    let maker_address = deps.api.addr_validate(&order.maker.maker_address)?;
     let taker_receiving_address = deps.api.addr_validate(&bid.bidder)?;
 
-    let submsg: Vec<SubMsg> =
+    let mut submsg: Vec<SubMsg> =
         send_tokens(&taker_receiving_address, order.maker.sell_token.clone())?;
+    submsg.push(
+        send_tokens(&maker_address, bid.bid.clone())?
+            .last()
+            .unwrap()
+            .clone(),
+    );
 
     let take_msg: TakeSwapMsg = TakeSwapMsg {
         order_id: order.id.clone(),
@@ -353,6 +364,7 @@ pub fn execute_take_bid(
     move_order_to_bottom(deps.storage, &msg.order_id)?;
 
     let res = Response::new()
+        .add_submessages(submsg)
         .add_attribute("order_id", msg.order_id)
         .add_attribute("action", "take_bid");
     Ok(res)
@@ -393,6 +405,7 @@ pub fn execute_cancel_bid(
     bids().save(deps.storage, key, &bid)?;
 
     let res = Response::new()
+        .add_submessages(submsg)
         .add_attribute("order_id", msg.order_id)
         .add_attribute("action", "make_bid");
     Ok(res)
