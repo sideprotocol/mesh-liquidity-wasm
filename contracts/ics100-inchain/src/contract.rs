@@ -88,7 +88,7 @@ pub fn execute_make_swap(
     let order_id = sequence.to_string();
     let new_order = AtomicSwapOrder {
         id: order_id.clone(),
-        maker: msg.clone(),
+        maker: msg,
         status: Status::Sync,
         taker: None,
         cancel_timestamp: None,
@@ -1317,7 +1317,7 @@ mod tests {
                 msg = TakeSwapMsg {
                     order_id: msg_output.order_id.clone(),
                     sell_token: msg_output.sell_token.clone(),
-                    taker_address: msg_output.taker_address.clone(),
+                    taker_address: msg_output.taker_address,
                 }
             }
         }
