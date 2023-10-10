@@ -231,8 +231,8 @@ pub(crate) fn on_received_take_pool(
                     .map_err(|err| {
                         StdError::generic_err(format!("Failed to find asset: {}", err))
                     })?;
-                let splitted_shares = (new_shares * Uint128::from(token.weight))
-                    / Uint128::from(100u64);
+                let splitted_shares =
+                    (new_shares * Uint128::from(token.weight)) / Uint128::from(100u64);
                 sub_message = mint_tokens_cw20(msg.counter_creator, lp_token, splitted_shares)?;
             }
         }
@@ -337,8 +337,8 @@ pub(crate) fn on_received_single_deposit(
                     .map_err(|err| {
                         StdError::generic_err(format!("Failed to find asset: {}", err))
                     })?;
-                let splitted_shares = (new_shares * Uint128::from(token.weight))
-                    / Uint128::from(100u64);
+                let splitted_shares =
+                    (new_shares * Uint128::from(token.weight)) / Uint128::from(100u64);
                 sub_message = mint_tokens_cw20(msg.lp_taker, lp_token, splitted_shares)?;
             }
         }
@@ -461,8 +461,31 @@ pub(crate) fn on_received_take_multi_deposit(
     let sub_message;
     // Mint tokens (cw20) to the sender
     if let Some(lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id)? {
-        sub_message =
-            mint_tokens_cw20(multi_asset_order.source_maker.clone(), lp_token, new_shares)?;
+        match msg.lp_allocation {
+            LPAllocation::MakerChain => {
+                sub_message =
+                    mint_tokens_cw20(multi_asset_order.source_maker.clone(), lp_token, new_shares)?;
+            }
+            LPAllocation::TakerChain => {
+                // do nothing
+                sub_message = vec![];
+            }
+            LPAllocation::Split => {
+                // split shares
+                let token = interchain_pool
+                    .find_asset_by_side(PoolSide::SOURCE)
+                    .map_err(|err| {
+                        StdError::generic_err(format!("Failed to find asset: {}", err))
+                    })?;
+                let splitted_shares =
+                    (new_shares * Uint128::from(token.weight)) / Uint128::from(100u64);
+                sub_message = mint_tokens_cw20(
+                    multi_asset_order.source_maker.clone(),
+                    lp_token,
+                    splitted_shares,
+                )?;
+            }
+        }
 
         // Add tokens to pool supply
         interchain_pool
@@ -738,9 +761,8 @@ pub(crate) fn on_packet_success(
                             .map_err(|err| {
                                 StdError::generic_err(format!("Failed to find asset: {}", err))
                             })?;
-                        let splitted_shares = (new_shares
-                            * Uint128::from(token.weight))
-                            / Uint128::from(100u64);
+                        let splitted_shares =
+                            (new_shares * Uint128::from(token.weight)) / Uint128::from(100u64);
                         sub_message = mint_tokens_cw20(msg.creator, lp_token, splitted_shares)?;
                     }
                 }
@@ -834,9 +856,8 @@ pub(crate) fn on_packet_success(
                             .map_err(|err| {
                                 StdError::generic_err(format!("Failed to find asset: {}", err))
                             })?;
-                        let splitted_shares = (new_shares
-                            * Uint128::from(token.weight))
-                            / Uint128::from(100u64);
+                        let splitted_shares =
+                            (new_shares * Uint128::from(token.weight)) / Uint128::from(100u64);
                         sub_message = mint_tokens_cw20(msg.sender, lp_token, splitted_shares)?;
                     }
                 }
@@ -925,9 +946,8 @@ pub(crate) fn on_packet_success(
                             .map_err(|err| {
                                 StdError::generic_err(format!("Failed to find asset: {}", err))
                             })?;
-                        let splitted_shares = (new_shares
-                            * Uint128::from(token.weight))
-                            / Uint128::from(100u64);
+                        let splitted_shares =
+                            (new_shares * Uint128::from(token.weight)) / Uint128::from(100u64);
                         sub_message = mint_tokens_cw20(msg.sender, lp_token, splitted_shares)?;
                     }
                 }
