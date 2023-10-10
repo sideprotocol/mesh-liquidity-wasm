@@ -231,7 +231,7 @@ pub(crate) fn on_received_take_pool(
                     .map_err(|err| {
                         StdError::generic_err(format!("Failed to find asset: {}", err))
                     })?;
-                let splitted_shares = (Uint128::from(new_shares) * Uint128::from(token.weight))
+                let splitted_shares = (new_shares * Uint128::from(token.weight))
                     / Uint128::from(100u64);
                 sub_message = mint_tokens_cw20(msg.counter_creator, lp_token, splitted_shares)?;
             }
@@ -337,7 +337,7 @@ pub(crate) fn on_received_single_deposit(
                     .map_err(|err| {
                         StdError::generic_err(format!("Failed to find asset: {}", err))
                     })?;
-                let splitted_shares = (Uint128::from(new_shares) * Uint128::from(token.weight))
+                let splitted_shares = (new_shares * Uint128::from(token.weight))
                     / Uint128::from(100u64);
                 sub_message = mint_tokens_cw20(msg.lp_taker, lp_token, splitted_shares)?;
             }
@@ -738,7 +738,7 @@ pub(crate) fn on_packet_success(
                             .map_err(|err| {
                                 StdError::generic_err(format!("Failed to find asset: {}", err))
                             })?;
-                        let splitted_shares = (Uint128::from(new_shares)
+                        let splitted_shares = (new_shares
                             * Uint128::from(token.weight))
                             / Uint128::from(100u64);
                         sub_message = mint_tokens_cw20(msg.creator, lp_token, splitted_shares)?;
@@ -834,7 +834,7 @@ pub(crate) fn on_packet_success(
                             .map_err(|err| {
                                 StdError::generic_err(format!("Failed to find asset: {}", err))
                             })?;
-                        let splitted_shares = (Uint128::from(new_shares)
+                        let splitted_shares = (new_shares
                             * Uint128::from(token.weight))
                             / Uint128::from(100u64);
                         sub_message = mint_tokens_cw20(msg.sender, lp_token, splitted_shares)?;
@@ -925,7 +925,7 @@ pub(crate) fn on_packet_success(
                             .map_err(|err| {
                                 StdError::generic_err(format!("Failed to find asset: {}", err))
                             })?;
-                        let splitted_shares = (Uint128::from(new_shares)
+                        let splitted_shares = (new_shares
                             * Uint128::from(token.weight))
                             / Uint128::from(100u64);
                         sub_message = mint_tokens_cw20(msg.sender, lp_token, splitted_shares)?;
