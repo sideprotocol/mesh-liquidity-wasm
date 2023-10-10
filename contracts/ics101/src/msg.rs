@@ -126,6 +126,7 @@ pub struct MsgSingleAssetDepositRequest {
     pub sender: String,
     pub token: Coin,
     pub lp_allocation: LPAllocation,
+    pub lp_taker: String,
     pub timeout_height: u64,
     pub timeout_timestamp: u64,
 }
