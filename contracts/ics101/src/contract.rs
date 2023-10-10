@@ -326,6 +326,7 @@ fn make_pool(
         pool_id: Some(pool_id.clone()),
         multi_deposit_order_id: None,
         source_chain_id: None,
+        shares: None,
     })?;
 
     let pool_data = to_binary(&msg)?;
@@ -434,11 +435,41 @@ fn take_pool(
         )));
     }
 
+    let mut tokens: [Coin; 2] = Default::default();
+    tokens[0] = interchain_pool.assets[0].balance.clone();
+    tokens[1] = interchain_pool.assets[1].balance.clone();
+
+    // find number of tokens to be minted
+    // Create the interchain market maker (amm).
+    let amm = InterchainMarketMaker {
+        pool_id: msg.pool_id.clone(),
+        pool: interchain_pool.clone(),
+        fee_rate: interchain_pool.swap_fee,
+    };
+
+    let pool_tokens = amm
+        .deposit_multi_asset(&tokens)
+        .map_err(|err| StdError::generic_err(format!("Failed to deposit multi asset: {}", err)))?;
+    let mut new_shares = Uint128::from(0u128);
+    for pool in pool_tokens {
+        new_shares += pool.amount;
+    }
+
+    let state_change_data = to_binary(&StateChange {
+        in_tokens: None,
+        out_tokens: None,
+        pool_tokens: None,
+        pool_id: None,
+        multi_deposit_order_id: None,
+        source_chain_id: None,
+        shares: Some(new_shares),
+    })?;
+
     let pool_data = to_binary(&msg).unwrap();
     let ibc_packet_data = InterchainSwapPacketData {
         r#type: InterchainMessageType::TakePool,
         data: pool_data,
-        state_change: None,
+        state_change: Some(state_change_data),
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -568,10 +599,11 @@ pub fn single_asset_deposit(
     let state_change_data = to_binary(&StateChange {
         in_tokens: None,
         out_tokens: None,
-        pool_tokens: Some(vec![pool_token]),
+        pool_tokens: Some(vec![pool_token.clone()]),
         pool_id: None,
         multi_deposit_order_id: None,
         source_chain_id: None,
+        shares: Some(pool_token.amount),
     })?;
     // Construct the IBC swap packet.
     let packet_data = InterchainSwapPacketData {
@@ -702,6 +734,7 @@ fn make_multi_asset_deposit(
         pool_id: None,
         multi_deposit_order_id: Some(multi_asset_order.id),
         source_chain_id: None,
+        shares: None,
     })?;
     let packet_data = InterchainSwapPacketData {
         r#type: InterchainMessageType::MakeMultiDeposit,
@@ -851,6 +884,10 @@ fn take_multi_asset_deposit(
     };
 
     let pool_tokens = amm.deposit_multi_asset(&multi_asset_order.deposits)?;
+    let mut new_shares = Uint128::from(0u128);
+    for pool in pool_tokens.clone() {
+        new_shares += pool.amount;
+    }
 
     // Construct the IBC packet
     let state_change_data = to_binary(&StateChange {
@@ -860,6 +897,7 @@ fn take_multi_asset_deposit(
         pool_id: None,
         multi_deposit_order_id: None,
         source_chain_id: None,
+        shares: Some(new_shares),
     })?;
     let packet_data = InterchainSwapPacketData {
         r#type: InterchainMessageType::TakeMultiDeposit,
@@ -970,6 +1008,7 @@ fn multi_asset_withdraw(
         pool_id: None,
         multi_deposit_order_id: None,
         source_chain_id: None,
+        shares: None,
     })?;
 
     let packet = InterchainSwapPacketData {
@@ -1080,6 +1119,7 @@ fn swap(
         pool_id: None,
         multi_deposit_order_id: None,
         source_chain_id: None,
+        shares: None,
     })?;
     let packet = InterchainSwapPacketData {
         r#type: msg_type,

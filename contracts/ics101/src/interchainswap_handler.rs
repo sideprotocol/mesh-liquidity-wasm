@@ -7,7 +7,7 @@ use crate::msg::LogExecuteMsg::LogObservation;
 use crate::{
     error::ContractError,
     market::{
-        InterchainLiquidityPool, InterchainMarketMaker, PoolSide,
+        InterchainLiquidityPool, PoolSide,
         PoolStatus::{Active, Cancelled, Initialized},
     },
     msg::{
@@ -74,7 +74,8 @@ pub(crate) fn do_ibc_packet_receive(
         }
         InterchainMessageType::TakePool => {
             let msg: MsgTakePoolRequest = from_slice(&packet_data.data)?;
-            on_received_take_pool(deps, env, packet, msg)
+            let state_change_data: StateChange = from_slice(&packet_data.state_change.unwrap())?;
+            on_received_take_pool(deps, env, packet, msg, state_change_data)
         }
         InterchainMessageType::CancelPool => {
             let msg: MsgCancelPoolRequest = from_slice(&packet_data.data)?;
@@ -196,6 +197,7 @@ pub(crate) fn on_received_take_pool(
     _env: Env,
     _packet: &IbcPacket,
     msg: MsgTakePoolRequest,
+    state_change: StateChange,
 ) -> Result<IbcReceiveResponse, ContractError> {
     // load pool throw error if found
     let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id)?;
@@ -208,25 +210,7 @@ pub(crate) fn on_received_take_pool(
         )));
     }
 
-    let mut tokens: [Coin; 2] = Default::default();
-    tokens[0] = interchain_pool.assets[0].balance.clone();
-    tokens[1] = interchain_pool.assets[1].balance.clone();
-
-    // find number of tokens to be minted
-    // Create the interchain market maker (amm).
-    let amm = InterchainMarketMaker {
-        pool_id: msg.pool_id.clone(),
-        pool: interchain_pool.clone(),
-        fee_rate: interchain_pool.swap_fee,
-    };
-
-    let pool_tokens = amm
-        .deposit_multi_asset(&tokens)
-        .map_err(|err| StdError::generic_err(format!("Failed to deposit multi asset: {}", err)))?;
-    let mut new_shares = Uint128::from(0u128);
-    for pool in pool_tokens {
-        new_shares += pool.amount;
-    }
+    let new_shares = state_change.shares.unwrap();
     // mint new_shares in take receive
     let sub_message;
     // Mint tokens (cw20) to the sender
@@ -419,12 +403,7 @@ pub(crate) fn on_received_take_multi_deposit(
         return Err(ContractError::ErrOrderNotFound);
     }
 
-    let pool_tokens = state_change.pool_tokens.unwrap();
-    let mut new_shares = Uint128::from(0u128);
-    for pool in pool_tokens {
-        new_shares += pool.amount;
-    }
-
+    let new_shares = state_change.shares.unwrap();
     let sub_message;
     // Mint tokens (cw20) to the sender
     if let Some(lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id)? {
@@ -674,6 +653,7 @@ pub(crate) fn on_packet_success(
         }
         InterchainMessageType::TakePool => {
             let msg: MsgTakePoolRequest = from_binary(&packet_data.data)?;
+            let state_change: StateChange = from_slice(&packet_data.state_change.unwrap())?;
             // load pool throw error if found
             let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id)?;
             let mut interchain_pool;
@@ -685,31 +665,10 @@ pub(crate) fn on_packet_success(
                 )));
             }
 
-            let mut tokens: [Coin; 2] = Default::default();
-            tokens[0] = interchain_pool.assets[0].balance.clone();
-            tokens[1] = interchain_pool.assets[1].balance.clone();
-
-            // find number of tokens to be minted
-            // Create the interchain market maker (amm).
-            let amm = InterchainMarketMaker {
-                pool_id: msg.pool_id.clone(),
-                pool: interchain_pool.clone(),
-                fee_rate: interchain_pool.swap_fee,
-            };
-
-            let pool_tokens = amm.deposit_multi_asset(&tokens).map_err(|err| {
-                StdError::generic_err(format!("Failed to deposit multi asset: {}", err))
-            })?;
-
-            let mut new_shares = Uint128::from(0u128);
-            for pool in pool_tokens {
-                new_shares += pool.amount;
-            }
-
             interchain_pool
                 .add_supply(Coin {
                     denom: msg.pool_id.clone(),
-                    amount: new_shares,
+                    amount: state_change.shares.unwrap(),
                 })
                 .map_err(|err| StdError::generic_err(format!("Failed to add supply: {}", err)))?;
 
@@ -772,11 +731,7 @@ pub(crate) fn on_packet_success(
             let sub_message;
             // Mint tokens (cw20) to the sender
             if let Some(lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id.clone())? {
-                sub_message = mint_tokens_cw20(
-                    msg.sender,
-                    lp_token,
-                    state_change.pool_tokens.as_ref().unwrap()[0].amount,
-                )?;
+                sub_message = mint_tokens_cw20(msg.sender, lp_token, state_change.shares.unwrap())?;
             } else {
                 // throw error token not found, initialization is done in make_pool and
                 // take_pool
@@ -842,11 +797,7 @@ pub(crate) fn on_packet_success(
                 return Err(ContractError::ErrOrderNotFound);
             }
 
-            let pool_tokens = state_change.pool_tokens.unwrap();
-            let mut new_shares = Uint128::from(0u128);
-            for pool in pool_tokens {
-                new_shares += pool.amount;
-            }
+            let new_shares = state_change.shares.unwrap();
 
             // Mint tokens (cw20) to the sender
             if let Some(_lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id)? {
