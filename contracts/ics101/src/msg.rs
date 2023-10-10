@@ -50,6 +50,13 @@ pub struct MsgRemovePool {
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub enum LPAllocation {
+    MakerChain, // All LP tokens are minted on maker chain
+    TakerChain, // All LP tokens are minted on taker chain
+    Split, // LP tokens are minted on both chains and divided based on the pool ratio.
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct MsgMakePoolRequest {
     pub source_port: String,
@@ -61,6 +68,7 @@ pub struct MsgMakePoolRequest {
     pub counterparty_creator: String,
     pub liquidity: Vec<PoolAsset>,
     pub swap_fee: u32,
+    pub lp_allocation: LPAllocation,
     pub timeout_height: u64,
     pub timeout_timestamp: u64,
 }
@@ -117,6 +125,7 @@ pub struct MsgSingleAssetDepositRequest {
     pub pool_id: String,
     pub sender: String,
     pub token: Coin,
+    pub lp_allocation: LPAllocation,
     pub timeout_height: u64,
     pub timeout_timestamp: u64,
 }
@@ -152,6 +161,7 @@ pub struct MsgMakeMultiAssetDepositRequest {
     pub pool_id: String,
     pub deposits: Vec<DepositAsset>,
     pub chain_id: String,
+    pub lp_allocation: LPAllocation,
     pub timeout_height: u64,
     pub timeout_timestamp: u64,
 }
