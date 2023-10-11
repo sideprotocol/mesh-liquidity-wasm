@@ -3,11 +3,12 @@ use std::vec;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::msg::LPAllocation;
 use crate::msg::LogExecuteMsg::LogObservation;
 use crate::{
     error::ContractError,
     market::{
-        InterchainLiquidityPool, InterchainMarketMaker, PoolSide,
+        InterchainLiquidityPool, PoolSide,
         PoolStatus::{Active, Cancelled, Initialized},
     },
     msg::{
@@ -74,7 +75,8 @@ pub(crate) fn do_ibc_packet_receive(
         }
         InterchainMessageType::TakePool => {
             let msg: MsgTakePoolRequest = from_slice(&packet_data.data)?;
-            on_received_take_pool(deps, env, packet, msg)
+            let state_change_data: StateChange = from_slice(&packet_data.state_change.unwrap())?;
+            on_received_take_pool(deps, env, packet, msg, state_change_data)
         }
         InterchainMessageType::CancelPool => {
             let msg: MsgCancelPoolRequest = from_slice(&packet_data.data)?;
@@ -196,6 +198,7 @@ pub(crate) fn on_received_take_pool(
     _env: Env,
     _packet: &IbcPacket,
     msg: MsgTakePoolRequest,
+    state_change: StateChange,
 ) -> Result<IbcReceiveResponse, ContractError> {
     // load pool throw error if found
     let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id)?;
@@ -208,30 +211,31 @@ pub(crate) fn on_received_take_pool(
         )));
     }
 
-    let mut tokens: [Coin; 2] = Default::default();
-    tokens[0] = interchain_pool.assets[0].balance.clone();
-    tokens[1] = interchain_pool.assets[1].balance.clone();
-
-    // find number of tokens to be minted
-    // Create the interchain market maker (amm).
-    let amm = InterchainMarketMaker {
-        pool_id: msg.pool_id.clone(),
-        pool: interchain_pool.clone(),
-        fee_rate: interchain_pool.swap_fee,
-    };
-
-    let pool_tokens = amm
-        .deposit_multi_asset(&tokens)
-        .map_err(|err| StdError::generic_err(format!("Failed to deposit multi asset: {}", err)))?;
-    let mut new_shares = Uint128::from(0u128);
-    for pool in pool_tokens {
-        new_shares += pool.amount;
-    }
+    let new_shares = state_change.shares.unwrap();
     // mint new_shares in take receive
     let sub_message;
     // Mint tokens (cw20) to the sender
     if let Some(lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id.clone())? {
-        sub_message = mint_tokens_cw20(msg.counter_creator, lp_token, new_shares)?;
+        match msg.lp_allocation {
+            LPAllocation::MakerChain => {
+                sub_message = mint_tokens_cw20(msg.counter_creator, lp_token, new_shares)?;
+            }
+            LPAllocation::TakerChain => {
+                // do nothing
+                sub_message = vec![];
+            }
+            LPAllocation::Split => {
+                // split shares
+                let token = interchain_pool
+                    .find_asset_by_side(PoolSide::SOURCE)
+                    .map_err(|err| {
+                        StdError::generic_err(format!("Failed to find asset: {}", err))
+                    })?;
+                let splitted_shares =
+                    (new_shares * Uint128::from(token.weight)) / Uint128::from(100u64);
+                sub_message = mint_tokens_cw20(msg.counter_creator, lp_token, splitted_shares)?;
+            }
+        }
     } else {
         // throw error token not found, initialization is done in make_pool and
         // take_pool
@@ -312,6 +316,39 @@ pub(crate) fn on_received_single_deposit(
         )));
     }
     let pool_tokens = &state_change.pool_tokens.unwrap()[0];
+
+    let new_shares = state_change.shares.unwrap();
+    // mint new_shares in take receive
+    let sub_message;
+    // Mint tokens (cw20) to the sender
+    if let Some(lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id.clone())? {
+        match msg.lp_allocation {
+            LPAllocation::MakerChain => {
+                sub_message = mint_tokens_cw20(msg.lp_taker, lp_token, new_shares)?;
+            }
+            LPAllocation::TakerChain => {
+                // do nothing
+                sub_message = vec![];
+            }
+            LPAllocation::Split => {
+                // split shares
+                let token = interchain_pool
+                    .find_asset_by_side(PoolSide::SOURCE)
+                    .map_err(|err| {
+                        StdError::generic_err(format!("Failed to find asset: {}", err))
+                    })?;
+                let splitted_shares =
+                    (new_shares * Uint128::from(token.weight)) / Uint128::from(100u64);
+                sub_message = mint_tokens_cw20(msg.lp_taker, lp_token, splitted_shares)?;
+            }
+        }
+    } else {
+        // throw error token not found, initialization is done in make_pool and
+        // take_pool
+        return Err(ContractError::Std(StdError::generic_err(
+            "LP Token is not initialized".to_string(),
+        )));
+    }
     // increase lp token mint amount
     interchain_pool
         .add_asset(msg.token.clone())
@@ -324,6 +361,7 @@ pub(crate) fn on_received_single_deposit(
     POOLS.save(deps.storage, &msg.pool_id, &interchain_pool)?;
 
     let res = IbcReceiveResponse::new()
+        .add_submessages(sub_message)
         .set_ack(ack_success())
         .add_attribute("pool_id", msg.pool_id)
         .add_attribute("action", "single_asset_deposit")
@@ -419,17 +457,35 @@ pub(crate) fn on_received_take_multi_deposit(
         return Err(ContractError::ErrOrderNotFound);
     }
 
-    let pool_tokens = state_change.pool_tokens.unwrap();
-    let mut new_shares = Uint128::from(0u128);
-    for pool in pool_tokens {
-        new_shares += pool.amount;
-    }
-
+    let new_shares = state_change.shares.unwrap();
     let sub_message;
     // Mint tokens (cw20) to the sender
     if let Some(lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id)? {
-        sub_message =
-            mint_tokens_cw20(multi_asset_order.source_maker.clone(), lp_token, new_shares)?;
+        match msg.lp_allocation {
+            LPAllocation::MakerChain => {
+                sub_message =
+                    mint_tokens_cw20(multi_asset_order.source_maker.clone(), lp_token, new_shares)?;
+            }
+            LPAllocation::TakerChain => {
+                // do nothing
+                sub_message = vec![];
+            }
+            LPAllocation::Split => {
+                // split shares
+                let token = interchain_pool
+                    .find_asset_by_side(PoolSide::SOURCE)
+                    .map_err(|err| {
+                        StdError::generic_err(format!("Failed to find asset: {}", err))
+                    })?;
+                let splitted_shares =
+                    (new_shares * Uint128::from(token.weight)) / Uint128::from(100u64);
+                sub_message = mint_tokens_cw20(
+                    multi_asset_order.source_maker.clone(),
+                    lp_token,
+                    splitted_shares,
+                )?;
+            }
+        }
 
         // Add tokens to pool supply
         interchain_pool
@@ -674,6 +730,7 @@ pub(crate) fn on_packet_success(
         }
         InterchainMessageType::TakePool => {
             let msg: MsgTakePoolRequest = from_binary(&packet_data.data)?;
+            let state_change: StateChange = from_slice(&packet_data.state_change.unwrap())?;
             // load pool throw error if found
             let interchain_pool_temp = POOLS.may_load(deps.storage, &msg.pool_id)?;
             let mut interchain_pool;
@@ -685,25 +742,36 @@ pub(crate) fn on_packet_success(
                 )));
             }
 
-            let mut tokens: [Coin; 2] = Default::default();
-            tokens[0] = interchain_pool.assets[0].balance.clone();
-            tokens[1] = interchain_pool.assets[1].balance.clone();
-
-            // find number of tokens to be minted
-            // Create the interchain market maker (amm).
-            let amm = InterchainMarketMaker {
-                pool_id: msg.pool_id.clone(),
-                pool: interchain_pool.clone(),
-                fee_rate: interchain_pool.swap_fee,
-            };
-
-            let pool_tokens = amm.deposit_multi_asset(&tokens).map_err(|err| {
-                StdError::generic_err(format!("Failed to deposit multi asset: {}", err))
-            })?;
-
-            let mut new_shares = Uint128::from(0u128);
-            for pool in pool_tokens {
-                new_shares += pool.amount;
+            let new_shares = state_change.shares.unwrap();
+            let sub_message;
+            // Mint tokens (cw20) to the sender
+            if let Some(lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id.clone())? {
+                match msg.lp_allocation {
+                    LPAllocation::MakerChain => {
+                        // do nothing
+                        sub_message = vec![];
+                    }
+                    LPAllocation::TakerChain => {
+                        sub_message = mint_tokens_cw20(msg.creator, lp_token, new_shares)?;
+                    }
+                    LPAllocation::Split => {
+                        // split shares
+                        let token = interchain_pool
+                            .find_asset_by_side(PoolSide::SOURCE)
+                            .map_err(|err| {
+                                StdError::generic_err(format!("Failed to find asset: {}", err))
+                            })?;
+                        let splitted_shares =
+                            (new_shares * Uint128::from(token.weight)) / Uint128::from(100u64);
+                        sub_message = mint_tokens_cw20(msg.creator, lp_token, splitted_shares)?;
+                    }
+                }
+            } else {
+                // throw error token not found, initialization is done in make_pool and
+                // take_pool
+                return Err(ContractError::Std(StdError::generic_err(
+                    "LP Token is not initialized".to_string(),
+                )));
             }
 
             interchain_pool
@@ -717,6 +785,7 @@ pub(crate) fn on_packet_success(
             POOLS.save(deps.storage, &msg.pool_id, &interchain_pool)?;
 
             Ok(IbcBasicResponse::new()
+                .add_submessages(sub_message)
                 .add_attribute("pool_id", msg.pool_id)
                 .add_attribute("action", "take_pool_acknowledged")
                 .add_attributes(attributes))
@@ -769,14 +838,29 @@ pub(crate) fn on_packet_success(
             }
 
             // mint new_shares in take receive
+            let new_shares = state_change.shares.unwrap();
             let sub_message;
             // Mint tokens (cw20) to the sender
             if let Some(lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id.clone())? {
-                sub_message = mint_tokens_cw20(
-                    msg.sender,
-                    lp_token,
-                    state_change.pool_tokens.as_ref().unwrap()[0].amount,
-                )?;
+                match msg.lp_allocation {
+                    LPAllocation::MakerChain => {
+                        // do nothing
+                        sub_message = vec![];
+                    }
+                    LPAllocation::TakerChain => {
+                        sub_message = mint_tokens_cw20(msg.sender, lp_token, new_shares)?;
+                    }
+                    LPAllocation::Split => {
+                        let token = interchain_pool
+                            .find_asset_by_side(PoolSide::SOURCE)
+                            .map_err(|err| {
+                                StdError::generic_err(format!("Failed to find asset: {}", err))
+                            })?;
+                        let splitted_shares =
+                            (new_shares * Uint128::from(token.weight)) / Uint128::from(100u64);
+                        sub_message = mint_tokens_cw20(msg.sender, lp_token, splitted_shares)?;
+                    }
+                }
             } else {
                 // throw error token not found, initialization is done in make_pool and
                 // take_pool
@@ -842,14 +926,32 @@ pub(crate) fn on_packet_success(
                 return Err(ContractError::ErrOrderNotFound);
             }
 
-            let pool_tokens = state_change.pool_tokens.unwrap();
-            let mut new_shares = Uint128::from(0u128);
-            for pool in pool_tokens {
-                new_shares += pool.amount;
-            }
+            let new_shares = state_change.shares.unwrap();
+            let sub_message;
 
             // Mint tokens (cw20) to the sender
-            if let Some(_lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id)? {
+            if let Some(lp_token) = POOL_TOKENS_LIST.may_load(deps.storage, &msg.pool_id)? {
+                match msg.lp_allocation {
+                    LPAllocation::MakerChain => {
+                        // do nothing
+                        sub_message = vec![];
+                    }
+                    LPAllocation::TakerChain => {
+                        sub_message =
+                            mint_tokens_cw20(msg.sender, lp_token, state_change.shares.unwrap())?;
+                    }
+                    LPAllocation::Split => {
+                        let token = interchain_pool
+                            .find_asset_by_side(PoolSide::SOURCE)
+                            .map_err(|err| {
+                                StdError::generic_err(format!("Failed to find asset: {}", err))
+                            })?;
+                        let splitted_shares =
+                            (new_shares * Uint128::from(token.weight)) / Uint128::from(100u64);
+                        sub_message = mint_tokens_cw20(msg.sender, lp_token, splitted_shares)?;
+                    }
+                }
+
                 // Add tokens to pool supply
                 interchain_pool
                     .add_supply(Coin {
@@ -877,6 +979,7 @@ pub(crate) fn on_packet_success(
             MULTI_ASSET_DEPOSIT_ORDERS.save(deps.storage, key, &multi_asset_order)?;
             POOLS.save(deps.storage, &msg.pool_id, &interchain_pool)?;
             Ok(IbcBasicResponse::new()
+                .add_submessages(sub_message)
                 .add_attribute("pool_id", msg.pool_id)
                 .add_attribute("action", "take_multi_deposit_acknowledged")
                 .add_attributes(attributes))
@@ -1014,7 +1117,23 @@ pub(crate) fn on_packet_success(
                 )));
             }
 
+            let mut sub_messages: Vec<SubMsg> = vec![];
             let token_out = state_change.out_tokens.unwrap();
+            // Log swap values
+            let log_volume = LOG_VOLUME.may_load(deps.storage, msg.pool_id.clone())?;
+            if let Some(val) = log_volume {
+                let log_msg = LogObservation {
+                    token1: msg.token_in.clone(),
+                    token2: token_out.get(0).unwrap().clone(),
+                };
+
+                // log message
+                sub_messages.push(SubMsg::new(WasmMsg::Execute {
+                    contract_addr: val,
+                    msg: to_binary(&log_msg)?,
+                    funds: vec![],
+                }));
+            }
 
             // Update pool status by subtracting output token and adding input token
             interchain_pool
@@ -1027,6 +1146,7 @@ pub(crate) fn on_packet_success(
             POOLS.save(deps.storage, &msg.pool_id, &interchain_pool)?;
 
             Ok(IbcBasicResponse::new()
+                .add_submessages(sub_messages)
                 .add_attribute("pool_id", msg.pool_id)
                 .add_attribute("action", "swap_asset_acknowledged")
                 .add_attributes(attributes))
@@ -1047,6 +1167,23 @@ pub(crate) fn on_packet_success(
             }
 
             let token_out = state_change.out_tokens.unwrap();
+            let mut sub_messages: Vec<SubMsg> = vec![];
+            // Log swap values
+            let log_volume = LOG_VOLUME.may_load(deps.storage, msg.pool_id.clone())?;
+            if let Some(val) = log_volume {
+                let log_msg = LogObservation {
+                    token1: token_out.get(0).unwrap().clone(),
+                    token2: msg.token_out.clone(),
+                };
+
+                // log message
+                sub_messages.push(SubMsg::new(WasmMsg::Execute {
+                    contract_addr: val,
+                    msg: to_binary(&log_msg)?,
+                    funds: vec![],
+                }));
+            }
+
             // Update pool status by subtracting output token and adding input token
             // token_out here is offer amount that is needed to get msg.token_out
             interchain_pool
@@ -1058,6 +1195,7 @@ pub(crate) fn on_packet_success(
 
             POOLS.save(deps.storage, &msg.pool_id, &interchain_pool)?;
             Ok(IbcBasicResponse::new()
+                .add_submessages(sub_messages)
                 .add_attribute("pool_id", msg.pool_id)
                 .add_attribute("action", "swap_asset_acknowledged")
                 .add_attributes(attributes))
