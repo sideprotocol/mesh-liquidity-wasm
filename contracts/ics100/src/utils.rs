@@ -163,7 +163,7 @@ pub fn taker_fee(deps: Deps, amount: &Uint128, denom: String) -> (Coin, Coin, Ad
             amount: fee,
         },
         Coin {
-            denom: denom,
+            denom,
             amount: amount - fee,
         },
         treasury_address,
@@ -184,7 +184,7 @@ pub fn maker_fee(deps: Deps, amount: &Uint128, denom: String) -> (Coin, Coin, Ad
             amount: fee,
         },
         Coin {
-            denom: denom,
+            denom,
             amount: amount - fee,
         },
         treasury_address,
