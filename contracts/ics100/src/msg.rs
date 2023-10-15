@@ -19,7 +19,10 @@ pub struct Height {
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
-pub struct InstantiateMsg {}
+pub struct InstantiateMsg {
+    pub maker_fee: u64,
+    pub taker_fee: u64,
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub enum ExecuteMsg {
