@@ -22,6 +22,7 @@ pub struct Height {
 pub struct InstantiateMsg {
     pub maker_fee: u64,
     pub taker_fee: u64,
+    pub treasury: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

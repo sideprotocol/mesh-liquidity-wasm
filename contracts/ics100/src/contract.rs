@@ -29,7 +29,6 @@ use cw_storage_plus::Bound;
 const CONTRACT_NAME: &str = "ics100-swap";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const DEFAULT_TIMEOUT_TIMESTAMP_OFFSET: u64 = 600;
-const FEE_BASIS_POINT: u64 = 10000;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -44,8 +43,9 @@ pub fn instantiate(
     SWAP_SEQUENCE.save(deps.storage, &0u64)?;
 
     let fee = FeeInfo {
-        make_fee: msg.maker_fee,
+        maker_fee: msg.maker_fee,
         taker_fee: msg.taker_fee,
+        treasury: msg.treasury,
     };
     FEE_INFO.save(deps.storage, &fee)?;
 

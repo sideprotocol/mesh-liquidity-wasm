@@ -12,8 +12,9 @@ pub const FEE_INFO: Item<FeeInfo> = Item::new("fee_info");
 pub struct FeeInfo {
     // Basis point is 10000
     // so 100 means 100 / 10000 = 1 / 100 = 1% fees of total value
-    pub make_fee: u64,
+    pub maker_fee: u64,
     pub taker_fee: u64,
+    pub treasury: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
