@@ -139,6 +139,7 @@ pub(crate) fn on_received_take(
 
     let taker_receiving_address = deps.api.addr_validate(&msg.taker_receiving_address)?;
 
+    // TODO: add taker fess here
     let submsg: Vec<SubMsg> = send_tokens(
         &taker_receiving_address,
         swap_order.maker.sell_token.clone(),
@@ -342,6 +343,7 @@ pub(crate) fn on_packet_success(
                 .api
                 .addr_validate(&swap_order.maker.maker_receiving_address)?;
 
+            // TODO: add maker fees here
             let submsg = send_tokens(&maker_receiving_address, msg.sell_token.clone())?;
 
             swap_order.status = Status::Complete;

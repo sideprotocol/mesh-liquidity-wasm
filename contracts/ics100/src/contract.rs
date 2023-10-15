@@ -19,8 +19,8 @@ use crate::query_reverse::{
 };
 use crate::state::{
     append_atomic_order, bid_key, bids, get_atomic_order, move_order_to_bottom, set_atomic_order,
-    AtomicSwapOrder, Bid, BidKey, BidStatus, Side, Status, CHANNEL_INFO, COUNT, INACTIVE_COUNT,
-    INACTIVE_SWAP_ORDERS, ORDER_TO_COUNT, SWAP_ORDERS, SWAP_SEQUENCE, FeeInfo, FEE_INFO,
+    AtomicSwapOrder, Bid, BidKey, BidStatus, FeeInfo, Side, Status, CHANNEL_INFO, COUNT, FEE_INFO,
+    INACTIVE_COUNT, INACTIVE_SWAP_ORDERS, ORDER_TO_COUNT, SWAP_ORDERS, SWAP_SEQUENCE,
 };
 use crate::utils::{extract_source_channel_for_taker_msg, generate_order_id, order_path};
 use cw_storage_plus::Bound;
@@ -29,6 +29,7 @@ use cw_storage_plus::Bound;
 const CONTRACT_NAME: &str = "ics100-swap";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const DEFAULT_TIMEOUT_TIMESTAMP_OFFSET: u64 = 600;
+const FEE_BASIS_POINT: u64 = 10000;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -46,7 +47,8 @@ pub fn instantiate(
         make_fee: msg.maker_fee,
         taker_fee: msg.taker_fee,
     };
-    FEE_INFO.save(deps.storage, k, data)
+    FEE_INFO.save(deps.storage, &fee)?;
+
     Ok(Response::default())
 }
 
@@ -1307,7 +1309,16 @@ mod tests {
 
         let info = mock_info("anyone", &[]);
         let env = mock_env();
-        instantiate(deps.as_mut(), env.clone(), info, InstantiateMsg {maker_fee: 10, taker_fee: 10}).unwrap();
+        instantiate(
+            deps.as_mut(),
+            env.clone(),
+            info,
+            InstantiateMsg {
+                maker_fee: 10,
+                taker_fee: 10,
+            },
+        )
+        .unwrap();
 
         let sender = String::from("sender0001");
         // let balance = coins(100, "tokens");
@@ -1345,7 +1356,16 @@ mod tests {
 
         let info = mock_info("anyone", &[]);
         let env = mock_env();
-        instantiate(deps.as_mut(), env, info, InstantiateMsg {maker_fee: 10, taker_fee: 10}).unwrap();
+        instantiate(
+            deps.as_mut(),
+            env,
+            info,
+            InstantiateMsg {
+                maker_fee: 10,
+                taker_fee: 10,
+            },
+        )
+        .unwrap();
         // let balance = coins(100, "tokens");
         let balance1 = coin(100, "token");
         let balance2 = coin(100, "aside");
@@ -1394,7 +1414,16 @@ mod tests {
 
         let info = mock_info("anyone", &[]);
         let env = mock_env();
-        instantiate(deps.as_mut(), env, info, InstantiateMsg {maker_fee: 10, taker_fee: 10}).unwrap();
+        instantiate(
+            deps.as_mut(),
+            env,
+            info,
+            InstantiateMsg {
+                maker_fee: 10,
+                taker_fee: 10,
+            },
+        )
+        .unwrap();
         // let balance = coins(100, "tokens");
         let balance2 = coin(100, "aside");
         let taker_address = String::from("side1lqd386kze5355mgpncu5y52jcdhs85ckj7kdv0");

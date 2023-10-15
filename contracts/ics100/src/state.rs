@@ -6,12 +6,14 @@ use cosmwasm_std::{Coin, IbcEndpoint, StdResult, Storage, Timestamp, Uint128};
 use cw_storage_plus::{Index, IndexList, IndexedMap, Item, Map, MultiIndex};
 
 pub const CHANNEL_INFO: Map<&str, ChannelInfo> = Map::new("channel_info");
-pub const FEE_INFO: Map<&str, FeeInfo> = Map::new("fee_info");
+pub const FEE_INFO: Item<FeeInfo> = Item::new("fee_info");
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct FeeInfo {
-   pub make_fee: u64,
-   pub taker_fee: u64,
+    // Basis point is 10000
+    // so 100 means 100 / 10000 = 1 / 100 = 1% fees of total value
+    pub make_fee: u64,
+    pub taker_fee: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
