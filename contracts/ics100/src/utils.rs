@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    from_binary, Addr, BankMsg, Binary, Coin, IbcAcknowledgement, IbcChannel, IbcOrder, StdError,
-    StdResult, SubMsg, Uint128, Deps,
+    from_binary, Addr, BankMsg, Binary, Coin, Deps, IbcAcknowledgement, IbcChannel, IbcOrder,
+    StdError, StdResult, SubMsg, Uint128,
 };
 
 use sha2::{Digest, Sha256};
@@ -8,7 +8,8 @@ use sha2::{Digest, Sha256};
 use crate::{
     atomic_swap_handler::AtomicSwapPacketAcknowledgement,
     msg::{Height, MakeSwapMsg, MakeSwapMsgOutput, TakeSwapMsg, TakeSwapMsgOutput},
-    ContractError, state::FEE_INFO,
+    state::FEE_INFO,
+    ContractError,
 };
 
 const FEE_BASIS_POINT: u64 = 10000;
@@ -151,15 +152,41 @@ pub(crate) fn send_tokens(to: &Addr, amount: Coin) -> StdResult<SubMsg> {
 /// Calculates taker fees and returns (fee, Value - fee)
 pub fn taker_fee(deps: Deps, amount: &Uint128, denom: String) -> (Coin, Coin, Addr) {
     let fee_info = FEE_INFO.load(deps.storage).unwrap();
-    let fee = (amount * Uint128::from(fee_info.taker_fee)) / Uint128::from(FEE_BASIS_POINT);
+    let mut fee = (amount * Uint128::from(fee_info.taker_fee)) / Uint128::from(FEE_BASIS_POINT);
+    if fee.is_zero() {
+        fee = Uint128::from(1u64);
+    }
     let treasury_address = deps.api.addr_validate(&fee_info.treasury).unwrap();
-    (Coin {denom: denom.clone(), amount: fee}, Coin {denom: denom, amount: amount - fee}, treasury_address)
+    (
+        Coin {
+            denom: denom.clone(),
+            amount: fee,
+        },
+        Coin {
+            denom: denom,
+            amount: amount - fee,
+        },
+        treasury_address,
+    )
 }
 
 /// Calculates maker fees and returns (fee, Value - fee)
 pub fn maker_fee(deps: Deps, amount: &Uint128, denom: String) -> (Coin, Coin, Addr) {
     let fee_info = FEE_INFO.load(deps.storage).unwrap();
-    let fee = (amount * Uint128::from(fee_info.maker_fee)) / Uint128::from(FEE_BASIS_POINT);
+    let mut fee = (amount * Uint128::from(fee_info.maker_fee)) / Uint128::from(FEE_BASIS_POINT);
+    if fee.is_zero() {
+        fee = Uint128::from(1u64);
+    }
     let treasury_address = deps.api.addr_validate(&fee_info.treasury).unwrap();
-    (Coin {denom: denom.clone(), amount: fee}, Coin {denom: denom, amount: amount - fee}, treasury_address)
+    (
+        Coin {
+            denom: denom.clone(),
+            amount: fee,
+        },
+        Coin {
+            denom: denom,
+            amount: amount - fee,
+        },
+        treasury_address,
+    )
 }

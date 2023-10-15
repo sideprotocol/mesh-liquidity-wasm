@@ -1131,6 +1131,7 @@ mod tests {
         let instantiate_msg = InstantiateMsg {
             maker_fee: 10,
             taker_fee: 10,
+            treasury: "".to_string(),
         };
         let info = mock_info("anyone", &[]);
         let res = instantiate(deps.as_mut(), mock_env(), info, instantiate_msg).unwrap();
@@ -1145,6 +1146,7 @@ mod tests {
         let instantiate_msg = InstantiateMsg {
             maker_fee: 10,
             taker_fee: 10,
+            treasury: "".to_string(),
         };
         let info = mock_info("anyone", &[]);
         let res = instantiate(deps.as_mut(), mock_env(), info, instantiate_msg).unwrap();
@@ -1316,6 +1318,7 @@ mod tests {
             InstantiateMsg {
                 maker_fee: 10,
                 taker_fee: 10,
+                treasury: "".to_string(),
             },
         )
         .unwrap();
@@ -1363,6 +1366,7 @@ mod tests {
             InstantiateMsg {
                 maker_fee: 10,
                 taker_fee: 10,
+                treasury: "".to_string(),
             },
         )
         .unwrap();
@@ -1421,6 +1425,7 @@ mod tests {
             InstantiateMsg {
                 maker_fee: 10,
                 taker_fee: 10,
+                treasury: "".to_string(),
             },
         )
         .unwrap();

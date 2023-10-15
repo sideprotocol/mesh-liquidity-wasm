@@ -11,7 +11,7 @@ use crate::{
         append_atomic_order, bid_key, bids, get_atomic_order, move_order_to_bottom,
         set_atomic_order, AtomicSwapOrder, Bid, BidStatus, Side, Status, ORDER_TO_COUNT,
     },
-    utils::{decode_make_swap_msg, decode_take_swap_msg, send_tokens, taker_fee},
+    utils::{decode_make_swap_msg, decode_take_swap_msg, maker_fee, send_tokens, taker_fee},
 };
 use cosmwasm_std::{
     attr, from_binary, to_binary, Addr, Binary, DepsMut, Env, IbcBasicResponse, IbcPacket,
@@ -139,14 +139,15 @@ pub(crate) fn on_received_take(
 
     let taker_receiving_address = deps.api.addr_validate(&msg.taker_receiving_address)?;
 
-    let (fee, taker_amount, treasury) = taker_fee(deps.as_ref(), &swap_order.maker.sell_token.amount, swap_order.maker.sell_token.denom.clone());
-    let submsg: Vec<SubMsg> = vec![send_tokens(
-        &taker_receiving_address,
-        taker_amount,
-    )?, send_tokens(
-        &treasury,
-        fee,
-    )?];
+    let (fee, taker_amount, treasury) = taker_fee(
+        deps.as_ref(),
+        &swap_order.maker.sell_token.amount,
+        swap_order.maker.sell_token.denom.clone(),
+    );
+    let submsg: Vec<SubMsg> = vec![
+        send_tokens(&taker_receiving_address, taker_amount)?,
+        send_tokens(&treasury, fee)?,
+    ];
 
     swap_order.status = Status::Complete;
     swap_order.taker = Some(msg.clone());
@@ -346,8 +347,15 @@ pub(crate) fn on_packet_success(
                 .api
                 .addr_validate(&swap_order.maker.maker_receiving_address)?;
 
-            // TODO: add maker fees here
-            let submsg = vec![send_tokens(&maker_receiving_address, msg.sell_token.clone())?];
+            let (fee, maker_amount, treasury) = maker_fee(
+                deps.as_ref(),
+                &msg.sell_token.amount,
+                msg.sell_token.denom.clone(),
+            );
+            let submsg: Vec<SubMsg> = vec![
+                send_tokens(&maker_receiving_address, maker_amount)?,
+                send_tokens(&treasury, fee)?,
+            ];
 
             swap_order.status = Status::Complete;
             swap_order.taker = Some(msg.clone());
