@@ -91,13 +91,14 @@ pub(crate) fn on_received_make(
     let swap_order = AtomicSwapOrder {
         id: order_id.clone(),
         side: Side::Remote,
-        maker: msg,
+        maker: msg.clone(),
         status: Status::Sync,
         taker: None,
         cancel_timestamp: None,
         complete_timestamp: None,
         path,
         create_timestamp: env.block.time.seconds(),
+        min_bid_price: msg.min_bid_price,
     };
 
     let count_check = ORDER_TO_COUNT.may_load(deps.storage, &order_id)?;

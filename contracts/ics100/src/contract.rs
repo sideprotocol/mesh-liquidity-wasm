@@ -106,6 +106,7 @@ pub fn execute_make_swap(
         cancel_timestamp: None,
         complete_timestamp: None,
         create_timestamp: env.block.time.seconds(),
+        min_bid_price: msg.min_bid_price,
     };
     append_atomic_order(deps.storage, &order_id, &new_order)?;
     let ibc_packet = AtomicSwapPacketData {
@@ -292,6 +293,16 @@ pub fn execute_make_bid(
             "Funds mismatch: Funds mismatched to with message and sent values: Make swap"
                 .to_string(),
         )));
+    }
+
+    // Verify minimum price
+    if let Some(val) = order.min_bid_price {
+        if msg.sell_token.amount < val {
+            return Err(ContractError::Std(StdError::generic_err(
+                "Minimum bid error: Bid price must not be smaller than minimum bid price"
+                    .to_string(),
+            )));
+        }
     }
 
     if !order.maker.take_bids {
