@@ -1310,6 +1310,7 @@ mod tests {
             },
             timeout_timestamp: env.block.time.plus_seconds(100).nanos(),
             take_bids: false,
+            min_bid_price: None,
         };
         let err = execute(deps.as_mut(), env, info, ExecuteMsg::MakeSwap(create)).unwrap_err();
         assert_eq!(err, ContractError::EmptyBalance {});
@@ -1348,6 +1349,7 @@ mod tests {
             },
             timeout_timestamp: 1693399799000000000,
             take_bids: false,
+            min_bid_price: None,
         };
 
         let path = order_path(

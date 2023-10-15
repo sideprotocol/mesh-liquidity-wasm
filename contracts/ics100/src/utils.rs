@@ -131,6 +131,7 @@ pub(crate) fn decode_make_swap_msg(data: &Binary) -> MakeSwapMsg {
                 timeout_timestamp: msg_output.timeout_timestamp.parse().unwrap(),
                 expiration_timestamp: msg_output.expiration_timestamp.parse().unwrap(),
                 take_bids: msg_output.take_bids,
+                min_bid_price: None,
             }
         }
     }
