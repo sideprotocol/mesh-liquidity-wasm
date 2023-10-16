@@ -19,7 +19,11 @@ pub struct Height {
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
-pub struct InstantiateMsg {}
+pub struct InstantiateMsg {
+    pub maker_fee: u64,
+    pub taker_fee: u64,
+    pub treasury: String,
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub enum ExecuteMsg {
@@ -88,6 +92,8 @@ pub struct MakeSwapMsg {
     pub desired_taker: String,
     /// Allow makers to receive bids for the order
     pub take_bids: bool,
+    /// Minimum price required to create bid for this order.
+    pub min_bid_price: Option<Uint128>,
 
     pub timeout_height: Height,
     pub timeout_timestamp: u64,

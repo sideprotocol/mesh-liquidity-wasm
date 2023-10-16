@@ -19,8 +19,8 @@ use crate::query_reverse::{
 };
 use crate::state::{
     append_atomic_order, bid_key, bids, get_atomic_order, move_order_to_bottom, set_atomic_order,
-    AtomicSwapOrder, Bid, BidKey, BidStatus, Side, Status, CHANNEL_INFO, COUNT, INACTIVE_COUNT,
-    INACTIVE_SWAP_ORDERS, ORDER_TO_COUNT, SWAP_ORDERS, SWAP_SEQUENCE,
+    AtomicSwapOrder, Bid, BidKey, BidStatus, FeeInfo, Side, Status, CHANNEL_INFO, COUNT, FEE_INFO,
+    INACTIVE_COUNT, INACTIVE_SWAP_ORDERS, ORDER_TO_COUNT, SWAP_ORDERS, SWAP_SEQUENCE,
 };
 use crate::utils::{extract_source_channel_for_taker_msg, generate_order_id, order_path};
 use cw_storage_plus::Bound;
@@ -35,12 +35,20 @@ pub fn instantiate(
     deps: DepsMut,
     _env: Env,
     _info: MessageInfo,
-    _msg: InstantiateMsg,
+    msg: InstantiateMsg,
 ) -> StdResult<Response> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     COUNT.save(deps.storage, &0u64)?;
     INACTIVE_COUNT.save(deps.storage, &0u64)?;
     SWAP_SEQUENCE.save(deps.storage, &0u64)?;
+
+    let fee = FeeInfo {
+        maker_fee: msg.maker_fee,
+        taker_fee: msg.taker_fee,
+        treasury: msg.treasury,
+    };
+    FEE_INFO.save(deps.storage, &fee)?;
+
     Ok(Response::default())
 }
 
@@ -106,6 +114,7 @@ pub fn execute_make_swap(
         cancel_timestamp: None,
         complete_timestamp: None,
         create_timestamp: env.block.time.seconds(),
+        min_bid_price: msg.min_bid_price,
     };
     append_atomic_order(deps.storage, &order_id, &new_order)?;
     let ibc_packet = AtomicSwapPacketData {
@@ -292,6 +301,16 @@ pub fn execute_make_bid(
             "Funds mismatch: Funds mismatched to with message and sent values: Make swap"
                 .to_string(),
         )));
+    }
+
+    // Verify minimum price
+    if let Some(val) = order.min_bid_price {
+        if msg.sell_token.amount < val {
+            return Err(ContractError::Std(StdError::generic_err(
+                "Minimum bid error: Bid price must not be smaller than minimum bid price"
+                    .to_string(),
+            )));
+        }
     }
 
     if !order.maker.take_bids {
@@ -1109,7 +1128,11 @@ mod tests {
         let mut deps = mock_dependencies();
 
         // Instantiate an empty contract
-        let instantiate_msg = InstantiateMsg {};
+        let instantiate_msg = InstantiateMsg {
+            maker_fee: 10,
+            taker_fee: 10,
+            treasury: "".to_string(),
+        };
         let info = mock_info("anyone", &[]);
         let res = instantiate(deps.as_mut(), mock_env(), info, instantiate_msg).unwrap();
         assert_eq!(0, res.messages.len());
@@ -1120,7 +1143,11 @@ mod tests {
         let mut deps = mock_dependencies();
 
         // Instantiate an empty contract
-        let instantiate_msg = InstantiateMsg {};
+        let instantiate_msg = InstantiateMsg {
+            maker_fee: 10,
+            taker_fee: 10,
+            treasury: "".to_string(),
+        };
         let info = mock_info("anyone", &[]);
         let res = instantiate(deps.as_mut(), mock_env(), info, instantiate_msg).unwrap();
         assert_eq!(0, res.messages.len());
@@ -1284,7 +1311,17 @@ mod tests {
 
         let info = mock_info("anyone", &[]);
         let env = mock_env();
-        instantiate(deps.as_mut(), env.clone(), info, InstantiateMsg {}).unwrap();
+        instantiate(
+            deps.as_mut(),
+            env.clone(),
+            info,
+            InstantiateMsg {
+                maker_fee: 10,
+                taker_fee: 10,
+                treasury: "".to_string(),
+            },
+        )
+        .unwrap();
 
         let sender = String::from("sender0001");
         // let balance = coins(100, "tokens");
@@ -1310,6 +1347,7 @@ mod tests {
             },
             timeout_timestamp: env.block.time.plus_seconds(100).nanos(),
             take_bids: false,
+            min_bid_price: None,
         };
         let err = execute(deps.as_mut(), env, info, ExecuteMsg::MakeSwap(create)).unwrap_err();
         assert_eq!(err, ContractError::EmptyBalance {});
@@ -1321,7 +1359,17 @@ mod tests {
 
         let info = mock_info("anyone", &[]);
         let env = mock_env();
-        instantiate(deps.as_mut(), env, info, InstantiateMsg {}).unwrap();
+        instantiate(
+            deps.as_mut(),
+            env,
+            info,
+            InstantiateMsg {
+                maker_fee: 10,
+                taker_fee: 10,
+                treasury: "".to_string(),
+            },
+        )
+        .unwrap();
         // let balance = coins(100, "tokens");
         let balance1 = coin(100, "token");
         let balance2 = coin(100, "aside");
@@ -1348,6 +1396,7 @@ mod tests {
             },
             timeout_timestamp: 1693399799000000000,
             take_bids: false,
+            min_bid_price: None,
         };
 
         let path = order_path(
@@ -1369,7 +1418,17 @@ mod tests {
 
         let info = mock_info("anyone", &[]);
         let env = mock_env();
-        instantiate(deps.as_mut(), env, info, InstantiateMsg {}).unwrap();
+        instantiate(
+            deps.as_mut(),
+            env,
+            info,
+            InstantiateMsg {
+                maker_fee: 10,
+                taker_fee: 10,
+                treasury: "".to_string(),
+            },
+        )
+        .unwrap();
         // let balance = coins(100, "tokens");
         let balance2 = coin(100, "aside");
         let taker_address = String::from("side1lqd386kze5355mgpncu5y52jcdhs85ckj7kdv0");

@@ -11,7 +11,7 @@ use crate::{
         append_atomic_order, bid_key, bids, get_atomic_order, move_order_to_bottom,
         set_atomic_order, AtomicSwapOrder, Bid, BidStatus, Side, Status, ORDER_TO_COUNT,
     },
-    utils::{decode_make_swap_msg, decode_take_swap_msg, send_tokens},
+    utils::{decode_make_swap_msg, decode_take_swap_msg, maker_fee, send_tokens, taker_fee},
 };
 use cosmwasm_std::{
     attr, from_binary, to_binary, Addr, Binary, DepsMut, Env, IbcBasicResponse, IbcPacket,
@@ -91,13 +91,14 @@ pub(crate) fn on_received_make(
     let swap_order = AtomicSwapOrder {
         id: order_id.clone(),
         side: Side::Remote,
-        maker: msg,
+        maker: msg.clone(),
         status: Status::Sync,
         taker: None,
         cancel_timestamp: None,
         complete_timestamp: None,
         path,
         create_timestamp: env.block.time.seconds(),
+        min_bid_price: msg.min_bid_price,
     };
 
     let count_check = ORDER_TO_COUNT.may_load(deps.storage, &order_id)?;
@@ -138,10 +139,15 @@ pub(crate) fn on_received_take(
 
     let taker_receiving_address = deps.api.addr_validate(&msg.taker_receiving_address)?;
 
-    let submsg: Vec<SubMsg> = send_tokens(
-        &taker_receiving_address,
-        swap_order.maker.sell_token.clone(),
-    )?;
+    let (fee, taker_amount, treasury) = taker_fee(
+        deps.as_ref(),
+        &swap_order.maker.sell_token.amount,
+        swap_order.maker.sell_token.denom.clone(),
+    );
+    let submsg: Vec<SubMsg> = vec![
+        send_tokens(&taker_receiving_address, taker_amount)?,
+        send_tokens(&treasury, fee)?,
+    ];
 
     swap_order.status = Status::Complete;
     swap_order.taker = Some(msg.clone());
@@ -248,10 +254,10 @@ pub(crate) fn on_received_take_bid(
 
     let taker_receiving_address = deps.api.addr_validate(&bid.bidder_receiver)?;
 
-    let submsg: Vec<SubMsg> = send_tokens(
+    let submsg: Vec<SubMsg> = vec![send_tokens(
         &taker_receiving_address,
         swap_order.maker.sell_token.clone(),
-    )?;
+    )?];
 
     let take_msg: TakeSwapMsg = TakeSwapMsg {
         order_id: order_id.clone(),
@@ -341,7 +347,15 @@ pub(crate) fn on_packet_success(
                 .api
                 .addr_validate(&swap_order.maker.maker_receiving_address)?;
 
-            let submsg = send_tokens(&maker_receiving_address, msg.sell_token.clone())?;
+            let (fee, maker_amount, treasury) = maker_fee(
+                deps.as_ref(),
+                &msg.sell_token.amount,
+                msg.sell_token.denom.clone(),
+            );
+            let submsg: Vec<SubMsg> = vec![
+                send_tokens(&maker_receiving_address, maker_amount)?,
+                send_tokens(&treasury, fee)?,
+            ];
 
             swap_order.status = Status::Complete;
             swap_order.taker = Some(msg.clone());
@@ -364,7 +378,7 @@ pub(crate) fn on_packet_success(
             let maker_address = deps.api.addr_validate(&swap_order.maker.maker_address)?;
             let maker_msg = swap_order.maker.clone();
 
-            let submsg = send_tokens(&maker_address, maker_msg.sell_token)?;
+            let submsg = vec![send_tokens(&maker_address, maker_msg.sell_token)?];
 
             swap_order.status = Status::Cancel;
             swap_order.cancel_timestamp = Some(Timestamp::from_nanos(env.block.time.nanos()));
@@ -405,7 +419,7 @@ pub(crate) fn on_packet_success(
                 .api
                 .addr_validate(&swap_order.maker.maker_receiving_address)?;
 
-            let submsg: Vec<SubMsg> = send_tokens(&maker_receiving_address, bid.bid.clone())?;
+            let submsg: Vec<SubMsg> = vec![send_tokens(&maker_receiving_address, bid.bid.clone())?];
 
             let take_msg: TakeSwapMsg = TakeSwapMsg {
                 order_id,
@@ -439,7 +453,7 @@ pub(crate) fn on_packet_success(
 
             let taker_receiving_address = deps.api.addr_validate(&bid.bidder)?;
             // Refund amount
-            let submsg: Vec<SubMsg> = send_tokens(&taker_receiving_address, bid.bid.clone())?;
+            let submsg: Vec<SubMsg> = vec![send_tokens(&taker_receiving_address, bid.bid.clone())?];
 
             bid.status = BidStatus::Cancelled;
             bids().save(deps.storage, key, &bid)?;
@@ -482,7 +496,7 @@ pub(crate) fn refund_packet_token(
         SwapMessageType::MakeSwap => {
             let msg: MakeSwapMsg = decode_make_swap_msg(&packet.data);
             let maker_address: Addr = deps.api.addr_validate(&msg.maker_address)?;
-            let submsg = send_tokens(&maker_address, msg.sell_token)?;
+            let submsg = vec![send_tokens(&maker_address, msg.sell_token)?];
             let order_id = packet.order_id.unwrap();
             let mut order = get_atomic_order(deps.storage, &order_id)?;
             order.status = Status::Failed;
@@ -497,7 +511,7 @@ pub(crate) fn refund_packet_token(
             let mut swap_order = get_atomic_order(deps.storage, &order_id)?;
             let taker_address: Addr = deps.api.addr_validate(&msg.taker_address)?;
 
-            let submsg = send_tokens(&taker_address, msg.sell_token)?;
+            let submsg = vec![send_tokens(&taker_address, msg.sell_token)?];
 
             swap_order.taker = None;
             swap_order.status = Status::Sync;
@@ -510,7 +524,7 @@ pub(crate) fn refund_packet_token(
         SwapMessageType::MakeBid => {
             let msg: MakeBidMsg = from_binary(&packet.data)?;
             let taker_address: Addr = deps.api.addr_validate(&msg.taker_address)?;
-            let submsg = send_tokens(&taker_address, msg.sell_token)?;
+            let submsg = vec![send_tokens(&taker_address, msg.sell_token)?];
             let order_id = msg.order_id;
 
             // Remove bid
@@ -518,7 +532,6 @@ pub(crate) fn refund_packet_token(
             let mut bid = bids().load(deps.storage, key.clone())?;
             bid.status = BidStatus::Failed;
             bids().save(deps.storage, key, &bid)?;
-            //bids().remove(deps.storage, key)?;
 
             Ok(submsg)
         }

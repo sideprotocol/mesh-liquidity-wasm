@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    from_binary, Addr, BankMsg, Binary, Coin, IbcAcknowledgement, IbcChannel, IbcOrder, StdError,
-    StdResult, SubMsg,
+    from_binary, Addr, BankMsg, Binary, Coin, Deps, IbcAcknowledgement, IbcChannel, IbcOrder,
+    StdError, StdResult, SubMsg, Uint128,
 };
 
 use sha2::{Digest, Sha256};
@@ -8,8 +8,11 @@ use sha2::{Digest, Sha256};
 use crate::{
     atomic_swap_handler::AtomicSwapPacketAcknowledgement,
     msg::{Height, MakeSwapMsg, MakeSwapMsgOutput, TakeSwapMsg, TakeSwapMsgOutput},
+    state::FEE_INFO,
     ContractError,
 };
+
+const FEE_BASIS_POINT: u64 = 10000;
 
 pub fn generate_order_id(order_path: &str) -> StdResult<String> {
     // Generate random bytes
@@ -131,16 +134,59 @@ pub(crate) fn decode_make_swap_msg(data: &Binary) -> MakeSwapMsg {
                 timeout_timestamp: msg_output.timeout_timestamp.parse().unwrap(),
                 expiration_timestamp: msg_output.expiration_timestamp.parse().unwrap(),
                 take_bids: msg_output.take_bids,
+                min_bid_price: None,
             }
         }
     }
     msg
 }
 
-pub(crate) fn send_tokens(to: &Addr, amount: Coin) -> StdResult<Vec<SubMsg>> {
+pub(crate) fn send_tokens(to: &Addr, amount: Coin) -> StdResult<SubMsg> {
     let msg = BankMsg::Send {
         to_address: to.into(),
         amount: vec![amount],
     };
-    Ok(vec![SubMsg::new(msg)])
+    Ok(SubMsg::new(msg))
+}
+
+/// Calculates taker fees and returns (fee, Value - fee)
+pub fn taker_fee(deps: Deps, amount: &Uint128, denom: String) -> (Coin, Coin, Addr) {
+    let fee_info = FEE_INFO.load(deps.storage).unwrap();
+    let mut fee = (amount * Uint128::from(fee_info.taker_fee)) / Uint128::from(FEE_BASIS_POINT);
+    if fee.is_zero() {
+        fee = Uint128::from(1u64);
+    }
+    let treasury_address = deps.api.addr_validate(&fee_info.treasury).unwrap();
+    (
+        Coin {
+            denom: denom.clone(),
+            amount: fee,
+        },
+        Coin {
+            denom,
+            amount: amount - fee,
+        },
+        treasury_address,
+    )
+}
+
+/// Calculates maker fees and returns (fee, Value - fee)
+pub fn maker_fee(deps: Deps, amount: &Uint128, denom: String) -> (Coin, Coin, Addr) {
+    let fee_info = FEE_INFO.load(deps.storage).unwrap();
+    let mut fee = (amount * Uint128::from(fee_info.maker_fee)) / Uint128::from(FEE_BASIS_POINT);
+    if fee.is_zero() {
+        fee = Uint128::from(1u64);
+    }
+    let treasury_address = deps.api.addr_validate(&fee_info.treasury).unwrap();
+    (
+        Coin {
+            denom: denom.clone(),
+            amount: fee,
+        },
+        Coin {
+            denom,
+            amount: amount - fee,
+        },
+        treasury_address,
+    )
 }
