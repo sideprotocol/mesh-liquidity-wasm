@@ -36,10 +36,52 @@ pub fn extract_source_channel_for_taker_msg(path: &str) -> StdResult<String> {
     Ok(parts[5].to_string())
 }
 
-pub(crate) fn send_tokens(to: &Addr, amount: Coin) -> StdResult<Vec<SubMsg>> {
+pub(crate) fn send_tokens(to: &Addr, amount: Coin) -> StdResult<SubMsg> {
     let msg = BankMsg::Send {
         to_address: to.into(),
         amount: vec![amount],
     };
-    Ok(vec![SubMsg::new(msg)])
+    Ok(SubMsg::new(msg))
+}
+
+/// Calculates taker fees and returns (fee, Value - fee)
+pub fn taker_fee(deps: Deps, amount: &Uint128, denom: String) -> (Coin, Coin, Addr) {
+    let fee_info = FEE_INFO.load(deps.storage).unwrap();
+    let mut fee = (amount * Uint128::from(fee_info.taker_fee)) / Uint128::from(FEE_BASIS_POINT);
+    if fee.is_zero() {
+        fee = Uint128::from(1u64);
+    }
+    let treasury_address = deps.api.addr_validate(&fee_info.treasury).unwrap();
+    (
+        Coin {
+            denom: denom.clone(),
+            amount: fee,
+        },
+        Coin {
+            denom,
+            amount: amount - fee,
+        },
+        treasury_address,
+    )
+}
+
+/// Calculates maker fees and returns (fee, Value - fee)
+pub fn maker_fee(deps: Deps, amount: &Uint128, denom: String) -> (Coin, Coin, Addr) {
+    let fee_info = FEE_INFO.load(deps.storage).unwrap();
+    let mut fee = (amount * Uint128::from(fee_info.maker_fee)) / Uint128::from(FEE_BASIS_POINT);
+    if fee.is_zero() {
+        fee = Uint128::from(1u64);
+    }
+    let treasury_address = deps.api.addr_validate(&fee_info.treasury).unwrap();
+    (
+        Coin {
+            denom: denom.clone(),
+            amount: fee,
+        },
+        Coin {
+            denom,
+            amount: amount - fee,
+        },
+        treasury_address,
+    )
 }
