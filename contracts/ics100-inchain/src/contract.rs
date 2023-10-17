@@ -22,7 +22,7 @@ use crate::state::{
     AtomicSwapOrder, Bid, BidKey, BidStatus, Status, COUNT, INACTIVE_COUNT, INACTIVE_SWAP_ORDERS,
     ORDER_TO_COUNT, SWAP_ORDERS, SWAP_SEQUENCE,
 };
-use crate::utils::send_tokens;
+use crate::utils::{maker_fee, send_tokens, taker_fee};
 use cw_storage_plus::Bound;
 
 // Version info, for migration info
@@ -88,12 +88,13 @@ pub fn execute_make_swap(
     let order_id = sequence.to_string();
     let new_order = AtomicSwapOrder {
         id: order_id.clone(),
-        maker: msg,
+        maker: msg.clone(),
         status: Status::Sync,
         taker: None,
         cancel_timestamp: None,
         complete_timestamp: None,
         create_timestamp: env.block.time.seconds(),
+        min_bid_price: msg.min_bid_price,
     };
     append_atomic_order(deps.storage, &order_id, &new_order)?;
 
@@ -157,13 +158,24 @@ pub fn execute_take_swap(
     let make_address = deps.api.addr_validate(&order.maker.maker_address)?;
     let taker_address = deps.api.addr_validate(&msg.taker_address)?;
 
-    let mut submsg = send_tokens(&make_address, msg.sell_token.clone())?;
-    submsg.push(
-        send_tokens(&taker_address, order.maker.sell_token.clone())?
-            .last()
-            .unwrap()
-            .clone(),
+    // Maker fees
+    let (maker_fee, maker_send, treasury) = maker_fee(
+        deps.as_ref(),
+        &msg.sell_token.amount,
+        msg.sell_token.denom.clone(),
     );
+
+    let mut submsg = vec![send_tokens(&make_address, maker_send)?];
+    submsg.push(send_tokens(&treasury, maker_fee)?);
+
+    // Taker fees
+    let (taker_fee, taker_send, treasury) = taker_fee(
+        deps.as_ref(),
+        &order.maker.sell_token.amount,
+        order.maker.sell_token.denom.clone(),
+    );
+    submsg.push(send_tokens(&taker_address, taker_send)?);
+    submsg.push(send_tokens(&treasury, taker_fee)?);
 
     order.status = Status::Complete;
     order.taker = Some(msg.clone());
@@ -219,7 +231,7 @@ pub fn execute_cancel_swap(
     set_atomic_order(deps.storage, &msg.order_id, &order)?;
 
     let res = Response::new()
-        .add_submessages(submsg)
+        .add_submessage(submsg)
         .add_attribute("order_id", msg.order_id)
         .add_attribute("action", "cancel_swap");
     Ok(res)
@@ -250,6 +262,16 @@ pub fn execute_make_bid(
             "Funds mismatch: Funds mismatched to with message and sent values: Make swap"
                 .to_string(),
         )));
+    }
+
+    // Verify minimum price
+    if let Some(val) = order.min_bid_price {
+        if msg.sell_token.amount < val {
+            return Err(ContractError::Std(StdError::generic_err(
+                "Minimum bid error: Bid price must not be smaller than minimum bid price"
+                    .to_string(),
+            )));
+        }
     }
 
     if !order.maker.take_bids {
@@ -342,14 +364,11 @@ pub fn execute_take_bid(
     let maker_address = deps.api.addr_validate(&order.maker.maker_address)?;
     let taker_receiving_address = deps.api.addr_validate(&bid.bidder)?;
 
-    let mut submsg: Vec<SubMsg> =
-        send_tokens(&taker_receiving_address, order.maker.sell_token.clone())?;
-    submsg.push(
-        send_tokens(&maker_address, bid.bid.clone())?
-            .last()
-            .unwrap()
-            .clone(),
-    );
+    let mut submsg: Vec<SubMsg> = vec![send_tokens(
+        &taker_receiving_address,
+        order.maker.sell_token.clone(),
+    )?];
+    submsg.push(send_tokens(&maker_address, bid.bid.clone())?);
 
     let take_msg: TakeSwapMsg = TakeSwapMsg {
         order_id: order.id.clone(),
@@ -399,13 +418,13 @@ pub fn execute_cancel_bid(
 
     let taker_receiving_address = deps.api.addr_validate(&bid.bidder)?;
     // Refund amount
-    let submsg: Vec<SubMsg> = send_tokens(&taker_receiving_address, bid.bid.clone())?;
+    let submsg = send_tokens(&taker_receiving_address, bid.bid.clone())?;
 
     bid.status = BidStatus::Cancelled;
     bids().save(deps.storage, key, &bid)?;
 
     let res = Response::new()
-        .add_submessages(submsg)
+        .add_submessage(submsg)
         .add_attribute("order_id", msg.order_id)
         .add_attribute("action", "make_bid");
     Ok(res)
@@ -1233,6 +1252,7 @@ mod tests {
             desired_taker: "".to_string(),
             expiration_timestamp: env.block.time.plus_seconds(100).nanos(),
             take_bids: false,
+            min_bid_price: None,
         };
         let err = execute(deps.as_mut(), env, info, ExecuteMsg::MakeSwap(create)).unwrap_err();
         assert_eq!(err, ContractError::EmptyBalance {});
@@ -1263,6 +1283,7 @@ mod tests {
             desired_taker: "".to_string(),
             expiration_timestamp: 1693399749000000000,
             take_bids: false,
+            min_bid_price: None,
         };
 
         let path = order_path(
