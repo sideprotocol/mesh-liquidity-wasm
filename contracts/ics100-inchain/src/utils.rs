@@ -1,6 +1,9 @@
-use cosmwasm_std::{Addr, BankMsg, Coin, StdError, StdResult, SubMsg};
-
+use cosmwasm_std::{Addr, BankMsg, Coin, Deps, StdError, StdResult, SubMsg, Uint128};
 use sha2::{Digest, Sha256};
+
+use crate::state::FEE_INFO;
+
+const FEE_BASIS_POINT: u64 = 10000;
 
 pub fn generate_order_id(order_path: &str) -> StdResult<String> {
     // Generate random bytes

@@ -22,7 +22,7 @@ use crate::state::{
     AtomicSwapOrder, Bid, BidKey, BidStatus, Status, COUNT, INACTIVE_COUNT, INACTIVE_SWAP_ORDERS,
     ORDER_TO_COUNT, SWAP_ORDERS, SWAP_SEQUENCE,
 };
-use crate::utils::send_tokens;
+use crate::utils::{maker_fee, send_tokens, taker_fee};
 use cw_storage_plus::Bound;
 
 // Version info, for migration info
@@ -157,13 +157,24 @@ pub fn execute_take_swap(
     let make_address = deps.api.addr_validate(&order.maker.maker_address)?;
     let taker_address = deps.api.addr_validate(&msg.taker_address)?;
 
-    let mut submsg = send_tokens(&make_address, msg.sell_token.clone())?;
-    submsg.push(
-        send_tokens(&taker_address, order.maker.sell_token.clone())?
-            .last()
-            .unwrap()
-            .clone(),
+    // Maker fees
+    let (maker_fee, maker_send, treasury) = maker_fee(
+        deps.as_ref(),
+        &msg.sell_token.amount,
+        msg.sell_token.denom.clone(),
     );
+
+    let mut submsg = vec![send_tokens(&make_address, maker_send)?];
+    submsg.push(send_tokens(&treasury, maker_fee)?);
+
+    // Taker fees
+    let (taker_fee, taker_send, treasury) = taker_fee(
+        deps.as_ref(),
+        &order.maker.sell_token.amount,
+        order.maker.sell_token.denom.clone(),
+    );
+    submsg.push(send_tokens(&taker_address, taker_send)?);
+    submsg.push(send_tokens(&taker_address, taker_fee)?);
 
     order.status = Status::Complete;
     order.taker = Some(msg.clone());

@@ -5,6 +5,16 @@ use crate::msg::{MakeSwapMsg, TakeSwapMsg};
 use cosmwasm_std::{Coin, StdResult, Storage, Timestamp};
 use cw_storage_plus::{Index, IndexList, IndexedMap, Item, Map, MultiIndex};
 
+pub const FEE_INFO: Item<FeeInfo> = Item::new("fee_info");
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct FeeInfo {
+    // Basis point is 10000
+    // so 100 means 100 / 10000 = 1 / 100 = 1% fees of total value
+    pub maker_fee: u64,
+    pub taker_fee: u64,
+    pub treasury: String,
+}
+
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Status {
