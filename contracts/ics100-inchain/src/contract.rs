@@ -174,7 +174,7 @@ pub fn execute_take_swap(
         order.maker.sell_token.denom.clone(),
     );
     submsg.push(send_tokens(&taker_address, taker_send)?);
-    submsg.push(send_tokens(&taker_address, taker_fee)?);
+    submsg.push(send_tokens(&treasury, taker_fee)?);
 
     order.status = Status::Complete;
     order.taker = Some(msg.clone());
@@ -230,7 +230,7 @@ pub fn execute_cancel_swap(
     set_atomic_order(deps.storage, &msg.order_id, &order)?;
 
     let res = Response::new()
-        .add_submessages(submsg)
+        .add_submessage(submsg)
         .add_attribute("order_id", msg.order_id)
         .add_attribute("action", "cancel_swap");
     Ok(res)
@@ -353,14 +353,11 @@ pub fn execute_take_bid(
     let maker_address = deps.api.addr_validate(&order.maker.maker_address)?;
     let taker_receiving_address = deps.api.addr_validate(&bid.bidder)?;
 
-    let mut submsg: Vec<SubMsg> =
-        send_tokens(&taker_receiving_address, order.maker.sell_token.clone())?;
-    submsg.push(
-        send_tokens(&maker_address, bid.bid.clone())?
-            .last()
-            .unwrap()
-            .clone(),
-    );
+    let mut submsg: Vec<SubMsg> = vec![send_tokens(
+        &taker_receiving_address,
+        order.maker.sell_token.clone(),
+    )?];
+    submsg.push(send_tokens(&maker_address, bid.bid.clone())?);
 
     let take_msg: TakeSwapMsg = TakeSwapMsg {
         order_id: order.id.clone(),
@@ -410,13 +407,13 @@ pub fn execute_cancel_bid(
 
     let taker_receiving_address = deps.api.addr_validate(&bid.bidder)?;
     // Refund amount
-    let submsg: Vec<SubMsg> = send_tokens(&taker_receiving_address, bid.bid.clone())?;
+    let submsg = send_tokens(&taker_receiving_address, bid.bid.clone())?;
 
     bid.status = BidStatus::Cancelled;
     bids().save(deps.storage, key, &bid)?;
 
     let res = Response::new()
-        .add_submessages(submsg)
+        .add_submessage(submsg)
         .add_attribute("order_id", msg.order_id)
         .add_attribute("action", "make_bid");
     Ok(res)
