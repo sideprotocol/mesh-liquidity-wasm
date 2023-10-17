@@ -88,12 +88,13 @@ pub fn execute_make_swap(
     let order_id = sequence.to_string();
     let new_order = AtomicSwapOrder {
         id: order_id.clone(),
-        maker: msg,
+        maker: msg.clone(),
         status: Status::Sync,
         taker: None,
         cancel_timestamp: None,
         complete_timestamp: None,
         create_timestamp: env.block.time.seconds(),
+        min_bid_price: msg.min_bid_price,
     };
     append_atomic_order(deps.storage, &order_id, &new_order)?;
 
@@ -261,6 +262,16 @@ pub fn execute_make_bid(
             "Funds mismatch: Funds mismatched to with message and sent values: Make swap"
                 .to_string(),
         )));
+    }
+
+    // Verify minimum price
+    if let Some(val) = order.min_bid_price {
+        if msg.sell_token.amount < val {
+            return Err(ContractError::Std(StdError::generic_err(
+                "Minimum bid error: Bid price must not be smaller than minimum bid price"
+                    .to_string(),
+            )));
+        }
     }
 
     if !order.maker.take_bids {
@@ -1241,6 +1252,7 @@ mod tests {
             desired_taker: "".to_string(),
             expiration_timestamp: env.block.time.plus_seconds(100).nanos(),
             take_bids: false,
+            min_bid_price: None,
         };
         let err = execute(deps.as_mut(), env, info, ExecuteMsg::MakeSwap(create)).unwrap_err();
         assert_eq!(err, ContractError::EmptyBalance {});
@@ -1271,6 +1283,7 @@ mod tests {
             desired_taker: "".to_string(),
             expiration_timestamp: 1693399749000000000,
             take_bids: false,
+            min_bid_price: None,
         };
 
         let path = order_path(
