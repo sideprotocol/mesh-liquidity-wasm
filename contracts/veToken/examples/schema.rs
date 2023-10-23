@@ -3,9 +3,9 @@ use std::fs::create_dir_all;
 
 use cosmwasm_schema::{export_schema, remove_schemas, schema_for};
 
-use volume::msg::ExecuteMsg;
-use volume::msg::InstantiateMsg;
-use volume::msg::QueryMsg;
+use lp_staking::msg::ExecuteMsg;
+use lp_staking::msg::InstantiateMsg;
+use lp_staking::msg::QueryMsg;
 
 fn main() {
     let mut out_dir = current_dir().unwrap();

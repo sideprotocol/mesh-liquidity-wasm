@@ -1,8 +1,8 @@
 [package]
-name = "volume"
+name = "lp-staking"
 version = "0.1.0"
 edition = "2021"
-description = "Track volume"
+description = "Lock LP tokens to receive veToken"
 license = "Apache-2.0"
 
 [lib]
