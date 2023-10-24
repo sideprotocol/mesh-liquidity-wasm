@@ -1,16 +1,16 @@
 use std::collections::HashSet;
 
 use cosmwasm_std::{
-    entry_point, from_binary, Addr, Api, DepsMut, Env, MessageInfo, Response, StdError, StdResult,
-    Uint128, Uint64, Decimal,
+    entry_point, from_binary, Addr, Api, Decimal, DepsMut, Env, MessageInfo, Response, StdError,
+    StdResult, Uint128, Uint64,
 };
 
 use cw2::set_contract_version;
 use cw20::Cw20ReceiveMsg;
 
 use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg};
-use crate::state::{Config, CONFIG, POOL_INFO, PoolInfo};
+use crate::msg::{Cw20HookMsg, ExecuteMsg, InstantiateMsg, MigrateMsg};
+use crate::state::{Config, PoolInfo, CONFIG, POOL_INFO};
 
 // Version info, for migration info
 const CONTRACT_NAME: &str = "lp-staking";
@@ -50,9 +50,7 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::SetupPools { pools } => execute_setup_pools(deps, env, info, pools),
-        ExecuteMsg::SetTokensPerBlock { amount } => {
-            execute_set_tokens_per_block(deps, env, info, amount)
-        }
+        ExecuteMsg::SetTokensPerBlock { amount } => execute_set_tokens_per_block(deps, env, amount),
         ExecuteMsg::ClaimRewards { lp_tokens } => execute_claim_rewards(deps, env, info, lp_tokens),
         ExecuteMsg::UpdateConfig {} => execute_update_config(deps, env, info),
         ExecuteMsg::Withdraw { lp_token, amount } => {
@@ -110,6 +108,27 @@ pub fn execute_setup_pools(
     Ok(Response::new().add_attribute("action", "setup_pools"))
 }
 
+/// Sets a new amount of veToken distributed per block among all active pools. Before that, we
+/// will need to update all pools in order to correctly account for accured rewards.
+///
+/// * **amount** new count of tokens per block.
+fn execute_set_tokens_per_block(
+    mut deps: DepsMut,
+    env: Env,
+    amount: Uint128,
+) -> Result<Response, ContractError> {
+    let mut cfg = CONFIG.load(deps.storage)?;
+
+    let pools: Vec<_> = cfg.active_pools.iter().map(|pool| pool.0.clone()).collect();
+
+    update_pools(deps.branch(), &env, &cfg, &pools)?;
+
+    cfg.tokens_per_block = amount;
+    CONFIG.save(deps.storage, &cfg)?;
+
+    Ok(Response::new().add_attribute("action", "set_tokens_per_block"))
+}
+
 /// Receives a message of type [`Cw20ReceiveMsg`] and processes it depending on the received template.
 /// * **cw20** CW20 message to process.
 fn receive(
@@ -123,7 +142,7 @@ fn receive(
     let cfg = CONFIG.load(deps.storage)?;
 
     match from_binary(&cw20_msg.msg)? {
-        Cw20HookMsg::Deposit { token_code_hash } => {
+        Cw20HookMsg::Deposit {} => {
             let account = addr_validate_to_lower(deps.api, &cw20_msg.sender)?;
             if !POOL_INFO.has(deps.storage, &lp_token) {
                 create_pool(deps.branch(), &env, &lp_token, &cfg)?;
@@ -148,7 +167,7 @@ pub fn update_pools(
 ) -> Result<(), ContractError> {
     for lp_token in lp_tokens {
         let mut pool = POOL_INFO.load(deps.storage, &lp_token)?;
-        accumulate_rewards_per_share(&deps.querier, env, lp_token, &mut pool, cfg)?;
+        accumulate_rewards_per_share(env, lp_token, &mut pool, cfg)?;
         POOL_INFO.save(deps.storage, lp_token, &pool)?;
     }
 
@@ -183,7 +202,10 @@ pub fn create_pool(
         deps.storage,
         &lp_token,
         &PoolInfo {
-            last_reward_block: cfg.start_block.max(Uint64::from(env.block.height).into()).into(),
+            last_reward_block: cfg
+                .start_block
+                .max(Uint64::from(env.block.height).into())
+                .into(),
             has_asset_rewards: false,
             reward_global_index: Decimal::zero(),
             total_virtual_supply: Default::default(),
@@ -209,16 +231,51 @@ pub fn calculate_rewards(n_blocks: u64, alloc_point: &Uint128, cfg: &Config) -> 
 /// Gets allocation point of the pool.
 ///
 /// * **pools** is a vector of set that contains LP token address and allocation point.
-pub fn get_alloc_point(pools: &Vec<((Addr, String), Uint128)>, lp_token: &Addr) -> Uint128 {
+pub fn get_alloc_point(pools: &Vec<(Addr, Uint128)>, lp_token: &Addr) -> Uint128 {
     pools
         .iter()
         .find_map(|(addr, alloc_point)| {
-            if &addr.0 == lp_token {
+            if &addr == lp_token {
                 return Some(*alloc_point);
             }
             None
         })
         .unwrap_or_else(Uint128::zero)
+}
+
+/// Accures the amount of rewards distributed for each staked LP token.
+/// Also update reward variables for the given lp-token.
+///
+/// * **lp_token** LP token whose rewards per share we update.
+///
+/// * **pool** generator associated with the `lp_token`.
+pub fn accumulate_rewards_per_share(
+    env: &Env,
+    lp_token: &Addr,
+    pool: &mut PoolInfo,
+    cfg: &Config,
+) -> StdResult<()> {
+    // we should calculate rewards by previous virtual amount
+    let lp_supply = pool.total_virtual_supply;
+
+    if env.block.height > pool.last_reward_block.u64() {
+        if !lp_supply.is_zero() {
+            let alloc_point = get_alloc_point(&cfg.active_pools, &lp_token);
+
+            let token_rewards = calculate_rewards(
+                env.block.height - pool.last_reward_block.u64(),
+                &alloc_point,
+                cfg,
+            )?;
+
+            let share = Decimal::from_ratio(token_rewards, lp_supply);
+            pool.reward_global_index = pool.reward_global_index.checked_add(share)?;
+        }
+
+        pool.last_reward_block = Uint64::from(env.block.height);
+    }
+
+    Ok(())
 }
 
 /// Returns a lowercased, validated address upon success. Otherwise returns [`Err`]

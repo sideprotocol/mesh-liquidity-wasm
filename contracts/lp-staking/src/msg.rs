@@ -2,14 +2,14 @@ use cw20::Cw20ReceiveMsg;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::Uint128;
+use cosmwasm_std::{Addr, Uint128};
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct InstantiateMsg {
     pub deposit_token: String,
     pub reward_token: String,
-    pub tokens_per_block: u64,
-    pub total_alloc_point: u64,
+    pub tokens_per_block: Uint128,
+    pub total_alloc_point: Uint128,
     pub start_block: u64,
 }
 
@@ -35,6 +35,16 @@ pub enum ExecuteMsg {
     },
     UpdateConfig {},
     Receive(Cw20ReceiveMsg),
+}
+
+/// This structure describes custom hooks for the CW20.
+#[derive(Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum Cw20HookMsg {
+    /// Deposit performs a token deposit on behalf of the message sender.
+    Deposit {},
+    /// DepositFor performs a token deposit on behalf of another address that's not the message sender.
+    DepositFor { beneficiary: Addr },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

@@ -13,9 +13,9 @@ pub struct Config {
     // Reward token
     pub reward_token: Addr,
     // distribution rate for reward token
-    pub tokens_per_block: u64,
+    pub tokens_per_block: Uint128,
     // alloc points for a token
-    pub total_alloc_point: u64,
+    pub total_alloc_point: Uint128,
     // start block
     pub start_block: u64,
     /// The list of active pools with allocation points
