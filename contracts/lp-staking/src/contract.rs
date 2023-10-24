@@ -58,7 +58,7 @@ pub fn execute(
         } => execute_claim_rewards(deps, env, lp_tokens, receiver),
         ExecuteMsg::UpdateConfig {} => execute_update_config(deps, env, info),
         ExecuteMsg::Withdraw { lp_token, amount } => {
-            execute_withdraw(deps, env, info, lp_token, amount)
+            execute_withdraw(deps, env, lp_token, info.sender, amount)
         }
         ExecuteMsg::Receive(msg) => receive(deps, env, info, msg),
     }
@@ -173,6 +173,70 @@ pub fn execute_claim_rewards(
     Ok(Response::default()
         .add_attribute("action", "claim_rewards")
         .add_messages(send_rewards_msg))
+}
+
+/// Withdraw LP tokens from contract.
+///
+/// * **lp_token** LP token to withdraw.
+///
+/// * **account** user whose LP tokens we withdraw.
+///
+/// * **amount** amount of LP tokens to withdraw.
+pub fn execute_withdraw(
+    deps: DepsMut,
+    env: Env,
+    lp_token: String,
+    account: Addr,
+    amount: Uint128,
+) -> Result<Response, ContractError> {
+    let lp_token = addr_validate_to_lower(deps.api, lp_token)?;
+    let mut user = USER_INFO
+        .load(deps.storage, &(lp_token.clone(), account.clone()))
+        .unwrap_or_default();
+    if user.amount < amount {
+        return Err(ContractError::BalanceTooSmall {});
+    }
+
+    let cfg = CONFIG.load(deps.storage)?;
+    let mut pool = POOL_INFO.load(deps.storage, &lp_token.clone()).unwrap();
+
+    accumulate_rewards_per_share(&env, &lp_token.clone(), &mut pool, &cfg)?;
+
+    // Send pending rewards to the user
+    let mut send_rewards_msg = send_pending_rewards(&cfg, &pool, &user, &account)?;
+
+    // Instantiate the transfer call for the LP token
+    let transfer_msg = if !amount.is_zero() {
+        vec![WasmMsg::Execute {
+            contract_addr: cfg.deposit_token.to_string(),
+            msg: to_binary(&Cw20ExecuteMsg::Transfer {
+                recipient: account.to_string(),
+                amount: amount,
+            })?,
+            funds: vec![],
+        }]
+    } else {
+        vec![]
+    };
+
+    // Update user's balance
+    user.amount = user.amount.checked_sub(amount).unwrap();
+    user.reward_user_index = pool.reward_global_index;
+    pool.total_supply -= user.amount;
+
+    POOL_INFO.save(deps.storage, &lp_token, &pool)?;
+
+    if !user.amount.is_zero() {
+        USER_INFO.save(deps.storage, &(lp_token, account), &user)?;
+    } else {
+        USER_INFO.remove(deps.storage, &(lp_token, account));
+    }
+
+    Ok(Response::new()
+        .add_messages(send_rewards_msg)
+        .add_messages(transfer_msg)
+        .add_attribute("action", "withdraw")
+        .add_attribute("amount", amount))
 }
 
 /// Receives a message of type [`Cw20ReceiveMsg`] and processes it depending on the received template.
