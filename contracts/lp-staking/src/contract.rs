@@ -1,16 +1,17 @@
 use std::collections::HashSet;
 
 use cosmwasm_std::{
-    entry_point, from_binary, Addr, Api, Decimal, DepsMut, Env, MessageInfo, Response, StdError,
-    StdResult, Uint128, Uint64,
+    entry_point, from_binary, to_binary, Addr, Api, Decimal, DepsMut, Env, MessageInfo, Response,
+    StdError, StdResult, Uint128, Uint64, WasmMsg,
 };
 
 use cw2::set_contract_version;
-use cw20::Cw20ReceiveMsg;
+use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
 
+use crate::decimal_checked_ops::DecimalCheckedOps;
 use crate::error::ContractError;
 use crate::msg::{Cw20HookMsg, ExecuteMsg, InstantiateMsg, MigrateMsg};
-use crate::state::{Config, PoolInfo, CONFIG, POOL_INFO};
+use crate::state::{Config, PoolInfo, UserInfo, CONFIG, POOL_INFO, USER_INFO};
 
 // Version info, for migration info
 const CONTRACT_NAME: &str = "lp-staking";
@@ -145,7 +146,7 @@ fn receive(
         Cw20HookMsg::Deposit {} => {
             let account = addr_validate_to_lower(deps.api, &cw20_msg.sender)?;
             if !POOL_INFO.has(deps.storage, &lp_token) {
-                create_pool(deps.branch(), &env, &lp_token, &cfg)?;
+                return Err(ContractError::PoolNotFound {});
             }
 
             deposit(deps, env, lp_token, account, amount)
@@ -154,6 +155,47 @@ fn receive(
             deposit(deps, env, lp_token, beneficiary, amount)
         }
     }
+}
+
+/// Deposit LP tokens in contract to receive token emissions.
+///
+/// * **lp_token** LP token to deposit.
+///
+/// * **beneficiary** address that will take ownership of the staked LP tokens.
+///
+/// * **amount** amount of LP tokens to deposit.
+pub fn deposit(
+    deps: DepsMut,
+    env: Env,
+    lp_token: Addr,
+    beneficiary: Addr,
+    amount: Uint128,
+) -> Result<Response, ContractError> {
+    let mut user = USER_INFO
+        .load(deps.storage, &(lp_token.clone(), beneficiary.clone()))
+        .unwrap_or_default();
+
+    let cfg = CONFIG.load(deps.storage)?;
+    let mut pool = POOL_INFO.load(deps.storage, &lp_token)?;
+
+    accumulate_rewards_per_share(&env, &lp_token, &mut pool, &cfg)?;
+
+    // Send pending rewards (if any) to the depositor
+    let mut send_rewards_msg = send_pending_rewards(&cfg, &pool, &user, &beneficiary.clone())?;
+
+    // Update user's LP token balance
+    let updated_amount = user.amount.checked_add(amount).unwrap();
+    user.amount = user.amount.checked_add(amount).unwrap();
+    user.reward_user_index = pool.reward_global_index;
+    pool.total_supply += user.amount;
+
+    POOL_INFO.save(deps.storage, &lp_token, &pool)?;
+    USER_INFO.save(deps.storage, &(lp_token, beneficiary), &user)?;
+
+    Ok(Response::new()
+        .add_messages(send_rewards_msg)
+        .add_attribute("action", "deposit")
+        .add_attribute("amount", amount))
 }
 
 /// Updates the amount of accrued rewards.
@@ -208,7 +250,7 @@ pub fn create_pool(
                 .into(),
             has_asset_rewards: false,
             reward_global_index: Decimal::zero(),
-            total_virtual_supply: Default::default(),
+            total_supply: Default::default(),
         },
     )?;
 
@@ -255,9 +297,7 @@ pub fn accumulate_rewards_per_share(
     pool: &mut PoolInfo,
     cfg: &Config,
 ) -> StdResult<()> {
-    // we should calculate rewards by previous virtual amount
-    let lp_supply = pool.total_virtual_supply;
-
+    let lp_supply = pool.total_supply;
     if env.block.height > pool.last_reward_block.u64() {
         if !lp_supply.is_zero() {
             let alloc_point = get_alloc_point(&cfg.active_pools, &lp_token);
@@ -276,6 +316,43 @@ pub fn accumulate_rewards_per_share(
     }
 
     Ok(())
+}
+
+/// Distributes pending rewards for a specific staker.
+///
+/// * **pool** lp token where user staked.
+///
+/// * **user** staker for which we claim rewards.
+///
+/// * **to** address that will receive rewards.
+pub fn send_pending_rewards(
+    cfg: &Config,
+    pool: &PoolInfo,
+    user: &UserInfo,
+    to: &Addr,
+) -> Result<Vec<WasmMsg>, ContractError> {
+    if user.amount.is_zero() {
+        return Ok(vec![]);
+    }
+
+    let mut messages = vec![];
+
+    let pending_rewards = (pool.reward_global_index - user.reward_user_index)
+        .checked_mul_uint128(user.amount)
+        .unwrap();
+
+    if !pending_rewards.is_zero() {
+        messages.push(WasmMsg::Execute {
+            contract_addr: cfg.reward_token.to_string(),
+            msg: to_binary(&Cw20ExecuteMsg::Transfer {
+                recipient: to.to_string(),
+                amount: pending_rewards,
+            })?,
+            funds: vec![],
+        });
+    }
+
+    Ok(messages)
 }
 
 /// Returns a lowercased, validated address upon success. Otherwise returns [`Err`]

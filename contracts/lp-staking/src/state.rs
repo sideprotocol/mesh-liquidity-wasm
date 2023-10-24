@@ -29,10 +29,20 @@ pub struct PoolInfo {
     pub last_reward_block: Uint64,
     pub reward_global_index: Decimal,
     pub has_asset_rewards: bool,
-    /// Total virtual amount
-    pub total_virtual_supply: Uint128,
+    pub total_supply: Uint128,
+}
+
+/// This structure stores the outstanding amount of token rewards that a user accured.
+#[derive(Serialize, Deserialize, PartialEq, Default)]
+pub struct UserInfo {
+    /// The amount of LP tokens staked
+    pub amount: Uint128,
+    /// The amount of veToken rewards a user already received or is not eligible for; used for proper reward calculation
+    pub reward_user_index: Decimal,
 }
 
 pub const CONFIG: Item<Config> = Item::new("config");
 
 pub const POOL_INFO: Map<&Addr, PoolInfo> = Map::new("pool_info");
+
+pub const USER_INFO: Map<&(Addr, Addr), UserInfo> = Map::new("user_info");

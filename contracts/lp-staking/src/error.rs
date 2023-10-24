@@ -18,8 +18,8 @@ pub enum ContractError {
     #[error("Duplicate pools in input")]
     PoolDuplicate,
 
-    #[error("Atomic swap already exists")]
-    AlreadyExists,
+    #[error("Pool not found")]
+    PoolNotFound,
 
     #[error("Order already taken")]
     OrderTaken,
