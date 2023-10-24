@@ -1,7 +1,8 @@
+use cw20::Cw20ReceiveMsg;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::Coin;
+use cosmwasm_std::Uint128;
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct InstantiateMsg {
@@ -11,8 +12,29 @@ pub struct InstantiateMsg {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub enum ExecuteMsg {
-    LogObservation { token1: Coin, token2: Coin },
-    SetContract { address: String },
+    SetContract {
+        address: String,
+    },
+    SetupPools {
+        pools: Vec<(String, Uint128)>,
+    },
+    SetTokensPerBlock {
+        /// The new amount of veToken to distribute per block
+        amount: Uint128,
+    },
+    ClaimRewards {
+        /// the LP token contract address
+        lp_tokens: Vec<String>,
+    },
+    /// Withdraw LP tokens from contract
+    Withdraw {
+        /// The address of the LP token to withdraw
+        lp_token: String,
+        /// The amount to withdraw
+        amount: Uint128,
+    },
+    UpdateConfig {},
+    Receive(Cw20ReceiveMsg),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

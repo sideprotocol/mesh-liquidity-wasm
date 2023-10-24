@@ -19,18 +19,16 @@ pub struct Observation {
 pub struct Config {
     // admin
     pub admin: String,
-    // can only be called by contract
-    pub contract_address: String,
-    // current index
-    pub current_idx: u64,
-    // pivoted or not
-    pub pivoted: bool,
-    // Maximum length
-    pub max_length: u64,
-    // Is new
-    pub is_new: bool,
-    // total observations in map
-    pub counter: u64,
+    // cw20 token which can be accepted by this contract
+    pub deposit_token: String,
+    // distribution rate for reward token
+    pub tokens_per_block: u64,
+    // alloc points for a token
+    pub total_alloc_point: u64,
+    // start block
+    pub start_block: u64,
+    // Reward token
+    pub reward_token: String,
 }
 pub const OBSERVATIONS: Map<u64, Observation> = Map::new("observations");
 
