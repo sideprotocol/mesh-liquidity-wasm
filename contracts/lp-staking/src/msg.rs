@@ -6,15 +6,15 @@ use cosmwasm_std::Uint128;
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct InstantiateMsg {
-    pub contract: String,
-    pub max_length: u64,
+    pub deposit_token: String,
+    pub reward_token: String,
+    pub tokens_per_block: u64,
+    pub total_alloc_point: u64,
+    pub start_block: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub enum ExecuteMsg {
-    SetContract {
-        address: String,
-    },
     SetupPools {
         pools: Vec<(String, Uint128)>,
     },

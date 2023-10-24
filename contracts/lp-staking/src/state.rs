@@ -1,3 +1,4 @@
+use cosmwasm_std::Addr;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -18,17 +19,17 @@ pub struct Observation {
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct Config {
     // admin
-    pub admin: String,
+    pub admin: Addr,
     // cw20 token which can be accepted by this contract
-    pub deposit_token: String,
+    pub deposit_token: Addr,
+    // Reward token
+    pub reward_token: Addr,
     // distribution rate for reward token
     pub tokens_per_block: u64,
     // alloc points for a token
     pub total_alloc_point: u64,
     // start block
     pub start_block: u64,
-    // Reward token
-    pub reward_token: String,
 }
 pub const OBSERVATIONS: Map<u64, Observation> = Map::new("observations");
 
