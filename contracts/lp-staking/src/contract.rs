@@ -1,15 +1,15 @@
 use std::collections::HashSet;
 
 use cosmwasm_std::{
-    entry_point, to_binary, Addr, Api, Binary, Deps, DepsMut, Env, MessageInfo, Response,
-    StdError, StdResult, Uint128, from_binary,
+    entry_point, from_binary, Addr, Api, DepsMut, Env, MessageInfo, Response, StdError, StdResult,
+    Uint128,
 };
 
 use cw2::set_contract_version;
 use cw20::Cw20ReceiveMsg;
 
 use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
+use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg};
 use crate::state::{Config, CONFIG, POOL_INFO};
 
 // Version info, for migration info
@@ -35,7 +35,7 @@ pub fn instantiate(
         total_alloc_point: msg.total_alloc_point,
         start_block: msg.start_block,
         reward_token: reward,
-        active_pools: vec![]
+        active_pools: vec![],
     };
     CONFIG.save(deps.storage, &config)?;
     Ok(Response::default())
@@ -54,8 +54,10 @@ pub fn execute(
             execute_set_tokens_per_block(deps, env, info, amount)
         }
         ExecuteMsg::ClaimRewards { lp_tokens } => execute_claim_rewards(deps, env, info, lp_tokens),
-        ExecuteMsg::UpdateConfig {  } => execute_update_config(deps, env, info),
-        ExecuteMsg::Withdraw { lp_token, amount } => execute_withdraw(deps, env, info, lp_token, amount),
+        ExecuteMsg::UpdateConfig {} => execute_update_config(deps, env, info),
+        ExecuteMsg::Withdraw { lp_token, amount } => {
+            execute_withdraw(deps, env, info, lp_token, amount)
+        }
         ExecuteMsg::Receive(msg) => receive(deps, env, info, msg),
     }
 }
@@ -124,19 +126,12 @@ fn receive(
         Cw20HookMsg::Deposit { token_code_hash } => {
             let account = addr_validate_to_lower(deps.api, &cw20_msg.sender)?;
             if !POOL_INFO.has(deps.storage, &lp_token) {
-                create_pool(
-                    deps.branch(),
-                    &env,
-                    &lp_token,
-                    &cfg,
-                )?;
+                create_pool(deps.branch(), &env, &lp_token, &cfg)?;
             }
 
             deposit(deps, env, lp_token, account, amount)
         }
-        Cw20HookMsg::DepositFor {
-            beneficiary,
-        } => {
+        Cw20HookMsg::DepositFor { beneficiary } => {
             deposit(deps, env, lp_token, beneficiary, amount)
         }
     }
@@ -178,33 +173,6 @@ pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, C
     Ok(Response::default())
 }
 
-#[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
-    match msg {
-        QueryMsg::Contract {} => to_binary(&query_contract(deps)?),
-        QueryMsg::TotalVolume {} => to_binary(&query_total_volume(deps, env)?),
-        QueryMsg::TotalVolumeAt { timestamp } => {
-            to_binary(&query_total_volume_at(deps, timestamp)?)
-        } //QueryMsg::VolumeInterval { start, end } => to_binary(&query_total_volume_interval(deps, start, end)?),
-    }
-}
-
-fn query_contract(deps: Deps) -> StdResult<String> {
-    let config = CONFIG.load(deps.storage)?;
-
-    Ok(config.contract_address)
-}
-
-fn query_total_volume(deps: Deps, env: Env) -> StdResult<Observation> {
-    let res = binary_search(deps, env.block.time.nanos())?;
-    Ok(OBSERVATIONS.load(deps.storage, res)?)
-}
-
-fn query_total_volume_at(deps: Deps, timestamp: u64) -> StdResult<Observation> {
-    let res = binary_search(deps, timestamp)?;
-    Ok(OBSERVATIONS.load(deps.storage, res)?)
-}
-
 /// Returns a lowercased, validated address upon success. Otherwise returns [`Err`]
 /// ## Params
 /// * **api** is an object of type [`Api`]
@@ -220,12 +188,3 @@ pub fn addr_validate_to_lower(api: &dyn Api, addr: impl Into<String>) -> StdResu
     }
     api.addr_validate(&addr)
 }
-
-// fn query_total_volume_interval(
-//     deps: Deps,
-//     start: u64,
-//     end: u64
-// ) -> StdResult<Observation> {
-//     let res = binary_search(deps, timestamp)?;
-//     Ok(OBSERVATIONS.load(deps.storage, res)?)
-// }

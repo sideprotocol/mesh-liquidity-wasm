@@ -50,4 +50,3 @@ pub enum QueryMsg {
     /// Returns contract address for which volume is tracked
     Contract {},
 }
-
