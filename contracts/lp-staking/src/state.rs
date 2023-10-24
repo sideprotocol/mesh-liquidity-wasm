@@ -1,4 +1,4 @@
-use cosmwasm_std::Addr;
+use cosmwasm_std::{Addr, Decimal, Uint128, Uint64};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -30,7 +30,21 @@ pub struct Config {
     pub total_alloc_point: u64,
     // start block
     pub start_block: u64,
+    /// The list of active pools with allocation points
+    pub active_pools: Vec<(Addr, Uint128)>,
 }
-pub const OBSERVATIONS: Map<u64, Observation> = Map::new("observations");
+
+/// This structure describes the main information of pool
+#[derive(Serialize, Deserialize, PartialEq)]
+pub struct PoolInfo {
+    /// Accumulated amount of reward per share unit. Used for reward calculations
+    pub last_reward_block: Uint64,
+    pub reward_global_index: Decimal,
+    pub has_asset_rewards: bool,
+    /// Total virtual amount
+    pub total_virtual_supply: Uint128,
+}
 
 pub const CONFIG: Item<Config> = Item::new("config");
+
+pub const POOL_INFO: Map<&Addr, PoolInfo> = Map::new("pool_info");

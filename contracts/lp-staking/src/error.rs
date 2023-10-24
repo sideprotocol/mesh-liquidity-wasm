@@ -12,11 +12,11 @@ pub enum ContractError {
     #[error("Send some coins to create an atomic swap")]
     EmptyBalance {},
 
-    #[error("Atomic swap not yet expired")]
-    NotExpired,
+    #[error("Cannot perform this action: Unauthorized")]
+    Unauthorized,
 
-    #[error("Expired atomic swap")]
-    Expired,
+    #[error("Duplicate pools in input")]
+    PoolDuplicate,
 
     #[error("Atomic swap already exists")]
     AlreadyExists,
