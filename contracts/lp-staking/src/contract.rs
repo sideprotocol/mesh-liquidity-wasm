@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use cosmwasm_std::{
     entry_point, from_binary, Addr, Api, DepsMut, Env, MessageInfo, Response, StdError, StdResult,
-    Uint128,
+    Uint128, Uint64, Decimal,
 };
 
 use cw2::set_contract_version;
@@ -10,7 +10,7 @@ use cw20::Cw20ReceiveMsg;
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg};
-use crate::state::{Config, CONFIG, POOL_INFO};
+use crate::state::{Config, CONFIG, POOL_INFO, PoolInfo};
 
 // Version info, for migration info
 const CONTRACT_NAME: &str = "lp-staking";
@@ -171,6 +171,54 @@ pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, C
     cw2::set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
     Ok(Response::default())
+}
+
+pub fn create_pool(
+    deps: DepsMut,
+    env: &Env,
+    lp_token: &Addr,
+    cfg: &Config,
+) -> Result<(), ContractError> {
+    POOL_INFO.save(
+        deps.storage,
+        &lp_token,
+        &PoolInfo {
+            last_reward_block: cfg.start_block.max(Uint64::from(env.block.height).into()).into(),
+            has_asset_rewards: false,
+            reward_global_index: Decimal::zero(),
+            total_virtual_supply: Default::default(),
+        },
+    )?;
+
+    Ok(())
+}
+
+/// Calculates and returns the amount of accured rewards since the last reward checkpoint for a specific lp-token.
+///
+/// * **alloc_point** allocation points for specific lp-token.
+pub fn calculate_rewards(n_blocks: u64, alloc_point: &Uint128, cfg: &Config) -> StdResult<Uint128> {
+    let r = Uint128::from(n_blocks)
+        .checked_mul(cfg.tokens_per_block.into())?
+        .checked_mul(*alloc_point)?
+        .checked_div(cfg.total_alloc_point.into())
+        .unwrap_or_else(|_| Uint128::zero());
+
+    Ok(r)
+}
+
+/// Gets allocation point of the pool.
+///
+/// * **pools** is a vector of set that contains LP token address and allocation point.
+pub fn get_alloc_point(pools: &Vec<((Addr, String), Uint128)>, lp_token: &Addr) -> Uint128 {
+    pools
+        .iter()
+        .find_map(|(addr, alloc_point)| {
+            if &addr.0 == lp_token {
+                return Some(*alloc_point);
+            }
+            None
+        })
+        .unwrap_or_else(Uint128::zero)
 }
 
 /// Returns a lowercased, validated address upon success. Otherwise returns [`Err`]
