@@ -1,15 +1,16 @@
 use std::collections::HashSet;
 
 use cosmwasm_std::{
-    entry_point, to_binary, Addr, Api, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Response,
-    StdError, StdResult, Uint128,
+    entry_point, to_binary, Addr, Api, Binary, Deps, DepsMut, Env, MessageInfo, Response,
+    StdError, StdResult, Uint128, from_binary,
 };
 
 use cw2::set_contract_version;
+use cw20::Cw20ReceiveMsg;
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
-use crate::state::{Config, Observation, CONFIG, OBSERVATIONS, POOL_INFO};
+use crate::state::{Config, CONFIG, POOL_INFO};
 
 // Version info, for migration info
 const CONTRACT_NAME: &str = "lp-staking";
@@ -34,6 +35,7 @@ pub fn instantiate(
         total_alloc_point: msg.total_alloc_point,
         start_block: msg.start_block,
         reward_token: reward,
+        active_pools: vec![]
     };
     CONFIG.save(deps.storage, &config)?;
     Ok(Response::default())
@@ -52,6 +54,9 @@ pub fn execute(
             execute_set_tokens_per_block(deps, env, info, amount)
         }
         ExecuteMsg::ClaimRewards { lp_tokens } => execute_claim_rewards(deps, env, info, lp_tokens),
+        ExecuteMsg::UpdateConfig {  } => execute_update_config(deps, env, info),
+        ExecuteMsg::Withdraw { lp_token, amount } => execute_withdraw(deps, env, info, lp_token, amount),
+        ExecuteMsg::Receive(msg) => receive(deps, env, info, msg),
     }
 }
 
@@ -101,6 +106,40 @@ pub fn execute_setup_pools(
     CONFIG.save(deps.storage, &cfg)?;
 
     Ok(Response::new().add_attribute("action", "setup_pools"))
+}
+
+/// Receives a message of type [`Cw20ReceiveMsg`] and processes it depending on the received template.
+/// * **cw20** CW20 message to process.
+fn receive(
+    mut deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    cw20_msg: Cw20ReceiveMsg,
+) -> Result<Response, ContractError> {
+    let amount = cw20_msg.amount;
+    let lp_token = info.sender;
+    let cfg = CONFIG.load(deps.storage)?;
+
+    match from_binary(&cw20_msg.msg)? {
+        Cw20HookMsg::Deposit { token_code_hash } => {
+            let account = addr_validate_to_lower(deps.api, &cw20_msg.sender)?;
+            if !POOL_INFO.has(deps.storage, &lp_token) {
+                create_pool(
+                    deps.branch(),
+                    &env,
+                    &lp_token,
+                    &cfg,
+                )?;
+            }
+
+            deposit(deps, env, lp_token, account, amount)
+        }
+        Cw20HookMsg::DepositFor {
+            beneficiary,
+        } => {
+            deposit(deps, env, lp_token, beneficiary, amount)
+        }
+    }
 }
 
 /// Updates the amount of accrued rewards.
