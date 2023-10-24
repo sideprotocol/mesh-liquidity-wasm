@@ -52,7 +52,10 @@ pub fn execute(
     match msg {
         ExecuteMsg::SetupPools { pools } => execute_setup_pools(deps, env, info, pools),
         ExecuteMsg::SetTokensPerBlock { amount } => execute_set_tokens_per_block(deps, env, amount),
-        ExecuteMsg::ClaimRewards { lp_tokens } => execute_claim_rewards(deps, env, info, lp_tokens),
+        ExecuteMsg::ClaimRewards {
+            lp_tokens,
+            receiver,
+        } => execute_claim_rewards(deps, env, lp_tokens, receiver),
         ExecuteMsg::UpdateConfig {} => execute_update_config(deps, env, info),
         ExecuteMsg::Withdraw { lp_token, amount } => {
             execute_withdraw(deps, env, info, lp_token, amount)
@@ -128,6 +131,48 @@ fn execute_set_tokens_per_block(
     CONFIG.save(deps.storage, &cfg)?;
 
     Ok(Response::new().add_attribute("action", "set_tokens_per_block"))
+}
+
+/// Updates the amount of accured rewards for a specific lp-token.
+///
+/// * **lp_token** sets the liquidity pool to be updated and claimed.
+///
+/// * **account** receiver address.
+pub fn execute_claim_rewards(
+    mut deps: DepsMut,
+    env: Env,
+    lp_tokens_raw: Vec<String>,
+    account: String,
+) -> Result<Response, ContractError> {
+    let cfg = CONFIG.load(deps.storage)?;
+
+    let mut lp_tokens = vec![];
+    for lp_token in &lp_tokens_raw {
+        lp_tokens.push(addr_validate_to_lower(deps.api, lp_token)?);
+    }
+    let account = addr_validate_to_lower(deps.api, account)?;
+
+    update_pools(deps.branch(), &env, &cfg, &lp_tokens)?;
+
+    let mut send_rewards_msg = vec![];
+    for lp_token in &lp_tokens {
+        let mut pool = POOL_INFO.load(deps.storage, &lp_token.clone()).unwrap();
+        let mut user = USER_INFO
+            .load(deps.storage, &(lp_token.clone(), account.clone()))
+            .unwrap();
+
+        send_rewards_msg.append(&mut send_pending_rewards(&cfg, &pool, &user, &account)?);
+
+        // Update user's reward index
+        user.reward_user_index = pool.reward_global_index;
+
+        USER_INFO.save(deps.storage, &(lp_token.clone(), account.clone()), &user)?;
+        POOL_INFO.save(deps.storage, &lp_token, &pool)?;
+    }
+
+    Ok(Response::default()
+        .add_attribute("action", "claim_rewards")
+        .add_messages(send_rewards_msg))
 }
 
 /// Receives a message of type [`Cw20ReceiveMsg`] and processes it depending on the received template.

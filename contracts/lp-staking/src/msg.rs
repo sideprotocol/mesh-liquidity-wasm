@@ -25,6 +25,8 @@ pub enum ExecuteMsg {
     ClaimRewards {
         /// the LP token contract address
         lp_tokens: Vec<String>,
+
+        receiver: String,
     },
     /// Withdraw LP tokens from contract
     Withdraw {
