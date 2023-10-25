@@ -1,5 +1,8 @@
 {
     "cSpell.words": [
         "interchain"
+    ],
+    "rust-analyzer.linkedProjects": [
+        "./contracts/lp-staking/Cargo.toml"
     ]
 }
