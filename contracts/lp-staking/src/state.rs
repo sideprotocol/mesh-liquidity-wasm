@@ -8,8 +8,6 @@ use cw_storage_plus::{Item, Map};
 pub struct Config {
     // admin
     pub admin: Addr,
-    // cw20 token which can be accepted by this contract
-    pub deposit_token: Addr,
     // Reward token
     pub reward_token: Addr,
     // distribution rate for reward token

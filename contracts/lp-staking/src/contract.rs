@@ -26,12 +26,10 @@ pub fn instantiate(
 ) -> StdResult<Response> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-    let deposit = addr_validate_to_lower(deps.api, &msg.deposit_token)?;
     let reward = addr_validate_to_lower(deps.api, &msg.reward_token)?;
 
     let config = Config {
         admin: info.sender,
-        deposit_token: deposit,
         tokens_per_block: msg.tokens_per_block,
         total_alloc_point: msg.total_alloc_point,
         start_block: msg.start_block,
@@ -56,7 +54,9 @@ pub fn execute(
             lp_tokens,
             receiver,
         } => execute_claim_rewards(deps, env, lp_tokens, receiver),
-        ExecuteMsg::UpdateConfig {} => execute_update_config(deps, env, info),
+        ExecuteMsg::UpdateConfig { reward_token } => {
+            execute_update_config(deps, info, reward_token)
+        }
         ExecuteMsg::Withdraw { lp_token, amount } => {
             execute_withdraw(deps, env, lp_token, info.sender, amount)
         }
@@ -156,7 +156,7 @@ pub fn execute_claim_rewards(
 
     let mut send_rewards_msg = vec![];
     for lp_token in &lp_tokens {
-        let mut pool = POOL_INFO.load(deps.storage, &lp_token.clone()).unwrap();
+        let pool = POOL_INFO.load(deps.storage, &lp_token.clone()).unwrap();
         let mut user = USER_INFO
             .load(deps.storage, &(lp_token.clone(), account.clone()))
             .unwrap();
@@ -173,6 +173,28 @@ pub fn execute_claim_rewards(
     Ok(Response::default()
         .add_attribute("action", "claim_rewards")
         .add_messages(send_rewards_msg))
+}
+
+/// ## Executor
+/// Only the owner can execute this.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_update_config(
+    deps: DepsMut,
+    info: MessageInfo,
+    reward_token: String,
+) -> Result<Response, ContractError> {
+    let mut config = CONFIG.load(deps.storage)?;
+
+    // Permission check
+    if info.sender != config.admin {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    config.reward_token = addr_validate_to_lower(deps.api, reward_token)?;
+
+    CONFIG.save(deps.storage, &config)?;
+
+    Ok(Response::new().add_attribute("action", "update_config"))
 }
 
 /// Withdraw LP tokens from contract.
@@ -203,12 +225,12 @@ pub fn execute_withdraw(
     accumulate_rewards_per_share(&env, &lp_token.clone(), &mut pool, &cfg)?;
 
     // Send pending rewards to the user
-    let mut send_rewards_msg = send_pending_rewards(&cfg, &pool, &user, &account)?;
+    let send_rewards_msg = send_pending_rewards(&cfg, &pool, &user, &account)?;
 
     // Instantiate the transfer call for the LP token
     let transfer_msg = if !amount.is_zero() {
         vec![WasmMsg::Execute {
-            contract_addr: cfg.deposit_token.to_string(),
+            contract_addr: lp_token.to_string(),
             msg: to_binary(&Cw20ExecuteMsg::Transfer {
                 recipient: account.to_string(),
                 amount: amount,
@@ -242,14 +264,13 @@ pub fn execute_withdraw(
 /// Receives a message of type [`Cw20ReceiveMsg`] and processes it depending on the received template.
 /// * **cw20** CW20 message to process.
 fn receive(
-    mut deps: DepsMut,
+    deps: DepsMut,
     env: Env,
     info: MessageInfo,
     cw20_msg: Cw20ReceiveMsg,
 ) -> Result<Response, ContractError> {
     let amount = cw20_msg.amount;
     let lp_token = info.sender;
-    let cfg = CONFIG.load(deps.storage)?;
 
     match from_binary(&cw20_msg.msg)? {
         Cw20HookMsg::Deposit {} => {
@@ -290,10 +311,9 @@ pub fn deposit(
     accumulate_rewards_per_share(&env, &lp_token, &mut pool, &cfg)?;
 
     // Send pending rewards (if any) to the depositor
-    let mut send_rewards_msg = send_pending_rewards(&cfg, &pool, &user, &beneficiary.clone())?;
+    let send_rewards_msg = send_pending_rewards(&cfg, &pool, &user, &beneficiary.clone())?;
 
     // Update user's LP token balance
-    let updated_amount = user.amount.checked_add(amount).unwrap();
     user.amount = user.amount.checked_add(amount).unwrap();
     user.reward_user_index = pool.reward_global_index;
     pool.total_supply += user.amount;

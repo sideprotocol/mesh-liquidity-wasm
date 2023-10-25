@@ -21,7 +21,7 @@ pub enum ContractError {
     #[error("Pool not found")]
     PoolNotFound,
 
-    #[error("Balance is too small")]
+    #[error("Balance is too small, user doesn't have enough balance")]
     BalanceTooSmall,
 
     #[error("Order is not for this chain")]

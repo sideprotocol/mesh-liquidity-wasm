@@ -6,7 +6,6 @@ use cosmwasm_std::{Addr, Uint128};
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct InstantiateMsg {
-    pub deposit_token: String,
     pub reward_token: String,
     pub tokens_per_block: Uint128,
     pub total_alloc_point: Uint128,
@@ -35,7 +34,10 @@ pub enum ExecuteMsg {
         /// The amount to withdraw
         amount: Uint128,
     },
-    UpdateConfig {},
+    UpdateConfig {
+        // Reward token
+        reward_token: String,
+    },
     Receive(Cw20ReceiveMsg),
 }
 
