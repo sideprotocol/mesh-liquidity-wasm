@@ -1,29 +1,35 @@
 [package]
-name = "lp-staking"
-version = "0.1.0"
+name = "ve-side"
+version = "1.0.0"
+authors = ["Amit Yadav"]
 edition = "2021"
-description = "Lock LP tokens to receive veToken"
-license = "Apache-2.0"
+
+exclude = [
+    # Those files are rust-optimizer artifacts. You might want to commit them for convenience but they should not be part of the source code publication.
+    "contract.wasm",
+    "hash.txt",
+]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [features]
+# for quicker tests, cargo test --lib
+# for more explicit tests, cargo test --features=backtraces
 backtraces = ["cosmwasm-std/backtraces"]
-# use library feature to disable all instantiate/execute/query exports
-library = []
 
 [dependencies]
-cw-utils = { version = "1.0.1" }
-cw2 = { version = "1.0.1" }
-cw20 = { version = "1.0.1" }
-cosmwasm-std = { version = "1.0.0-beta3", features = ["stargate"] }
-cw-storage-plus = { version = "1.0.1" }
-schemars = "0.8.1"
-serde = { version = "1.0.103", default-features = false, features = ["derive"] }
-thiserror = { version = "1.0.23" }
-hex = "0.3.1"
-sha2 = "0.8.0"
+cw2 = "0.15"
+cw20 = "0.15"
+cw20-base = { version = "0.15", features = ["library"] }
+cosmwasm-std = "1.1"
+cw-storage-plus = "0.15"
+thiserror = { version = "1.0" }
+cosmwasm-schema = "1.1"
 
 [dev-dependencies]
-cosmwasm-schema = { version = "1.0.0-beta3" }
+cw-multi-test = "0.15"
+anyhow = "1"
+proptest = "1.0"
