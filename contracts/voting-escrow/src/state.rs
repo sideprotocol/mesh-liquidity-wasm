@@ -1,46 +1,60 @@
-use cosmwasm_std::{Addr, Decimal, Uint128, Uint64};
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use cosmwasm_schema::cw_serde;
+use cosmwasm_std::{Addr, Uint128};
+use cw_storage_plus::{Item, Map, SnapshotMap, Strategy};
 
-use cw_storage_plus::{Item, Map};
-
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+/// This structure stores the main parameters for the voting escrow contract.
+#[cw_serde]
 pub struct Config {
-    // admin
+    /// Address that's allowed to change contract parameters
     pub admin: Addr,
-    // Reward token
-    pub reward_token: Addr,
-    // distribution rate for reward token
-    pub tokens_per_block: Uint128,
-    // alloc points for a token
-    pub total_alloc_point: Uint128,
-    // start block
-    pub start_block: u64,
-    /// The list of active pools with allocation points
-    pub active_pools: Vec<(Addr, Uint128)>,
+    /// LP token contract address
+    pub deposit_token: Addr,
 }
 
-/// This structure describes the main information of pool
-#[derive(Serialize, Deserialize, PartialEq)]
-pub struct PoolInfo {
-    /// Accumulated amount of reward per share unit. Used for reward calculations
-    pub last_reward_block: Uint64,
-    pub reward_global_index: Decimal,
-    pub has_asset_rewards: bool,
-    pub total_supply: Uint128,
+/// This structure stores points along the checkpoint history for every LP staker.
+#[cw_serde]
+pub struct Point {
+    /// The staker's veSIDE voting power
+    pub power: Uint128,
+    /// The start period when the staker's voting power start to decrease
+    pub start: u64,
+    /// The period when the lock should expire
+    pub end: u64,
+    /// Weekly voting power decay
+    pub slope: Uint128,
 }
 
-/// This structure stores the outstanding amount of token rewards that a user accured.
-#[derive(Serialize, Deserialize, PartialEq, Default)]
-pub struct UserInfo {
-    /// The amount of LP tokens staked
+/// This structure stores data about the lockup position for a specific LP staker.
+#[cw_serde]
+pub struct Lock {
+    /// The total amount of LP tokens that were deposited in the LP position
     pub amount: Uint128,
-    /// The amount of veToken rewards a user already received or is not eligible for; used for proper reward calculation
-    pub reward_user_index: Decimal,
+    /// The start period when the lock was created
+    pub start: u64,
+    /// The timestamp when the lock position expires
+    pub end: u64,
+    /// the last period when the lock's time was increased
+    pub last_extend_lock_period: u64,
 }
 
+/// Stores the contract config at the given key
 pub const CONFIG: Item<Config> = Item::new("config");
 
-pub const POOL_INFO: Map<&Addr, PoolInfo> = Map::new("pool_info");
+/// Stores all user lock history
+pub const LOCKED: SnapshotMap<Addr, Lock> = SnapshotMap::new(
+    "locked",
+    "locked__checkpoints",
+    "locked__changelog",
+    Strategy::EveryBlock,
+);
 
-pub const USER_INFO: Map<&(Addr, Addr), UserInfo> = Map::new("user_info");
+/// Stores the checkpoint history for every staker (addr => period)
+/// Total voting power checkpoints are stored using a (contract_addr => period) key
+pub const HISTORY: Map<(Addr, u64), Point> = Map::new("history");
+
+/// Scheduled slope changes per period (week)
+pub const SLOPE_CHANGES: Map<u64, Uint128> = Map::new("slope_changes");
+
+/// Last period when a scheduled slope change was applied
+pub const LAST_SLOPE_CHANGE: Item<u64> = Item::new("last_slope_change");
+
