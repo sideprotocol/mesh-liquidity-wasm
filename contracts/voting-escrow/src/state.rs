@@ -57,4 +57,3 @@ pub const SLOPE_CHANGES: Map<u64, Uint128> = Map::new("slope_changes");
 
 /// Last period when a scheduled slope change was applied
 pub const LAST_SLOPE_CHANGE: Item<u64> = Item::new("last_slope_change");
-
