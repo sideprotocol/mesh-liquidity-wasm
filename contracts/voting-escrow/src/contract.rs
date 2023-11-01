@@ -1,45 +1,87 @@
-use std::collections::HashSet;
-
+#[cfg(not(feature = "library"))]
+use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    entry_point, from_binary, to_binary, Addr, Api, Decimal, DepsMut, Env, MessageInfo, Response,
-    StdError, StdResult, Uint128, Uint64, WasmMsg,
+    from_binary, to_binary, Addr, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
+    Response, StdError, StdResult, Storage, Uint128, WasmMsg,
 };
-
 use cw2::set_contract_version;
-use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
+use cw20::{
+    BalanceResponse, Cw20ExecuteMsg, Cw20ReceiveMsg, TokenInfoResponse,
+};
+use cw20_base::state::{MinterData, TokenInfo, TOKEN_INFO};
 
-use crate::decimal_checked_ops::DecimalCheckedOps;
+use crate::DecimalCheckedOps;
 use crate::error::ContractError;
-use crate::msg::{Cw20HookMsg, ExecuteMsg, InstantiateMsg, MigrateMsg};
-use crate::state::{Config, PoolInfo, UserInfo, CONFIG, POOL_INFO, USER_INFO};
+use crate::state::{
+    Config, Lock, Point, CONFIG, HISTORY, LAST_SLOPE_CHANGE, LOCKED,
+};
+use crate::utils::{
+    adjust_vp_and_slope, calc_coefficient, calc_voting_power,
+    cancel_scheduled_slope, fetch_last_checkpoint, fetch_slope_changes, schedule_slope_change,
+    time_limits_check, get_period, get_periods_count, EPOCH_START, WEEK
+};
+use crate::msg::{InstantiateMsg, ExecuteMsg, Cw20HookMsg, QueryMsg, ConfigResponse, LockInfoResponse, VotingPowerResponse, MigrateMsg};
 
-// Version info, for migration info
-const CONTRACT_NAME: &str = "lp-staking";
+/// Contract name that is used for migration.
+const CONTRACT_NAME: &str = "ve-side";
+/// Contract version that is used for migration.
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// Creates a new contract with the specified parameters in [`InstantiateMsg`].
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
+    env: Env,
+    _info: MessageInfo,
     msg: InstantiateMsg,
-) -> StdResult<Response> {
+) -> Result<Response, ContractError> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
-
-    let reward = addr_validate_to_lower(deps.api, &msg.reward_token)?;
+    let deposit_token = deps.api.addr_validate(&msg.deposit_token)?;
 
     let config = Config {
-        admin: info.sender,
-        tokens_per_block: msg.tokens_per_block,
-        total_alloc_point: msg.total_alloc_point,
-        start_block: msg.start_block,
-        reward_token: reward,
-        active_pools: vec![],
+        admin: deps.api.addr_validate(&msg.admin)?,
+        deposit_token,
     };
     CONFIG.save(deps.storage, &config)?;
+
+    let cur_period = get_period(env.block.time.seconds())?;
+    let point = Point {
+        power: Uint128::zero(),
+        start: cur_period,
+        end: 0,
+        slope: Default::default(),
+    };
+    HISTORY.save(
+        deps.storage,
+        (env.contract.address.clone(), cur_period),
+        &point,
+    )?;
+
+    // Store token info
+    let data = TokenInfo {
+        name: "Vote Escrowed SIDE".to_string(),
+        symbol: "veSIDE".to_string(),
+        decimals: 6,
+        total_supply: Uint128::zero(),
+        mint: Some(MinterData {
+            minter: env.contract.address,
+            cap: None,
+        }),
+    };
+
+    TOKEN_INFO.save(deps.storage, &data)?;
+
     Ok(Response::default())
 }
 
+/// Exposes all the execute functions available in the contract.
+///
+/// ## Execute messages
+/// * **ExecuteMsg::ExtendLockTime { time }** Increase a staker's lock time.
+///
+/// * **ExecuteMsg::Receive(msg)** Parse incoming messages coming from the LP token contract.
+///
+/// * **ExecuteMsg::Withdraw {}** Withdraw all LP from a lock position if the lock has expired.
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
     deps: DepsMut,
@@ -48,454 +90,565 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::SetupPools { pools } => execute_setup_pools(deps, env, info, pools),
-        ExecuteMsg::SetTokensPerBlock { amount } => execute_set_tokens_per_block(deps, env, amount),
-        ExecuteMsg::ClaimRewards {
-            lp_tokens,
-            receiver,
-        } => execute_claim_rewards(deps, env, lp_tokens, receiver),
-        ExecuteMsg::UpdateConfig { reward_token } => {
-            execute_update_config(deps, info, reward_token)
+        ExecuteMsg::ExtendLockTime { time } => extend_lock_time(deps, env, info, time),
+        ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
+        ExecuteMsg::Withdraw {} => withdraw(deps, env, info),
+    }
+}
+
+/// Checkpoint the total voting power (total supply of veSIDE).
+/// This function fetches the last available veSIDE checkpoint, recalculates passed periods since the checkpoint and until now,
+/// applies slope changes and saves all recalculated periods in [`HISTORY`].
+///
+/// * **add_voting_power** amount of veSIDE to add to the total.
+///
+/// * **reduce_power** amount of veSIDE to subtract from the total.
+///
+/// * **old_slope** old slope applied to the total voting power (veSIDE supply).
+///
+/// * **new_slope** new slope to be applied to the total voting power (veSIDE supply).
+fn checkpoint_total(
+    storage: &mut dyn Storage,
+    env: Env,
+    add_voting_power: Option<Uint128>,
+    reduce_power: Option<Uint128>,
+    old_slope: Uint128,
+    new_slope: Uint128,
+) -> StdResult<()> {
+    let cur_period = get_period(env.block.time.seconds())?;
+    let cur_period_key = cur_period;
+    let contract_addr = env.contract.address;
+    let add_voting_power = add_voting_power.unwrap_or_default();
+
+    // Get last checkpoint
+    let last_checkpoint = fetch_last_checkpoint(storage, &contract_addr, cur_period_key)?;
+    let new_point = if let Some((_, mut point)) = last_checkpoint {
+        let last_slope_change = LAST_SLOPE_CHANGE.may_load(storage)?.unwrap_or(0);
+        if last_slope_change < cur_period {
+            let scheduled_slope_changes =
+                fetch_slope_changes(storage, last_slope_change, cur_period)?;
+            // Recalculating passed points
+            for (recalc_period, scheduled_change) in scheduled_slope_changes {
+                point = Point {
+                    power: calc_voting_power(&point, recalc_period),
+                    start: recalc_period,
+                    slope: point.slope - scheduled_change,
+                    ..point
+                };
+                HISTORY.save(storage, (contract_addr.clone(), recalc_period), &point)?
+            }
+
+            LAST_SLOPE_CHANGE.save(storage, &cur_period)?
         }
-        ExecuteMsg::Withdraw { lp_token, amount } => {
-            execute_withdraw(deps, env, lp_token, info.sender, amount)
+
+        let new_power = (calc_voting_power(&point, cur_period) + add_voting_power)
+            .saturating_sub(reduce_power.unwrap_or_default());
+
+        Point {
+            power: new_power,
+            slope: point.slope - old_slope + new_slope,
+            start: cur_period,
+            ..point
         }
-        ExecuteMsg::Receive(msg) => receive(deps, env, info, msg),
-    }
-}
-
-/// Creates a new reward emitter and adds it to [`POOL_INFO`] (if it does not exist yet) and updates
-/// total allocation points (in [`Config`]).
-///
-/// * **pools** is a vector of set that contains LP token address and allocation point.
-///
-/// ## Executor
-/// Can only be called by the owner or reward emitter controller
-pub fn execute_setup_pools(
-    mut deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    pools: Vec<(String, Uint128)>,
-) -> Result<Response, ContractError> {
-    let mut cfg = CONFIG.load(deps.storage)?;
-    if info.sender != cfg.admin {
-        return Err(ContractError::Unauthorized {});
-    }
-
-    let pools_set: HashSet<String> = pools.clone().into_iter().map(|pc| pc.0).collect();
-    if pools_set.len() != pools.len() {
-        return Err(ContractError::PoolDuplicate {});
-    }
-
-    let mut setup_pools: Vec<(Addr, Uint128)> = vec![];
-
-    for (pool, alloc_point) in pools {
-        let pool_addr = addr_validate_to_lower(deps.api, &pool)?;
-        setup_pools.push((pool_addr, alloc_point));
-    }
-
-    let prev_pools: Vec<_> = cfg.active_pools.iter().map(|pool| pool.0.clone()).collect();
-
-    update_pools(deps.branch(), &env, &cfg, &prev_pools)?;
-
-    for (lp_token, _) in &setup_pools {
-        if !POOL_INFO.has(deps.storage, &lp_token) {
-            create_pool(deps.branch(), &env, &lp_token, &cfg)?;
-        }
-    }
-
-    cfg.total_alloc_point = setup_pools.iter().map(|(_, alloc_point)| alloc_point).sum();
-    cfg.active_pools = setup_pools;
-
-    CONFIG.save(deps.storage, &cfg)?;
-
-    Ok(Response::new().add_attribute("action", "setup_pools"))
-}
-
-/// Sets a new amount of veToken distributed per block among all active pools. Before that, we
-/// will need to update all pools in order to correctly account for accured rewards.
-///
-/// * **amount** new count of tokens per block.
-fn execute_set_tokens_per_block(
-    mut deps: DepsMut,
-    env: Env,
-    amount: Uint128,
-) -> Result<Response, ContractError> {
-    let mut cfg = CONFIG.load(deps.storage)?;
-
-    let pools: Vec<_> = cfg.active_pools.iter().map(|pool| pool.0.clone()).collect();
-
-    update_pools(deps.branch(), &env, &cfg, &pools)?;
-
-    cfg.tokens_per_block = amount;
-    CONFIG.save(deps.storage, &cfg)?;
-
-    Ok(Response::new().add_attribute("action", "set_tokens_per_block"))
-}
-
-/// Updates the amount of accured rewards for a specific lp-token.
-///
-/// * **lp_token** sets the liquidity pool to be updated and claimed.
-///
-/// * **account** receiver address.
-pub fn execute_claim_rewards(
-    mut deps: DepsMut,
-    env: Env,
-    lp_tokens_raw: Vec<String>,
-    account: String,
-) -> Result<Response, ContractError> {
-    let cfg = CONFIG.load(deps.storage)?;
-
-    let mut lp_tokens = vec![];
-    for lp_token in &lp_tokens_raw {
-        lp_tokens.push(addr_validate_to_lower(deps.api, lp_token)?);
-    }
-    let account = addr_validate_to_lower(deps.api, account)?;
-
-    update_pools(deps.branch(), &env, &cfg, &lp_tokens)?;
-
-    let mut send_rewards_msg = vec![];
-    for lp_token in &lp_tokens {
-        let pool = POOL_INFO.load(deps.storage, &lp_token.clone()).unwrap();
-        let mut user = USER_INFO
-            .load(deps.storage, &(lp_token.clone(), account.clone()))
-            .unwrap();
-
-        send_rewards_msg.append(&mut send_pending_rewards(&cfg, &pool, &user, &account)?);
-
-        // Update user's reward index
-        user.reward_user_index = pool.reward_global_index;
-
-        USER_INFO.save(deps.storage, &(lp_token.clone(), account.clone()), &user)?;
-        POOL_INFO.save(deps.storage, &lp_token, &pool)?;
-    }
-
-    Ok(Response::default()
-        .add_attribute("action", "claim_rewards")
-        .add_messages(send_rewards_msg))
-}
-
-/// ## Executor
-/// Only the owner can execute this.
-#[allow(clippy::too_many_arguments)]
-pub fn execute_update_config(
-    deps: DepsMut,
-    info: MessageInfo,
-    reward_token: String,
-) -> Result<Response, ContractError> {
-    let mut config = CONFIG.load(deps.storage)?;
-
-    // Permission check
-    if info.sender != config.admin {
-        return Err(ContractError::Unauthorized {});
-    }
-
-    config.reward_token = addr_validate_to_lower(deps.api, reward_token)?;
-
-    CONFIG.save(deps.storage, &config)?;
-
-    Ok(Response::new().add_attribute("action", "update_config"))
-}
-
-/// Withdraw LP tokens from contract.
-///
-/// * **lp_token** LP token to withdraw.
-///
-/// * **account** user whose LP tokens we withdraw.
-///
-/// * **amount** amount of LP tokens to withdraw.
-pub fn execute_withdraw(
-    deps: DepsMut,
-    env: Env,
-    lp_token: String,
-    account: Addr,
-    amount: Uint128,
-) -> Result<Response, ContractError> {
-    let lp_token = addr_validate_to_lower(deps.api, lp_token)?;
-    let mut user = USER_INFO
-        .load(deps.storage, &(lp_token.clone(), account.clone()))
-        .unwrap_or_default();
-    if user.amount < amount {
-        return Err(ContractError::BalanceTooSmall {});
-    }
-
-    let cfg = CONFIG.load(deps.storage)?;
-    let mut pool = POOL_INFO.load(deps.storage, &lp_token.clone()).unwrap();
-
-    accumulate_rewards_per_share(&env, &lp_token.clone(), &mut pool, &cfg)?;
-
-    // Send pending rewards to the user
-    let send_rewards_msg = send_pending_rewards(&cfg, &pool, &user, &account)?;
-
-    // Instantiate the transfer call for the LP token
-    let transfer_msg = if !amount.is_zero() {
-        vec![WasmMsg::Execute {
-            contract_addr: lp_token.to_string(),
-            msg: to_binary(&Cw20ExecuteMsg::Transfer {
-                recipient: account.to_string(),
-                amount: amount,
-            })?,
-            funds: vec![],
-        }]
     } else {
-        vec![]
+        Point {
+            power: add_voting_power,
+            slope: new_slope,
+            start: cur_period,
+            end: 0, // we don't use 'end' in total voting power calculations
+        }
+    };
+    HISTORY.save(storage, (contract_addr, cur_period_key), &new_point)
+}
+
+/// Checkpoint a user's voting power (veSIDE balance).
+/// This function fetches the user's last available checkpoint, calculates the user's current voting power, applies slope changes based on
+/// `add_amount` and `new_end` parameters, schedules slope changes for total voting power and saves the new checkpoint for the current
+/// period in [`HISTORY`] (using the user's address).
+/// If a user already checkpointed themselves for the current period, then this function uses the current checkpoint as the latest
+/// available one.
+///
+/// * **addr** staker for which we checkpoint the voting power.
+///
+/// * **add_amount** amount of veSIDE to add to the staker's balance.
+///
+/// * **new_end** new lock time for the staker's veSIDE position.
+fn checkpoint(
+    deps: DepsMut,
+    env: Env,
+    addr: Addr,
+    add_amount: Option<Uint128>,
+    new_end: Option<u64>,
+) -> StdResult<()> {
+    let cur_period = get_period(env.block.time.seconds())?;
+    let cur_period_key = cur_period;
+    let add_amount = add_amount.unwrap_or_default();
+    let mut old_slope = Default::default();
+    let mut add_voting_power = Uint128::zero();
+
+    // Get the last user checkpoint
+    let last_checkpoint = fetch_last_checkpoint(deps.storage, &addr, cur_period_key)?;
+    let new_point = if let Some((_, point)) = last_checkpoint {
+        let end = new_end.unwrap_or(point.end);
+        let dt = end.saturating_sub(cur_period);
+        let current_power = calc_voting_power(&point, cur_period);
+        let new_slope = if dt != 0 {
+            if end > point.end && add_amount.is_zero() {
+                // This is extend_lock_time. Recalculating user's voting power
+                let mut lock = LOCKED.load(deps.storage, addr.clone())?;
+                let mut new_voting_power = calc_coefficient(dt).checked_mul_uint128(lock.amount)?;
+                let slope = adjust_vp_and_slope(&mut new_voting_power, dt)?;
+                // new_voting_power should always be >= current_power. saturating_sub is used for extra safety
+                add_voting_power = new_voting_power.saturating_sub(current_power);
+                lock.last_extend_lock_period = cur_period;
+                LOCKED.save(deps.storage, addr.clone(), &lock, env.block.height)?;
+                slope
+            } else {
+                // This is an increase in the user's lock amount
+                let raw_add_voting_power = calc_coefficient(dt).checked_mul_uint128(add_amount)?;
+                let mut new_voting_power = current_power.checked_add(raw_add_voting_power)?;
+                let slope = adjust_vp_and_slope(&mut new_voting_power, dt)?;
+                // new_voting_power should always be >= current_power. saturating_sub is used for extra safety
+                add_voting_power = new_voting_power.saturating_sub(current_power);
+                slope
+            }
+        } else {
+            Uint128::zero()
+        };
+
+        // Cancel the previously scheduled slope change
+        cancel_scheduled_slope(deps.storage, point.slope, point.end)?;
+
+        // We need to subtract the slope point from the total voting power slope
+        old_slope = point.slope;
+
+        Point {
+            power: current_power + add_voting_power,
+            slope: new_slope,
+            start: cur_period,
+            end,
+        }
+    } else {
+        // This error can't happen since this if-branch is intended for checkpoint creation
+        let end =
+            new_end.ok_or_else(|| StdError::generic_err("Checkpoint initialization error"))?;
+        let dt = end - cur_period;
+        add_voting_power = calc_coefficient(dt).checked_mul_uint128(add_amount)?;
+        let slope = adjust_vp_and_slope(&mut add_voting_power, dt)?;
+        Point {
+            power: add_voting_power,
+            slope,
+            start: cur_period,
+            end,
+        }
     };
 
-    // Update user's balance
-    user.amount = user.amount.checked_sub(amount).unwrap();
-    user.reward_user_index = pool.reward_global_index;
-    pool.total_supply -= user.amount;
+    // Schedule a slope change
+    schedule_slope_change(deps.storage, new_point.slope, new_point.end)?;
 
-    POOL_INFO.save(deps.storage, &lp_token, &pool)?;
-
-    if !user.amount.is_zero() {
-        USER_INFO.save(deps.storage, &(lp_token, account), &user)?;
-    } else {
-        USER_INFO.remove(deps.storage, &(lp_token, account));
-    }
-
-    Ok(Response::new()
-        .add_messages(send_rewards_msg)
-        .add_messages(transfer_msg)
-        .add_attribute("action", "withdraw")
-        .add_attribute("amount", amount))
+    HISTORY.save(deps.storage, (addr, cur_period_key), &new_point)?;
+    checkpoint_total(
+        deps.storage,
+        env,
+        Some(add_voting_power),
+        None,
+        old_slope,
+        new_point.slope,
+    )
 }
 
 /// Receives a message of type [`Cw20ReceiveMsg`] and processes it depending on the received template.
-/// * **cw20** CW20 message to process.
-fn receive(
+///
+/// * **cw20_msg** CW20 message to process.
+fn receive_cw20(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
     cw20_msg: Cw20ReceiveMsg,
 ) -> Result<Response, ContractError> {
-    let amount = cw20_msg.amount;
-    let lp_token = info.sender;
+    let sender = Addr::unchecked(cw20_msg.sender);
+    let config = CONFIG.load(deps.storage)?;
+    if info.sender != config.deposit_token {
+        return Err(ContractError::Unauthorized {});
+    }
 
     match from_binary(&cw20_msg.msg)? {
-        Cw20HookMsg::Deposit {} => {
-            let account = addr_validate_to_lower(deps.api, &cw20_msg.sender)?;
-            if !POOL_INFO.has(deps.storage, &lp_token) {
-                return Err(ContractError::PoolNotFound {});
-            }
-
-            deposit(deps, env, lp_token, account, amount)
-        }
-        Cw20HookMsg::DepositFor { beneficiary } => {
-            deposit(deps, env, lp_token, beneficiary, amount)
+        Cw20HookMsg::CreateLock { time } => create_lock(deps, env, sender, cw20_msg.amount, time),
+        Cw20HookMsg::ExtendLockAmount {} => deposit_for(deps, env, cw20_msg.amount, sender),
+        Cw20HookMsg::DepositFor { user } => {
+            let addr = deps.api.addr_validate(&user)?;
+            deposit_for(deps, env, cw20_msg.amount, addr)
         }
     }
 }
 
-/// Deposit LP tokens in contract to receive token emissions.
+/// Creates a lock for the user that lasts for the specified time duration (in seconds).
+/// Checks that the user is locking LP tokens.
+/// Checks that the lock time is within [`WEEK`]..[`MAX_LOCK_TIME`].
+/// Creates a lock if it doesn't exist and triggers a [`checkpoint`] for the staker.
+/// If a lock already exists, then a [`ContractError`] is returned.
 ///
-/// * **lp_token** LP token to deposit.
+/// * **user** staker for which we create a lock position.
 ///
-/// * **beneficiary** address that will take ownership of the staked LP tokens.
+/// * **amount** amount of LP deposited in the lock position.
 ///
-/// * **amount** amount of LP tokens to deposit.
-pub fn deposit(
+/// * **time** duration of the lock.
+fn create_lock(
     deps: DepsMut,
     env: Env,
-    lp_token: Addr,
-    beneficiary: Addr,
+    user: Addr,
     amount: Uint128,
+    time: u64,
 ) -> Result<Response, ContractError> {
-    let mut user = USER_INFO
-        .load(deps.storage, &(lp_token.clone(), beneficiary.clone()))
-        .unwrap_or_default();
+    time_limits_check(time)?;
 
-    let cfg = CONFIG.load(deps.storage)?;
-    let mut pool = POOL_INFO.load(deps.storage, &lp_token)?;
+    let block_period = get_period(env.block.time.seconds())?;
+    let end = block_period + get_periods_count(time);
 
-    accumulate_rewards_per_share(&env, &lp_token, &mut pool, &cfg)?;
+    LOCKED.update(deps.storage, user.clone(), env.block.height, |lock_opt| {
+        if lock_opt.is_some() && !lock_opt.unwrap().amount.is_zero() {
+            return Err(ContractError::LockAlreadyExists {});
+        }
+        Ok(Lock {
+            amount,
+            start: block_period,
+            end,
+            last_extend_lock_period: block_period,
+        })
+    })?;
 
-    // Send pending rewards (if any) to the depositor
-    let send_rewards_msg = send_pending_rewards(&cfg, &pool, &user, &beneficiary.clone())?;
+    checkpoint(deps, env, user, Some(amount), Some(end))?;
 
-    // Update user's LP token balance
-    user.amount = user.amount.checked_add(amount).unwrap();
-    user.reward_user_index = pool.reward_global_index;
-    pool.total_supply += user.amount;
-
-    POOL_INFO.save(deps.storage, &lp_token, &pool)?;
-    USER_INFO.save(deps.storage, &(lp_token, beneficiary), &user)?;
-
-    Ok(Response::new()
-        .add_messages(send_rewards_msg)
-        .add_attribute("action", "deposit")
-        .add_attribute("amount", amount))
+    Ok(Response::default().add_attribute("action", "create_lock"))
 }
 
-/// Updates the amount of accrued rewards.
+/// Deposits an 'amount' of LP tokens into 'user''s lock.
+/// Checks that the user is transferring and locking LP.
+/// Triggers a [`checkpoint`] for the user.
+/// If the user does not have a lock, then a [`ContractError`] is returned.
 ///
-/// * **lp_tokens** is the list of LP tokens which should be updated.
-pub fn update_pools(
+/// * **amount** amount of LP to deposit.
+///
+/// * **user** user who's lock amount will increase.
+fn deposit_for(
     deps: DepsMut,
-    env: &Env,
-    cfg: &Config,
-    lp_tokens: &Vec<Addr>,
-) -> Result<(), ContractError> {
-    for lp_token in lp_tokens {
-        let mut pool = POOL_INFO.load(deps.storage, &lp_token)?;
-        accumulate_rewards_per_share(env, lp_token, &mut pool, cfg)?;
-        POOL_INFO.save(deps.storage, lp_token, &pool)?;
-    }
-
-    Ok(())
-}
-
-#[entry_point]
-pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
-    let ver = cw2::get_contract_version(deps.storage)?;
-    // ensure we are migrating from an allowed contract
-    if ver.contract != CONTRACT_NAME {
-        return Err(StdError::generic_err("Can only upgrade from same type").into());
-    }
-    // note: better to do proper semver compare, but string compare *usually* works
-    if ver.version >= CONTRACT_VERSION.to_string() {
-        return Err(StdError::generic_err("Cannot upgrade from a newer version").into());
-    }
-
-    // set the new version
-    cw2::set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
-
-    Ok(Response::default())
-}
-
-pub fn create_pool(
-    deps: DepsMut,
-    env: &Env,
-    lp_token: &Addr,
-    cfg: &Config,
-) -> Result<(), ContractError> {
-    POOL_INFO.save(
+    env: Env,
+    amount: Uint128,
+    user: Addr,
+) -> Result<Response, ContractError> {
+    LOCKED.update(
         deps.storage,
-        &lp_token,
-        &PoolInfo {
-            last_reward_block: cfg
-                .start_block
-                .max(Uint64::from(env.block.height).into())
-                .into(),
-            has_asset_rewards: false,
-            reward_global_index: Decimal::zero(),
-            total_supply: Default::default(),
+        user.clone(),
+        env.block.height,
+        |lock_opt| match lock_opt {
+            Some(mut lock) if !lock.amount.is_zero() => {
+                if lock.end <= get_period(env.block.time.seconds())? {
+                    Err(ContractError::LockExpired {})
+                } else {
+                    lock.amount += amount;
+                    Ok(lock)
+                }
+            }
+            _ => Err(ContractError::LockDoesNotExist {}),
         },
     )?;
+    checkpoint(deps, env, user, Some(amount), None)?;
 
-    Ok(())
+    Ok(Response::default().add_attribute("action", "deposit_for"))
 }
 
-/// Calculates and returns the amount of accured rewards since the last reward checkpoint for a specific lp-token.
-///
-/// * **alloc_point** allocation points for specific lp-token.
-pub fn calculate_rewards(n_blocks: u64, alloc_point: &Uint128, cfg: &Config) -> StdResult<Uint128> {
-    let r = Uint128::from(n_blocks)
-        .checked_mul(cfg.tokens_per_block.into())?
-        .checked_mul(*alloc_point)?
-        .checked_div(cfg.total_alloc_point.into())
-        .unwrap_or_else(|_| Uint128::zero());
+/// Withdraws the whole amount of locked LP from a specific user lock.
+/// If the user lock doesn't exist or if it has not yet expired, then a [`ContractError`] is returned.
+fn withdraw(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
+    let sender = info.sender;
+    // 'LockDoesNotExist' is thrown either when a lock does not exist in LOCKED or when a lock exists but lock.amount == 0
+    let mut lock = LOCKED
+        .may_load(deps.storage, sender.clone())?
+        .filter(|lock| !lock.amount.is_zero())
+        .ok_or(ContractError::LockDoesNotExist {})?;
 
-    Ok(r)
-}
-
-/// Gets allocation point of the pool.
-///
-/// * **pools** is a vector of set that contains LP token address and allocation point.
-pub fn get_alloc_point(pools: &Vec<(Addr, Uint128)>, lp_token: &Addr) -> Uint128 {
-    pools
-        .iter()
-        .find_map(|(addr, alloc_point)| {
-            if &addr == lp_token {
-                return Some(*alloc_point);
-            }
-            None
-        })
-        .unwrap_or_else(Uint128::zero)
-}
-
-/// Accures the amount of rewards distributed for each staked LP token.
-/// Also update reward variables for the given lp-token.
-///
-/// * **lp_token** LP token whose rewards per share we update.
-///
-/// * **pool** generator associated with the `lp_token`.
-pub fn accumulate_rewards_per_share(
-    env: &Env,
-    lp_token: &Addr,
-    pool: &mut PoolInfo,
-    cfg: &Config,
-) -> StdResult<()> {
-    let lp_supply = pool.total_supply;
-    if env.block.height > pool.last_reward_block.u64() {
-        if !lp_supply.is_zero() {
-            let alloc_point = get_alloc_point(&cfg.active_pools, &lp_token);
-
-            let token_rewards = calculate_rewards(
-                env.block.height - pool.last_reward_block.u64(),
-                &alloc_point,
-                cfg,
-            )?;
-
-            let share = Decimal::from_ratio(token_rewards, lp_supply);
-            pool.reward_global_index = pool.reward_global_index.checked_add(share)?;
-        }
-
-        pool.last_reward_block = Uint64::from(env.block.height);
-    }
-
-    Ok(())
-}
-
-/// Distributes pending rewards for a specific staker.
-///
-/// * **pool** lp token where user staked.
-///
-/// * **user** staker for which we claim rewards.
-///
-/// * **to** address that will receive rewards.
-pub fn send_pending_rewards(
-    cfg: &Config,
-    pool: &PoolInfo,
-    user: &UserInfo,
-    to: &Addr,
-) -> Result<Vec<WasmMsg>, ContractError> {
-    if user.amount.is_zero() {
-        return Ok(vec![]);
-    }
-
-    let mut messages = vec![];
-
-    let pending_rewards = (pool.reward_global_index - user.reward_user_index)
-        .checked_mul_uint128(user.amount)
-        .unwrap();
-
-    if !pending_rewards.is_zero() {
-        messages.push(WasmMsg::Execute {
-            contract_addr: cfg.reward_token.to_string(),
+    let cur_period = get_period(env.block.time.seconds())?;
+    if lock.end > cur_period {
+        Err(ContractError::LockHasNotExpired {})
+    } else {
+        let config = CONFIG.load(deps.storage)?;
+        let transfer_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: config.deposit_token.to_string(),
             msg: to_binary(&Cw20ExecuteMsg::Transfer {
-                recipient: to.to_string(),
-                amount: pending_rewards,
+                recipient: sender.to_string(),
+                amount: lock.amount,
             })?,
             funds: vec![],
         });
-    }
+        lock.amount = Uint128::zero();
+        LOCKED.save(deps.storage, sender.clone(), &lock, env.block.height)?;
 
-    Ok(messages)
+        // We need to checkpoint and eliminate the slope influence on a future lock
+        HISTORY.save(
+            deps.storage,
+            (sender, cur_period),
+            &Point {
+                power: Uint128::zero(),
+                start: cur_period,
+                end: cur_period,
+                slope: Default::default(),
+            },
+        )?;
+
+        Ok(Response::default()
+            .add_message(transfer_msg)
+            .add_attribute("action", "withdraw"))
+    }
 }
 
-/// Returns a lowercased, validated address upon success. Otherwise returns [`Err`]
-/// ## Params
-/// * **api** is an object of type [`Api`]
+/// Increase the current lock time for a staker by a specified time period.
+/// Evaluates that the `time` is within [`WEEK`]..[`MAX_LOCK_TIME`]
+/// and then it triggers a [`checkpoint`].
+/// If the user lock doesn't exist or if it expired, then a [`ContractError`] is returned.
 ///
-/// * **addr** is an object of type [`impl Into<String>`]
-pub fn addr_validate_to_lower(api: &dyn Api, addr: impl Into<String>) -> StdResult<Addr> {
-    let addr = addr.into();
-    if addr.to_lowercase() != addr {
-        return Err(StdError::generic_err(format!(
-            "Address {} should be lowercase",
-            addr
-        )));
+/// ## Note
+/// The time is added to the lock's `end`.
+/// For example, at period 0, the user has their LP locked for 3 weeks.
+/// In 1 week, they increase their lock time by 10 weeks, thus the unlock period becomes 13 weeks.
+///
+/// * **time** increase in lock time applied to the staker's position.
+fn extend_lock_time(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    time: u64,
+) -> Result<Response, ContractError> {
+    let user = info.sender;
+    let mut lock = LOCKED
+        .may_load(deps.storage, user.clone())?
+        .filter(|lock| !lock.amount.is_zero())
+        .ok_or(ContractError::LockDoesNotExist {})?;
+
+    // Disable the ability to extend the lock time by less than a week
+    time_limits_check(time)?;
+
+    if lock.end <= get_period(env.block.time.seconds())? {
+        return Err(ContractError::LockExpired {});
+    };
+
+    // Should not exceed MAX_LOCK_TIME
+    time_limits_check(EPOCH_START + lock.end * WEEK + time - env.block.time.seconds())?;
+    lock.end += get_periods_count(time);
+    LOCKED.save(deps.storage, user.clone(), &lock, env.block.height)?;
+
+    checkpoint(deps, env, user, None, Some(lock.end))?;
+
+    Ok(Response::default().add_attribute("action", "extend_lock_time"))
+}
+
+/// Expose available contract queries.
+///
+/// ## Queries
+/// * **QueryMsg::TotalVotingPower {}** Fetch the total voting power (veSIDE supply) at the current block.
+///
+/// * **QueryMsg::UserVotingPower { user }** Fetch the user's voting power (veSIDE balance) at the current block.
+///
+/// * **QueryMsg::TotalVotingPowerAt { time }** Fetch the total voting power (veSIDE supply) at a specified timestamp.
+///
+/// * **QueryMsg::UserVotingPowerAt { time }** Fetch the user's voting power (veSIDE balance) at a specified timestamp.
+///
+/// * **QueryMsg::LockInfo { user }** Fetch a user's lock information.
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
+    match msg {
+        QueryMsg::TotalVotingPower {} => to_binary(&get_total_voting_power(deps, env, None)?),
+        QueryMsg::UserVotingPower { user } => {
+            to_binary(&get_user_voting_power(deps, env, user, None)?)
+        }
+        QueryMsg::TotalVotingPowerAt { time } => {
+            to_binary(&get_total_voting_power(deps, env, Some(time))?)
+        }
+        QueryMsg::TotalVotingPowerAtPeriod { period } => {
+            to_binary(&get_total_voting_power_at_period(deps, env, period)?)
+        }
+        QueryMsg::UserVotingPowerAt { user, time } => {
+            to_binary(&get_user_voting_power(deps, env, user, Some(time))?)
+        }
+        QueryMsg::UserVotingPowerAtPeriod { user, period } => {
+            to_binary(&get_user_voting_power_at_period(deps, user, period)?)
+        }
+        QueryMsg::LockInfo { user } => to_binary(&get_user_lock_info(deps, env, user)?),
+        QueryMsg::UserDepositAtHeight { user, height } => {
+            to_binary(&get_user_deposit_at_height(deps, user, height)?)
+        }
+        QueryMsg::Config {} => {
+            let config = CONFIG.load(deps.storage)?;
+            to_binary(&ConfigResponse {
+                admin: config.admin.to_string(),
+                deposit_token: config.deposit_token.to_string(),
+            })
+        }
+        QueryMsg::Balance { address } => to_binary(&get_user_balance(deps, env, address)?),
+        QueryMsg::TokenInfo {} => to_binary(&query_token_info(deps, env)?),
     }
-    api.addr_validate(&addr)
+}
+
+/// Return a user's lock information.
+///
+/// * **user** user for which we return lock information.
+fn get_user_lock_info(deps: Deps, env: Env, user: String) -> StdResult<LockInfoResponse> {
+    let addr = deps.api.addr_validate(&user)?;
+    if let Some(lock) = LOCKED.may_load(deps.storage, addr.clone())? {
+        let cur_period = get_period(env.block.time.seconds())?;
+        let slope = fetch_last_checkpoint(deps.storage, &addr, cur_period)?
+            .map(|(_, point)| point.slope)
+            .unwrap_or_default();
+        let resp = LockInfoResponse {
+            amount: lock.amount,
+            coefficient: calc_coefficient(lock.end - lock.last_extend_lock_period),
+            start: lock.start,
+            end: lock.end,
+            slope,
+        };
+        Ok(resp)
+    } else {
+        Err(StdError::generic_err("User is not found"))
+    }
+}
+
+/// Return a user's staked LP amount at a given block height.
+///
+/// * **user** user for which we return lock information.
+///
+/// * **block_height** block height at which we return the staked LP amount.
+fn get_user_deposit_at_height(deps: Deps, user: String, block_height: u64) -> StdResult<Uint128> {
+    let addr = deps.api.addr_validate(&user)?;
+    let locked_opt = LOCKED.may_load_at_height(deps.storage, addr, block_height)?;
+    if let Some(lock) = locked_opt {
+        Ok(lock.amount)
+    } else {
+        Ok(Uint128::zero())
+    }
+}
+
+/// Calculates a user's voting power at a given timestamp.
+/// If time is None, then it calculates the user's voting power at the current block.
+///
+/// * **user** user/staker for which we fetch the current voting power (veSIDE balance).
+///
+/// * **time** timestamp at which to fetch the user's voting power (veSIDE balance).
+fn get_user_voting_power(
+    deps: Deps,
+    env: Env,
+    user: String,
+    time: Option<u64>,
+) -> StdResult<VotingPowerResponse> {
+    let period = get_period(time.unwrap_or_else(|| env.block.time.seconds()))?;
+    get_user_voting_power_at_period(deps, user, period)
+}
+
+/// Calculates a user's voting power at a given period number.
+///
+/// * **user** user/staker for which we fetch the current voting power (veSIDE balance).
+///
+/// * **period** period number at which to fetch the user's voting power (veSIDE balance).
+fn get_user_voting_power_at_period(
+    deps: Deps,
+    user: String,
+    period: u64,
+) -> StdResult<VotingPowerResponse> {
+    let user = deps.api.addr_validate(&user)?;
+    let last_checkpoint = fetch_last_checkpoint(deps.storage, &user, period)?;
+
+    if let Some(point) = last_checkpoint.map(|(_, point)| point) {
+        // The voting power point at the specified `time` was found
+        let voting_power = if point.start == period {
+            point.power
+        } else {
+            // The point before the intended period was found, thus we can calculate the user's voting power for the period we want
+            calc_voting_power(&point, period)
+        };
+        Ok(VotingPowerResponse { voting_power })
+    } else {
+        // User not found
+        Ok(VotingPowerResponse {
+            voting_power: Uint128::zero(),
+        })
+    }
+}
+
+/// Calculates a user's voting power at the current block.
+///
+/// * **user** user/staker for which we fetch the current voting power (veSIDE balance).
+fn get_user_balance(deps: Deps, env: Env, user: String) -> StdResult<BalanceResponse> {
+    let vp_response = get_user_voting_power(deps, env, user, None)?;
+    Ok(BalanceResponse {
+        balance: vp_response.voting_power,
+    })
+}
+
+/// Calculates the total voting power (total veSIDE supply) at the given timestamp.
+/// If `time` is None, then it calculates the total voting power at the current block.
+///
+/// * **time** timestamp at which we fetch the total voting power (veSIDE supply).
+fn get_total_voting_power(
+    deps: Deps,
+    env: Env,
+    time: Option<u64>,
+) -> StdResult<VotingPowerResponse> {
+    let period = get_period(time.unwrap_or_else(|| env.block.time.seconds()))?;
+    get_total_voting_power_at_period(deps, env, period)
+}
+
+/// Calculates the total voting power (total veSIDE supply) at the given period number.
+///
+/// * **period** period number at which we fetch the total voting power (veSIDE supply).
+fn get_total_voting_power_at_period(
+    deps: Deps,
+    env: Env,
+    period: u64,
+) -> StdResult<VotingPowerResponse> {
+    let last_checkpoint = fetch_last_checkpoint(deps.storage, &env.contract.address, period)?;
+
+    let point = last_checkpoint.map_or(
+        Point {
+            power: Uint128::zero(),
+            start: period,
+            end: period,
+            slope: Default::default(),
+        },
+        |(_, point)| point,
+    );
+
+    let voting_power = if point.start == period {
+        point.power
+    } else {
+        let scheduled_slope_changes = fetch_slope_changes(deps.storage, point.start, period)?;
+        let mut init_point = point;
+        for (recalc_period, scheduled_change) in scheduled_slope_changes {
+            init_point = Point {
+                power: calc_voting_power(&init_point, recalc_period),
+                start: recalc_period,
+                slope: init_point.slope - scheduled_change,
+                ..init_point
+            }
+        }
+        calc_voting_power(&init_point, period)
+    };
+
+    Ok(VotingPowerResponse { voting_power })
+}
+
+/// Fetch the veSIDE token information, such as the token name, symbol, decimals and total supply (total voting power).
+fn query_token_info(deps: Deps, env: Env) -> StdResult<TokenInfoResponse> {
+    let info = TOKEN_INFO.load(deps.storage)?;
+    let total_vp = get_total_voting_power(deps, env, None)?;
+    let res = TokenInfoResponse {
+        name: info.name,
+        symbol: info.symbol,
+        decimals: info.decimals,
+        total_supply: total_vp.voting_power,
+    };
+    Ok(res)
+}
+
+/// Manages contract migration.
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn migrate(_deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
+    Err(ContractError::MigrationError {})
 }
