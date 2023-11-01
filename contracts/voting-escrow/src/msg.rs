@@ -1,6 +1,6 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Uint128, Decimal};
-use cw20::{Cw20ReceiveMsg, BalanceResponse, TokenInfoResponse};
+use cosmwasm_std::{Decimal, Uint128};
+use cw20::{BalanceResponse, Cw20ReceiveMsg, TokenInfoResponse};
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -102,5 +102,4 @@ pub struct ConfigResponse {
 
 /// This structure describes a Migration message.
 #[cw_serde]
-pub struct MigrateMsg {
-}
+pub struct MigrateMsg {}

@@ -1,26 +1,25 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    from_binary, to_binary, Addr, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
-    Response, StdError, StdResult, Storage, Uint128, WasmMsg,
+    from_binary, to_binary, Addr, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Response,
+    StdError, StdResult, Storage, Uint128, WasmMsg,
 };
 use cw2::set_contract_version;
-use cw20::{
-    BalanceResponse, Cw20ExecuteMsg, Cw20ReceiveMsg, TokenInfoResponse,
-};
+use cw20::{BalanceResponse, Cw20ExecuteMsg, Cw20ReceiveMsg, TokenInfoResponse};
 use cw20_base::state::{MinterData, TokenInfo, TOKEN_INFO};
 
-use crate::DecimalCheckedOps;
 use crate::error::ContractError;
-use crate::state::{
-    Config, Lock, Point, CONFIG, HISTORY, LAST_SLOPE_CHANGE, LOCKED,
+use crate::msg::{
+    ConfigResponse, Cw20HookMsg, ExecuteMsg, InstantiateMsg, LockInfoResponse, MigrateMsg,
+    QueryMsg, VotingPowerResponse,
 };
+use crate::state::{Config, Lock, Point, CONFIG, HISTORY, LAST_SLOPE_CHANGE, LOCKED};
 use crate::utils::{
-    adjust_vp_and_slope, calc_coefficient, calc_voting_power,
-    cancel_scheduled_slope, fetch_last_checkpoint, fetch_slope_changes, schedule_slope_change,
-    time_limits_check, get_period, get_periods_count, EPOCH_START, WEEK
+    adjust_vp_and_slope, calc_coefficient, calc_voting_power, cancel_scheduled_slope,
+    fetch_last_checkpoint, fetch_slope_changes, get_period, get_periods_count,
+    schedule_slope_change, time_limits_check, EPOCH_START, WEEK,
 };
-use crate::msg::{InstantiateMsg, ExecuteMsg, Cw20HookMsg, QueryMsg, ConfigResponse, LockInfoResponse, VotingPowerResponse, MigrateMsg};
+use crate::DecimalCheckedOps;
 
 /// Contract name that is used for migration.
 const CONTRACT_NAME: &str = "ve-side";

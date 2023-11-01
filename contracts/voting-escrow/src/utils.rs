@@ -1,6 +1,6 @@
 use crate::error::ContractError;
 
-use cosmwasm_std::{Addr, Decimal, Order, StdResult, Storage, Uint128, StdError};
+use cosmwasm_std::{Addr, Decimal, Order, StdError, StdResult, Storage, Uint128};
 use cw_storage_plus::Bound;
 
 use crate::state::{Point, HISTORY, LAST_SLOPE_CHANGE, SLOPE_CHANGES};
