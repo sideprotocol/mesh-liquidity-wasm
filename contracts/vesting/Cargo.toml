@@ -1,8 +1,8 @@
 [package]
-name = "volume"
+name = "vesting"
 version = "0.1.0"
 edition = "2021"
-description = "Track volume"
+description = "Vest tokens"
 license = "Apache-2.0"
 
 [lib]

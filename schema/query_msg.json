@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "QueryMsg",
+  "oneOf": [
+    {
+      "description": "Returns volume between specific interval Returns total volume till latest timestamp",
+      "type": "object",
+      "required": [
+        "total_volume"
+      ],
+      "properties": {
+        "total_volume": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Returns total volume till given timestamp",
+      "type": "object",
+      "required": [
+        "total_volume_at"
+      ],
+      "properties": {
+        "total_volume_at": {
+          "type": "object",
+          "required": [
+            "timestamp"
+          ],
+          "properties": {
+            "timestamp": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Returns contract address for which volume is tracked",
+      "type": "object",
+      "required": [
+        "contract"
+      ],
+      "properties": {
+        "contract": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    }
+  ]
+}
