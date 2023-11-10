@@ -10,10 +10,10 @@ use cw2::set_contract_version;
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
-use crate::state::{Config, Observation, CONFIG, OBSERVATIONS};
+use crate::state::{Config, VestingDetails, CONFIG, VESTED_TOKENS_ALL};
 
 // Version info, for migration info
-const CONTRACT_NAME: &str = "volume";
+const CONTRACT_NAME: &str = "vesting";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -26,12 +26,7 @@ pub fn instantiate(
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     let config = Config {
         admin: info.sender.into_string(),
-        contract_address: msg.contract,
-        max_length: msg.max_length,
-        pivoted: true,
-        current_idx: 0,
-        is_new: true,
-        counter: 0,
+        allowed_addresses: msg.allowed_addresses,
     };
     CONFIG.save(deps.storage, &config)?;
     Ok(Response::default())
@@ -45,19 +40,17 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::LogObservation { token1, token2 } => {
-            execute_log_observation(deps, env, info, token1, token2)
-        }
-        ExecuteMsg::SetContract { address } => execute_set_contract(deps, env, info, address),
+        ExecuteMsg::StartVesting { vesting } => execute_start_vesting(deps, env, info, vesting),
+        ExecuteMsg::SetAllowed { addresses } => execute_set_contract(deps, env, info, addresses),
+        ExecuteMsg::Claim {} => execute_claim(deps, env, info),
     }
 }
 
-pub fn execute_log_observation(
+pub fn execute_start_vesting(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    token1: Coin,
-    token2: Coin,
+    vesting: VestingDetails,
 ) -> Result<Response, ContractError> {
     let mut config = CONFIG.load(deps.storage)?;
     if info.sender != config.contract_address {
@@ -93,7 +86,7 @@ pub fn execute_set_contract(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
-    address: String,
+    addresses: Vec<String>,
 ) -> Result<Response, ContractError> {
     let mut config = CONFIG.load(deps.storage)?;
     if info.sender != config.admin {

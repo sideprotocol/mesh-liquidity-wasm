@@ -26,17 +26,7 @@ pub struct Config {
     // admin
     pub admin: String,
     // allowed addresses which can enable vesting for receiver
-    pub allowed_addresses: String,
-    // current index
-    pub current_idx: u64,
-    // pivoted or not
-    pub pivoted: bool,
-    // Maximum length
-    pub max_length: u64,
-    // Is new
-    pub is_new: bool,
-    // total observations in map
-    pub counter: u64,
+    pub allowed_addresses: Vec<String>,
 }
 pub const VESTED_TOKENS_ALL: Map<String, Vec<VestingDetails>> = Map::new("vested_tokens_all");
 
