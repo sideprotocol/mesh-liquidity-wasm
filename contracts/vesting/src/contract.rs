@@ -1,3 +1,5 @@
+use std::cmp::min;
+
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
@@ -117,7 +119,43 @@ pub fn execute_set_contract(
     config.allowed_addresses = addresses;
     CONFIG.save(deps.storage, &config)?;
 
-    let res = Response::new().add_attribute("action", "set_contract");
+    let res = Response::new().add_attribute("action", "set_allowed_addresses");
+    Ok(res)
+}
+
+pub fn execute_claim(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+) -> Result<Response, ContractError> {
+    let vesting_details = VESTED_TOKENS_ALL.load(deps.storage, info.sender.to_string())?;
+    let mut new_vesting = vec![];
+
+    for mut vesting in vesting_details {
+        let now = env.block.time.seconds();
+        if vesting.cliff <= now {
+            let mut release_count = (now - vesting.cliff) / vesting.release_interval;
+            release_count += 1;
+            release_count = min(
+                release_count,
+                vesting.vested_time / vesting.release_interval,
+            );
+            let release_amount = vesting.token.amount.u128()
+                / (vesting.vested_time / vesting.release_interval) as u128;
+
+            let send_amount = release_amount * (release_count as u128);
+            let final_amount = send_amount - vesting.amount_claimed;
+
+            // send final_amount
+
+            vesting.amount_claimed += final_amount;
+        }
+        new_vesting.push(vesting);
+    }
+
+    VESTED_TOKENS_ALL.save(deps.storage, info.sender.to_string(), &new_vesting);
+
+    let res = Response::new().add_attribute("action", "claim_tokens");
     Ok(res)
 }
 
