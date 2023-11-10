@@ -3,7 +3,7 @@ use std::cmp::min;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult,
+    to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult,
 };
 
 use cw2::set_contract_version;
@@ -52,10 +52,29 @@ pub fn execute_start_vesting(
     info: MessageInfo,
     vesting: VestingDetails,
 ) -> Result<Response, ContractError> {
-    let mut config = CONFIG.load(deps.storage)?;
-    if info.sender != config.contract_address {
+    let config = CONFIG.load(deps.storage)?;
+    let mut ok = false;
+    for address in config.allowed_addresses {
+        if address == info.sender {
+            ok = true;
+        }
+    }
+    if !ok {
         return Err(ContractError::Std(StdError::generic_err(format!(
-            "Must be called by contract"
+            "Must be called by allowed address"
+        ))));
+    }
+
+    // checks
+    if vesting.cliff < env.block.time.seconds() {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Cliff time must be in future"
+        ))));
+    }
+
+    if vesting.vested_time % vesting.release_interval != 0 {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "Remainder for vested_time / release_interval should be zero"
         ))));
     }
 

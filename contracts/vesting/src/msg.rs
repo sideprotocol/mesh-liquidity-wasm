@@ -21,15 +21,10 @@ pub struct MigrateMsg {}
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    /// Returns volume between specific interval
-    // VolumeInterval {
-    //     start: u64,
-    //     end: u64,
-    // },
-    /// Returns total volume till latest timestamp
-    TotalVolume {},
-    /// Returns total volume till given timestamp
-    TotalVolumeAt { timestamp: u64 },
-    /// Returns contract address for which volume is tracked
-    Contract {},
+    /// Returns all claims details
+    QueryClaims {},
+    /// Returns all vesting details
+    QueryVestingDetails {},
+    /// Returns config
+    QueryConfig {},
 }

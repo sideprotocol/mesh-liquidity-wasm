@@ -12,7 +12,7 @@ pub struct VestingDetails {
     pub vested_time: u64,
     // Interval after which tokens will be released
     // vested_time % release_interval should be 0
-    pub release_interval: u128,
+    pub release_interval: u64,
     // token receiver, can claim tokens
     pub receiver: String,
     // total amount of tokens,
