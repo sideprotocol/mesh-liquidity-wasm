@@ -3,7 +3,8 @@ use std::cmp::min;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult,
+    to_binary, BankMsg, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Response, StdError,
+    StdResult, Uint128,
 };
 
 use cw2::set_contract_version;
@@ -130,6 +131,7 @@ pub fn execute_claim(
 ) -> Result<Response, ContractError> {
     let vesting_details = VESTED_TOKENS_ALL.load(deps.storage, info.sender.to_string())?;
     let mut new_vesting = vec![];
+    let mut send_msg;
 
     for mut vesting in vesting_details {
         let now = env.block.time.seconds();
@@ -143,19 +145,27 @@ pub fn execute_claim(
             let release_amount = vesting.token.amount.u128()
                 / (vesting.vested_time / vesting.release_interval) as u128;
 
-            let send_amount = release_amount * (release_count as u128);
-            let final_amount = send_amount - vesting.amount_claimed;
+            let send_amount = release_amount.checked_mul(release_count as u128).unwrap();
+            let final_amount = send_amount - vesting.amount_claimed.u128();
 
-            // send final_amount
+            send_msg = BankMsg::Send {
+                to_address: info.sender.into(),
+                amount: vec![Coin {
+                    denom: vesting.token.denom,
+                    amount: Uint128::from(final_amount),
+                }],
+            };
 
-            vesting.amount_claimed += final_amount;
+            vesting.amount_claimed += Uint128::from(final_amount);
         }
         new_vesting.push(vesting);
     }
 
     VESTED_TOKENS_ALL.save(deps.storage, info.sender.to_string(), &new_vesting);
 
-    let res = Response::new().add_attribute("action", "claim_tokens");
+    let res = Response::new()
+        .add_attribute("action", "claim_tokens")
+        .add_message(send_msg);
     Ok(res)
 }
 
@@ -180,26 +190,26 @@ pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, C
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::QueryClaims {} => to_binary(&query_contract(deps)?),
-        QueryMsg::QueryConfig {} => to_binary(&query_total_volume(deps, env)?),
-        QueryMsg::QueryVestingDetails { timestamp } => {
-            to_binary(&query_total_volume_at(deps, timestamp)?)
-        } //QueryMsg::VolumeInterval { start, end } => to_binary(&query_total_volume_interval(deps, start, end)?),
+        QueryMsg::QueryClaims { address } => to_binary(&query_claims(deps, address)?),
+        QueryMsg::QueryConfig {} => to_binary(&query_config(deps)?),
+        QueryMsg::QueryVestingDetails { address } => {
+            to_binary(&query_vesting_details(deps, address)?)
+        }
     }
 }
 
-fn query_contract(deps: Deps) -> StdResult<String> {
+fn query_claims(deps: Deps, address: String) -> StdResult<String> {
     let config = CONFIG.load(deps.storage)?;
 
     Ok(config.contract_address)
 }
 
-fn query_total_volume(deps: Deps, env: Env) -> StdResult<Observation> {
-    let res = binary_search(deps, env.block.time.nanos())?;
-    Ok(OBSERVATIONS.load(deps.storage, res)?)
+fn query_vesting_details(deps: Deps, address: String) -> StdResult<Vec<VestingDetails>> {
+    let vesting_details = VESTED_TOKENS_ALL.load(deps.storage, address)?;
+    Ok(vesting_details)
 }
 
-fn query_total_volume_at(deps: Deps, timestamp: u64) -> StdResult<Observation> {
-    let res = binary_search(deps, timestamp)?;
-    Ok(OBSERVATIONS.load(deps.storage, res)?)
+fn query_config(deps: Deps) -> StdResult<Config> {
+    let config = CONFIG.load(deps.storage)?;
+    Ok(config)
 }
