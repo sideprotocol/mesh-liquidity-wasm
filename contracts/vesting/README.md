@@ -15,4 +15,6 @@ This way we don’t have to iterate over all users to figure out, how much shoul
 
 Slopes and biases change both when a user deposits and locks governance tokens, and when the locktime expires. All the possible expiration times are rounded to whole weeks to make number of reads from blockchain proportional to number of missed weeks at most, not number of users (which is potentially large).
 
+Ref: [CRV](https://curve.readthedocs.io/dao-vecrv.html), [BAL](https://docs.balancer.fi/concepts/governance/veBAL/)
+
 # Querying Balances, Locks and supply
