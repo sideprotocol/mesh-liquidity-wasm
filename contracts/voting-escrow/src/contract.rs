@@ -651,3 +651,27 @@ fn query_token_info(deps: Deps, env: Env) -> StdResult<TokenInfoResponse> {
 pub fn migrate(_deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
     Err(ContractError::MigrationError {})
 }
+
+#[cfg(test)]
+mod tests {
+    use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
+    use cosmwasm_std::Timestamp;
+
+    use super::*;
+
+    #[test]
+    fn test_instantiate() {
+        let mut deps = mock_dependencies();
+        // Instantiate an contract
+        let instantiate_msg = InstantiateMsg {
+            admin: "some-address".to_string(),
+            guardian_addr: None,
+            deposit_token: "deposit-token".to_string(),
+        };
+        let mut env = mock_env();
+        env.block.time = Timestamp::from_seconds(1700161944);
+        let info = mock_info("some-address", &[]);
+        let res = instantiate(deps.as_mut(), env, info, instantiate_msg).unwrap();
+        assert_eq!(0, res.messages.len());
+    }
+}
