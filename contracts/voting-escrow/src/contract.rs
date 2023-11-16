@@ -655,7 +655,7 @@ pub fn migrate(_deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, 
 #[cfg(test)]
 mod tests {
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::Timestamp;
+    use cosmwasm_std::{Addr, Timestamp};
 
     use super::*;
 
@@ -673,5 +673,42 @@ mod tests {
         let info = mock_info("some-address", &[]);
         let res = instantiate(deps.as_mut(), env, info, instantiate_msg).unwrap();
         assert_eq!(0, res.messages.len());
+    }
+
+    #[test]
+    fn lock_lp() {
+        let mut deps = mock_dependencies();
+        // Instantiate an contract
+        let instantiate_msg = InstantiateMsg {
+            admin: "some-address".to_string(),
+            guardian_addr: None,
+            deposit_token: "lp-token".to_string(),
+        };
+        let mut env = mock_env();
+        env.block.time = Timestamp::from_seconds(1700161944);
+        let info = mock_info("lp-token", &[]);
+        let res1 = instantiate(deps.as_mut(), env.clone(), info, instantiate_msg).unwrap();
+        assert_eq!(0, res1.messages.len());
+
+        // Minimum lock is 1 week
+        let res = create_lock(
+            deps.as_mut(),
+            env.clone(),
+            Addr::unchecked("user".to_string()),
+            Uint128::from(1000u64),
+            604800,
+        )
+        .unwrap();
+        assert_eq!(0, res.messages.len());
+
+        // query lock
+        let res = get_total_voting_power(deps.as_ref(), env.clone(), None).unwrap();
+        assert_eq!(res.voting_power, Uint128::from(1014u64));
+
+        let res = get_user_balance(deps.as_ref(), env.clone(), "user".to_string()).unwrap();
+        assert_eq!(res.balance, Uint128::from(1014u64));
+
+        let res = get_user_lock_info(deps.as_ref(), env, "user".to_string()).unwrap();
+        assert_eq!(res.amount, Uint128::from(1000u64));
     }
 }
