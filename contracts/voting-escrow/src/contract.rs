@@ -711,6 +711,7 @@ mod tests {
         let res = get_user_lock_info(deps.as_ref(), env.clone(), "user".to_string()).unwrap();
         assert_eq!(res.amount, Uint128::from(1000u64));
 
+        // Extend lock time
         let info = mock_info("user", &[]);
         let res = extend_lock_time(deps.as_mut(), env.clone(), info, 604800).unwrap();
         assert_eq!(0, res.messages.len());
@@ -723,13 +724,28 @@ mod tests {
 
         let res = get_user_lock_info(deps.as_ref(), env.clone(), "user".to_string()).unwrap();
         assert_eq!(res.amount, Uint128::from(1000u64));
+
+        // Deposit more tokens
+        let res = deposit_for(
+            deps.as_mut(),
+            env.clone(),
+            Uint128::from(1000u64),
+            Addr::unchecked("user".to_string()),
+        )
+        .unwrap();
+        assert_eq!(0, res.messages.len());
+
+        let res = get_total_voting_power(deps.as_ref(), env.clone(), None).unwrap();
+        assert_eq!(res.voting_power, Uint128::from(2056u64));
+
+        let res = get_user_balance(deps.as_ref(), env.clone(), "user".to_string()).unwrap();
+        assert_eq!(res.balance, Uint128::from(2056u64));
+
+        let res = get_user_lock_info(deps.as_ref(), env.clone(), "user".to_string()).unwrap();
+        assert_eq!(res.amount, Uint128::from(2000u64));
     }
 
     #[test]
     fn withdraw_lock() {}
-
-    #[test]
-    fn multiple_lock() {}
-
     // TODO: Add failing cases
 }
