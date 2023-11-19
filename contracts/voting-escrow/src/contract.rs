@@ -676,7 +676,7 @@ mod tests {
     }
 
     #[test]
-    fn lock_lp() {
+    fn lock_lp_flow() {
         let mut deps = mock_dependencies();
         // Instantiate an contract
         let instantiate_msg = InstantiateMsg {
