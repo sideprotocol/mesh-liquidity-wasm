@@ -1,0 +1,39 @@
+[package]
+name = "staking-contract"
+version = "0.0.1"
+authors = ["Amit Yadav"]
+edition = "2018"
+
+exclude = [
+  # Those files are rust-optimizer artifacts. You might want to commit them for convenience but they should not be part of the source code publication.
+  "contract.wasm",
+  "hash.txt",
+]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# for quicker tests, cargo test --lib
+# for more explicit tests, cargo test --features=backtraces
+backtraces = ["cosmwasm-std/backtraces"]
+library = []
+
+[dependencies]
+cosmwasm-std = { version = "1.1", features = ["staking","stargate"] }
+schemars = "0.8.1"
+serde = { version = "1.0.103", default-features = false, features = ["derive"] }
+snafu = { version = "0.6.3" }
+rand = "0.5.0"
+cosmwasm-bignumber = "2.2.0"
+thiserror = { version = "1.0.23" }
+cw-controllers = { version = "0.15" }
+cw-storage-plus = { version = "0.15" }
+cw2 = { version = "0.15" }
+cw20 = { version = "0.15" }
+rust_decimal = { version = "1.7.0", default-features = false, features = ["serde"]}
+
+[dev-dependencies]
+cosmwasm-schema = { version = "1.1" }

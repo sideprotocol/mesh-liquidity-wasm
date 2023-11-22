@@ -1,0 +1,401 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "QueryResponse",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "info"
+      ],
+      "properties": {
+        "info": {
+          "type": "object",
+          "required": [
+            "admin",
+            "bjuno_backing",
+            "bjuno_in_contract",
+            "bjuno_to_burn",
+            "bjuno_token",
+            "dev_address",
+            "dev_fee",
+            "epoch_period",
+            "er_threshold",
+            "juno_under_withdraw",
+            "kill_switch",
+            "peg_recovery_fee",
+            "reward_denom",
+            "rewards_contract",
+            "sejuno_backing",
+            "sejuno_in_contract",
+            "sejuno_to_burn",
+            "sejuno_token",
+            "to_deposit",
+            "top_validator_contract",
+            "total_staked",
+            "unbonding_period",
+            "underlying_coin_denom",
+            "validator_set"
+          ],
+          "properties": {
+            "admin": {
+              "$ref": "#/definitions/Addr"
+            },
+            "bjuno_backing": {
+              "$ref": "#/definitions/Uint128"
+            },
+            "bjuno_in_contract": {
+              "$ref": "#/definitions/Uint128"
+            },
+            "bjuno_to_burn": {
+              "$ref": "#/definitions/Uint128"
+            },
+            "bjuno_token": {
+              "$ref": "#/definitions/Addr"
+            },
+            "dev_address": {
+              "$ref": "#/definitions/Addr"
+            },
+            "dev_fee": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "epoch_period": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "er_threshold": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "juno_under_withdraw": {
+              "$ref": "#/definitions/Uint128"
+            },
+            "kill_switch": {
+              "type": "integer",
+              "format": "uint8",
+              "minimum": 0.0
+            },
+            "peg_recovery_fee": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "reward_denom": {
+              "type": "string"
+            },
+            "rewards_contract": {
+              "$ref": "#/definitions/Addr"
+            },
+            "sejuno_backing": {
+              "$ref": "#/definitions/Uint128"
+            },
+            "sejuno_in_contract": {
+              "$ref": "#/definitions/Uint128"
+            },
+            "sejuno_to_burn": {
+              "$ref": "#/definitions/Uint128"
+            },
+            "sejuno_token": {
+              "$ref": "#/definitions/Addr"
+            },
+            "to_deposit": {
+              "$ref": "#/definitions/Uint128"
+            },
+            "top_validator_contract": {
+              "$ref": "#/definitions/Addr"
+            },
+            "total_staked": {
+              "$ref": "#/definitions/Uint128"
+            },
+            "unbonding_period": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "underlying_coin_denom": {
+              "type": "string"
+            },
+            "validator_set": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/ValidatorResponse"
+              }
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "pending_claims"
+      ],
+      "properties": {
+        "pending_claims": {
+          "type": "object",
+          "required": [
+            "pending"
+          ],
+          "properties": {
+            "pending": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/PendingClaimsResponse"
+              }
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "active_undelegation"
+      ],
+      "properties": {
+        "active_undelegation": {
+          "type": "object",
+          "required": [
+            "bjuno_amount",
+            "sejuno_amount"
+          ],
+          "properties": {
+            "bjuno_amount": {
+              "$ref": "#/definitions/Uint128"
+            },
+            "sejuno_amount": {
+              "$ref": "#/definitions/Uint128"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "top_validators"
+      ],
+      "properties": {
+        "top_validators": {
+          "type": "object",
+          "required": [
+            "validators"
+          ],
+          "properties": {
+            "validators": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "sejuno_exchange_rate"
+      ],
+      "properties": {
+        "sejuno_exchange_rate": {
+          "type": "object",
+          "required": [
+            "denom",
+            "rate"
+          ],
+          "properties": {
+            "denom": {
+              "type": "string"
+            },
+            "rate": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "bjuno_exchange_rate"
+      ],
+      "properties": {
+        "bjuno_exchange_rate": {
+          "type": "object",
+          "required": [
+            "denom",
+            "rate"
+          ],
+          "properties": {
+            "denom": {
+              "type": "string"
+            },
+            "rate": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "dev_fee"
+      ],
+      "properties": {
+        "dev_fee": {
+          "type": "object",
+          "required": [
+            "address",
+            "fee"
+          ],
+          "properties": {
+            "address": {
+              "$ref": "#/definitions/Addr"
+            },
+            "fee": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "window"
+      ],
+      "properties": {
+        "window": {
+          "type": "object",
+          "required": [
+            "bjuno_amount",
+            "id",
+            "sejuno_amount",
+            "time_to_close"
+          ],
+          "properties": {
+            "bjuno_amount": {
+              "$ref": "#/definitions/Uint128"
+            },
+            "id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "sejuno_amount": {
+              "$ref": "#/definitions/Uint128"
+            },
+            "time_to_close": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "unbonding"
+      ],
+      "properties": {
+        "unbonding": {
+          "type": "object",
+          "required": [
+            "unbonding_amount"
+          ],
+          "properties": {
+            "unbonding_amount": {
+              "$ref": "#/definitions/Uint128"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "claimable"
+      ],
+      "properties": {
+        "claimable": {
+          "type": "object",
+          "required": [
+            "claimable_amount"
+          ],
+          "properties": {
+            "claimable_amount": {
+              "$ref": "#/definitions/Uint128"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  ],
+  "definitions": {
+    "Addr": {
+      "description": "A human readable address.\n\nIn Cosmos, this is typically bech32 encoded. But for multi-chain smart contracts no assumptions should be made other than being UTF-8 encoded and of reasonable length.\n\nThis type represents a validated address. It can be created in the following ways 1. Use `Addr::unchecked(input)` 2. Use `let checked: Addr = deps.api.addr_validate(input)?` 3. Use `let checked: Addr = deps.api.addr_humanize(canonical_addr)?` 4. Deserialize from JSON. This must only be done from JSON that was validated before such as a contract's state. `Addr` must not be used in messages sent by the user because this would result in unvalidated instances.\n\nThis type is immutable. If you really need to mutate it (Really? Are you sure?), create a mutable copy using `let mut mutable = Addr::to_string()` and operate on that `String` instance.",
+      "type": "string"
+    },
+    "PendingClaimsResponse": {
+      "type": "object",
+      "required": [
+        "claim_time",
+        "juno_amount",
+        "window_id"
+      ],
+      "properties": {
+        "claim_time": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "juno_amount": {
+          "$ref": "#/definitions/Uint128"
+        },
+        "window_id": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
+    "Uint128": {
+      "description": "A thin wrapper around u128 that is using strings for JSON encoding/decoding, such that the full u128 range can be used for clients that convert JSON numbers to floats, like JavaScript and jq.\n\n# Examples\n\nUse `from` to create instances of this and `u128` to get the value out:\n\n``` # use cosmwasm_std::Uint128; let a = Uint128::from(123u128); assert_eq!(a.u128(), 123);\n\nlet b = Uint128::from(42u64); assert_eq!(b.u128(), 42);\n\nlet c = Uint128::from(70u32); assert_eq!(c.u128(), 70); ```",
+      "type": "string"
+    },
+    "ValidatorResponse": {
+      "type": "object",
+      "required": [
+        "address",
+        "staked"
+      ],
+      "properties": {
+        "address": {
+          "type": "string"
+        },
+        "staked": {
+          "$ref": "#/definitions/Uint128"
+        }
+      }
+    }
+  }
+}
