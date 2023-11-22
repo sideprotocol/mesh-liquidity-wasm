@@ -13,21 +13,16 @@ pub struct InstantiateMsg {
     pub underlying_coin_denom: String,
     pub unbonding_period: u64,
     pub reward_denom: String,
-    pub er_threshold: u64,
-    pub peg_recovery_fee: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
     Stake { referral: u64 },
-    StakeForBjuno { referral: u64 },
     Claim {},
     ClaimAndStake {},
 
-    UpdateSejunoAddr { address: Addr },
-    UpdateBjunoAddr { address: Addr },
-    UpdateValidatorSetAddr { address: Addr },
+    UpdateLssideAddr { address: Addr },
     UpdateRewardsAddr { address: Addr },
 
     // // token interaction
@@ -65,12 +60,6 @@ pub enum ExecuteMsg {
     ChangeOwner {
         new_owner: Addr,
     },
-
-    RecoverJuno {
-        amount: Uint128,
-        denom: String,
-        to: String,
-    },
     // Unbond everything
     KillSwitchUnbond {},
 
@@ -85,39 +74,10 @@ pub enum ExecuteMsg {
     ChangeDevFee {
         dev_fee: Option<u64>,
         dev_address: Option<Addr>,
-    }, 
-
-    ChangePegRecoveryFee {
-        peg_recovery_fee: u64,
     },
-
-    ChangeThreshold {
-        er_threshold: u64,
-    },
-    
-    ClaimAirdrop1 {
-        address: Addr,
-        stage: u8,
-        amount: Uint128,
-        proof: Vec<String>
-    },
-    ClaimAirdrop2 {
-        address: Addr,
-        amount: Uint128,
-        proof: Vec<String>
-    },
-    ClaimAirdrop3 {
-        address: Addr,
-    },
-    ClaimReward {},
-
     ChangeReferralContract {
         referral_contract: Addr
     },
-
-    RemoveOldWindowData { window: u64 },
-    RemoveOldClaimData {},
-    RemoveOldQueueData {},
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -170,14 +130,12 @@ pub enum QueryRewards {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    SejunoExchangeRate {},
-    BjunoExchangeRate {},
+    LssideExchangeRate {},
     QueryDevFee {},
     Info {},
     Undelegations { address: Addr },
     UserClaimable { address: Addr },
     Window {},
-    ValidatorList {},
     ActiveUnbonding { address: Addr },
 }
 
