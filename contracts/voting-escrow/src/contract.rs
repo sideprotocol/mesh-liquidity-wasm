@@ -687,7 +687,7 @@ mod tests {
         let mut env = mock_env();
         env.block.time = Timestamp::from_seconds(1700161944);
         let info = mock_info("lp-token", &[]);
-        let res1 = instantiate(deps.as_mut(), env.clone(), info.clone(), instantiate_msg).unwrap();
+        let res1 = instantiate(deps.as_mut(), env.clone(), info, instantiate_msg).unwrap();
         assert_eq!(0, res1.messages.len());
 
         // Minimum lock is 1 week
@@ -741,7 +741,7 @@ mod tests {
         let res = get_user_balance(deps.as_ref(), env.clone(), "user".to_string()).unwrap();
         assert_eq!(res.balance, Uint128::from(2056u64));
 
-        let res = get_user_lock_info(deps.as_ref(), env.clone(), "user".to_string()).unwrap();
+        let res = get_user_lock_info(deps.as_ref(), env, "user".to_string()).unwrap();
         assert_eq!(res.amount, Uint128::from(2000u64));
     }
 
