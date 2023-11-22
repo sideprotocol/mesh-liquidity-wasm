@@ -25,7 +25,7 @@ pub fn sejuno_exchange_rate<Q: CustomQuery>(
     let state = STATE.load(store)?;
     let contract_address = config.contract_addr;
 
-    let sejuno_token = config.sejuno_token.ok_or_else(|| {
+    let sejuno_token = config.ls_side_token.ok_or_else(|| {
         StdError::generic_err(
             "seJUNO token addr not registered".to_string(),
         )
@@ -35,44 +35,13 @@ pub fn sejuno_exchange_rate<Q: CustomQuery>(
         let total_on_chain = get_onchain_balance_with_rewards(querier, store, &contract_address,false)?;
         let tokens =
             query_total_supply(querier, &sejuno_token)?.u128()
-            .saturating_sub(state.sejuno_to_burn.u128());
+            .saturating_sub(state.lsside_to_burn.u128());
         let exchange_rate = _calc_exchange_rate(total_on_chain, tokens)?;
         Ok(exchange_rate)
     } else {
         let total_on_chain = SEJUNO_FROZEN_TOTAL_ONCHAIN.load(store)?.u128();
         let tokens = SEJUNO_FROZEN_TOKENS.load(store)?.u128();
     
-        let exchange_rate = _calc_exchange_rate(total_on_chain, tokens)?;
-        Ok(exchange_rate)
-    }
-}
-
-pub fn bjuno_exchange_rate<Q: CustomQuery>(
-    store: &dyn Storage,
-    querier: QuerierWrapper<Q>,
-) -> StdResult<Decimal> {
-    let config = CONFIG.load(store)?;
-    let state = STATE.load(store)?;
-    let contract_address = config.contract_addr;
-
-    let bjuno_token = config.bjuno_token.ok_or_else(|| {
-        StdError::generic_err(
-            "bJUNO token addr not registered".to_string(),
-        )
-    })?;
-
-    if KillSwitch::try_from(config.kill_switch)? == KillSwitch::Closed {
-        let total_on_chain = get_onchain_balance_with_rewards(querier, store, &contract_address, true)?;
-        let tokens =
-            query_total_supply(querier, &bjuno_token)?.u128()
-            .saturating_sub(state.bjuno_to_burn.u128());
-        let exchange_rate = _calc_exchange_rate(total_on_chain, tokens)?;
-
-        Ok(exchange_rate)
-    } else {
-        let total_on_chain = BJUNO_FROZEN_TOTAL_ONCHAIN.load(store)?.u128();
-        let tokens = BJUNO_FROZEN_TOKENS.load(store)?.u128();
- 
         let exchange_rate = _calc_exchange_rate(total_on_chain, tokens)?;
         Ok(exchange_rate)
     }
@@ -139,7 +108,7 @@ pub fn get_balance<Q: CustomQuery>(
     querier: QuerierWrapper<Q>,
     address: &Addr,
 ) -> StdResult<Uint128> {
-    let balance = querier.query_balance(address.clone(), &"ujuno".to_string())?;
+    let balance = querier.query_balance(address.clone(), &"uside".to_string())?;
 
     Ok(balance.amount)
 }
@@ -157,7 +126,7 @@ pub fn stake_msg(validator: &str, amount: u128) -> CosmosMsg {
     CosmosMsg::Staking(StakingMsg::Delegate {
         validator: validator.to_string(),
         amount: Coin {
-            denom: "ujuno".to_string(),
+            denom: "uside".to_string(),
             amount: Uint128::from(amount),
         },
     })
@@ -167,7 +136,7 @@ pub fn undelegate_msg(validator: &str, amount: u128) -> CosmosMsg {
     CosmosMsg::Staking(StakingMsg::Undelegate {
         validator: validator.to_string(),
         amount: Coin {
-            denom: "ujuno".to_string(),
+            denom: "uside".to_string(),
             amount: Uint128::from(amount),
         },
     })
@@ -183,7 +152,7 @@ pub fn redelegate_msg(from: &str, to: &str, amount: u128) -> CosmosMsg {
     CosmosMsg::Staking(StakingMsg::Redelegate {
         src_validator: from.to_string(),
         amount: Coin {
-            denom: "ujuno".to_string(),
+            denom: "uside".to_string(),
             amount: Uint128::from(amount),
         },
         dst_validator: to.to_string(),

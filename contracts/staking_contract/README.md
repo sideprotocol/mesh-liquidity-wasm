@@ -1,1 +1,1 @@
-The Staking contract acts as the central for all minted bJUNO and seJUNO, Juno tokens received from users are delegated from here, and undelegations from bJUNO and seJUNO unbond requests are also handled from this contract. Rewards generated from delegations are withdrawn to the Reward contract, later distributed to bJUNO holders.
+LSD contract for SIDE token
