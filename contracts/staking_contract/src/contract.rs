@@ -3,35 +3,31 @@ use std::collections::VecDeque;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 
-use cw2::set_contract_version;
 use cosmwasm_std::{
-    Binary, Deps, DepsMut, Env, MessageInfo, Response,
-    StdError, StdResult, Uint128, VoteOption, CosmosMsg, 
-    GovMsg
+    Binary, CosmosMsg, Deps, DepsMut, Env, GovMsg, MessageInfo, Response, StdError, StdResult,
+    Uint128, VoteOption,
 };
+use cw2::set_contract_version;
 
+use crate::admin::admin_commands;
 use crate::claim::claim;
 use crate::deposit::{try_claim_stake, try_stake};
 use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, MigrateMsg};
+use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
 use crate::query::{
-    query_active_undelegation, query_current_window,
-    query_dev_fee, query_info, query_pending_claims, query_sejuno_exchange_rate,
-    query_user_claimable,
+    query_active_undelegation, query_current_window, query_dev_fee, query_info,
+    query_pending_claims, query_sejuno_exchange_rate, query_user_claimable,
 };
 use crate::receive::try_receive_cw20;
-use crate::staking::{redelegate_msg, get_onchain_balance_with_rewards};
+use crate::staking::{get_onchain_balance_with_rewards, redelegate_msg};
+use crate::state::{State, LSSIDE_FROZEN_TOKENS, LSSIDE_FROZEN_TOTAL_ONCHAIN, STATE};
 use crate::tokens::query_total_supply;
-use crate::state::{State, STATE, LSSIDE_FROZEN_TOTAL_ONCHAIN, LSSIDE_FROZEN_TOKENS};
-use crate::admin::admin_commands;
 use crate::types::config::{Config, CONFIG};
 use crate::types::killswitch::KillSwitch;
-use crate::types::validator_set::{VALIDATOR_SET, ValidatorSet};
+use crate::types::validator_set::{ValidatorSet, VALIDATOR_SET};
 use crate::types::window_manager::{WindowManager, WINDOW_MANANGER};
 use crate::types::withdraw_window::{QueueWindow, UserClaimable, USER_CLAIMABLE};
-use crate::update::{
-    try_update_lsside_addr, rebalance_slash
-};
+use crate::update::{rebalance_slash, try_update_lsside_addr};
 use crate::window::advance_window;
 
 // version info for migration info
@@ -45,7 +41,6 @@ pub fn instantiate(
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
-
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     let config = Config {
         admin: info.sender.clone(),
@@ -110,8 +105,9 @@ pub fn execute(
         // claim rewards and stakes SIDE from contract to validators
         ExecuteMsg::ClaimAndStake {} => try_claim_stake(deps, env, info, msg),
 
-        ExecuteMsg::UpdateLssideAddr { address } =>
-        try_update_lsside_addr(deps, env, info, address),
+        ExecuteMsg::UpdateLssideAddr { address } => {
+            try_update_lsside_addr(deps, env, info, address)
+        }
 
         ExecuteMsg::Receive(_msg) => try_receive_cw20(deps, env, info, _msg),
         // init withdraw SIDE from validator to contract after 21 days and advance to next window
@@ -123,20 +119,19 @@ pub fn execute(
         ExecuteMsg::RebalanceSlash {} => rebalance_slash(deps, env),
         ExecuteMsg::PauseContract {} => try_pause(deps, env, info),
         ExecuteMsg::UnpauseContract {} => try_unpause(deps, env, info),
-        ExecuteMsg::Redelegate {from, to} => try_redelegate(deps, env, info, from, to),
+        ExecuteMsg::Redelegate { from, to } => try_redelegate(deps, env, info, from, to),
 
-        ExecuteMsg::RemoveValidator {address, redelegate} => try_remove_validator(deps, env, info, address, redelegate),
+        ExecuteMsg::RemoveValidator {
+            address,
+            redelegate,
+        } => try_remove_validator(deps, env, info, address, redelegate),
         ExecuteMsg::KillSwitchUnbond {} => try_kill_switch_unbond(deps, env, info),
         // extra admin commands
         _ => admin_commands(deps, env, info, msg),
     }
 }
 
-pub fn try_pause(
-    deps: DepsMut,
-    _env: Env,
-    _info: MessageInfo,
-) -> Result<Response, ContractError> {
+pub fn try_pause(deps: DepsMut, _env: Env, _info: MessageInfo) -> Result<Response, ContractError> {
     let mut config = CONFIG.load(deps.storage)?;
     if _info.sender != config.admin {
         return Err(ContractError::Std(StdError::generic_err(
@@ -167,13 +162,12 @@ pub fn try_unpause(
     Ok(Response::new())
 }
 
-
 pub fn try_remove_validator(
     deps: DepsMut,
     _env: Env,
     _info: MessageInfo,
     address: String,
-    redelegate: Option<bool>
+    redelegate: Option<bool>,
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     if _info.sender != config.admin {
@@ -220,15 +214,14 @@ pub fn try_kill_switch_unbond(
     }
 
     // Freeze lsside rate
-    let lsside_token = config.ls_side_token.clone().ok_or_else(|| {
-        StdError::generic_err(
-            "lsSIDE token addr not registered".to_string(),
-        )
-    })?;
-    let total_on_chain_se = get_onchain_balance_with_rewards(deps.querier, deps.storage, &contract_address)?;
+    let lsside_token = config
+        .ls_side_token
+        .clone()
+        .ok_or_else(|| StdError::generic_err("lsSIDE token addr not registered".to_string()))?;
+    let total_on_chain_se =
+        get_onchain_balance_with_rewards(deps.querier, deps.storage, &contract_address)?;
     let tokens_se =
-        query_total_supply(deps.querier, &lsside_token)?
-        .saturating_sub(state.lsside_to_burn);
+        query_total_supply(deps.querier, &lsside_token)?.saturating_sub(state.lsside_to_burn);
     let total_se = Uint128::from(total_on_chain_se);
     LSSIDE_FROZEN_TOTAL_ONCHAIN.save(deps.storage, &total_se)?;
     LSSIDE_FROZEN_TOKENS.save(deps.storage, &tokens_se)?;
@@ -253,7 +246,7 @@ pub fn try_vote(
     _env: Env,
     _info: MessageInfo,
     proposal: u64,
-    vote: VoteOption
+    vote: VoteOption,
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
 
@@ -284,7 +277,7 @@ pub fn try_redelegate(
     env: Env,
     _info: MessageInfo,
     from: String,
-    to: String
+    to: String,
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     // authenticate admin
@@ -303,13 +296,11 @@ pub fn try_redelegate(
         let to_stake = validator.staked;
         validator_set.stake_at(&to, to_stake.u128())?;
 
-        let val_rewards = Uint128::from(
-            validator_set.query_rewards_validator(
-                deps.querier,
-                env.contract.address.to_string(),
-                from.clone()
-            )?
-        );
+        let val_rewards = Uint128::from(validator_set.query_rewards_validator(
+            deps.querier,
+            env.contract.address.to_string(),
+            from.clone(),
+        )?);
         if val_rewards.u128() > 0 {
             state.to_deposit += val_rewards;
             state.lsside_backing += val_rewards;
@@ -322,11 +313,9 @@ pub fn try_redelegate(
     STATE.save(deps.storage, &state)?;
 
     Ok(Response::new()
-    .add_messages(messages)
-    .add_attribute("action", "Redelegate from one to other"))
+        .add_messages(messages)
+        .add_attribute("action", "Redelegate from one to other"))
 }
-
-
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {

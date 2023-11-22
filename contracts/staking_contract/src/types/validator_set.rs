@@ -1,11 +1,11 @@
+use cw_storage_plus::Item;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use cw_storage_plus::Item;
 
+use crate::staking::{undelegate_msg, withdraw_msg};
+use cosmwasm_std::{CosmosMsg, CustomQuery, QuerierWrapper, StdError, StdResult, Uint128};
 use std::cmp::Ordering;
 use std::collections::VecDeque;
-use crate::staking::{withdraw_msg, undelegate_msg};
-use cosmwasm_std::{CosmosMsg, StdError, StdResult, Uint128, CustomQuery, QuerierWrapper};
 
 pub const VALIDATOR_SET: Item<ValidatorSet> = Item::new("validator_set");
 
@@ -29,8 +29,7 @@ impl PartialOrd for Validator {
 
 impl Ord for Validator {
     fn cmp(&self, other: &Self) -> Ordering {
-        (self.staked)
-            .cmp(&(other.staked))
+        (self.staked).cmp(&(other.staked))
     }
 }
 
@@ -184,7 +183,7 @@ impl ValidatorSet {
     pub fn query_rewards<Q: CustomQuery>(
         &self,
         querier: QuerierWrapper<Q>,
-        address: String
+        address: String,
     ) -> StdResult<u128> {
         let mut total_rewards = 0u128;
         for val in self.validators.iter() {
@@ -203,7 +202,7 @@ impl ValidatorSet {
         &self,
         querier: QuerierWrapper<Q>,
         address: String,
-        validator: String
+        validator: String,
     ) -> StdResult<u128> {
         let mut total_rewards = 0u128;
         if let Some(query) = querier.query_delegation(address.clone(), validator)? {

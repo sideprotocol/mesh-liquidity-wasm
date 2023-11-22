@@ -1,6 +1,4 @@
-use cosmwasm_std::{
-    Binary, StdResult, Deps, to_binary, Addr, Uint128, QuerierWrapper
-};
+use cosmwasm_std::{to_binary, Addr, Binary, Deps, QuerierWrapper, StdResult, Uint128};
 
 use crate::msg::QueryResponse;
 use crate::staking::lsside_exchange_rate;
@@ -8,7 +6,7 @@ use crate::state::STATE;
 use crate::types::config::CONFIG;
 use crate::types::validator_set::VALIDATOR_SET;
 use crate::types::window_manager::WINDOW_MANANGER;
-use crate::types::withdraw_window::{USER_CLAIMABLE_AMOUNT, QUEUE_WINDOW_AMOUNT};
+use crate::types::withdraw_window::{QUEUE_WINDOW_AMOUNT, USER_CLAIMABLE_AMOUNT};
 
 pub fn query_info(deps: Deps) -> StdResult<Binary> {
     let config = CONFIG.load(deps.storage)?;
@@ -105,7 +103,10 @@ pub fn query_user_claimable(deps: Deps, address: Addr) -> StdResult<Binary> {
 pub fn query_delegation(
     querier: &QuerierWrapper,
     validator: &str,
-    contract_addr: &Addr
- ) -> StdResult<u128> {
-    Ok(querier.query_delegation(contract_addr, validator)?.map(|fd| fd.amount.amount.u128()).unwrap_or(0))
+    contract_addr: &Addr,
+) -> StdResult<u128> {
+    Ok(querier
+        .query_delegation(contract_addr, validator)?
+        .map(|fd| fd.amount.amount.u128())
+        .unwrap_or(0))
 }

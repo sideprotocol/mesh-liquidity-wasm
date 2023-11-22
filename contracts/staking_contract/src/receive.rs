@@ -1,10 +1,10 @@
-use cosmwasm_std::{DepsMut, Env, MessageInfo, Response, from_binary, StdError};
+use cosmwasm_std::{from_binary, DepsMut, Env, MessageInfo, Response, StdError};
 use cw20::Cw20ReceiveMsg;
 
-use crate::{ContractError, msg::Cw20HookMsg, types::config::CONFIG, withdraw::try_withdraw};
+use crate::{msg::Cw20HookMsg, types::config::CONFIG, withdraw::try_withdraw, ContractError};
 
 /**
- * Receive cw20 token (lsSIDE) and 
+ * Receive cw20 token (lsSIDE) and
  * apply action either convert or withdraw
  * read from msg parameters.
  */

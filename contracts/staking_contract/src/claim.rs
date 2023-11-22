@@ -1,10 +1,9 @@
-use crate::ContractError;
 use crate::types::config::CONFIG;
-use crate::{state::STATE, msg::ExecuteMsg};
 use crate::types::withdraw_window::{USER_CLAIMABLE, USER_CLAIMABLE_AMOUNT};
+use crate::ContractError;
+use crate::{msg::ExecuteMsg, state::STATE};
 use cosmwasm_std::{
-    BankMsg, Coin, CosmosMsg, Env,
-    Uint128, DepsMut, MessageInfo, Response, StdError,
+    BankMsg, Coin, CosmosMsg, DepsMut, Env, MessageInfo, Response, StdError, Uint128,
 };
 
 /**
@@ -33,14 +32,14 @@ pub fn claim(
         user_claimable.total_side -= side_amount;
 
         if side_amount > Uint128::from(0u128) {
-                // If users wants side amount
-                messages.push(CosmosMsg::Bank(BankMsg::Send {
-                    to_address: _info.sender.to_string(),
-                    amount: vec![Coin {
-                        denom: "uside".to_string(),
-                        amount: Uint128::from(side_amount),
-                    }],
-                }));
+            // If users wants side amount
+            messages.push(CosmosMsg::Bank(BankMsg::Send {
+                to_address: _info.sender.to_string(),
+                amount: vec![Coin {
+                    denom: "uside".to_string(),
+                    amount: Uint128::from(side_amount),
+                }],
+            }));
 
             state.not_redeemed -= side_amount.clone();
         }

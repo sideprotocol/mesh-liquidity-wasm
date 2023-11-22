@@ -1,9 +1,9 @@
 use cosmwasm_std::{Addr, Uint128, VoteOption};
-use schemars::JsonSchema;
 use cw20::Cw20ReceiveMsg;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{types::validator_set::ValidatorResponse, tokens::Contract};
+use crate::{tokens::Contract, types::validator_set::ValidatorResponse};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {
@@ -18,18 +18,24 @@ pub struct InstantiateMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
-    Stake { referral: u64 },
+    Stake {
+        referral: u64,
+    },
     Claim {},
     ClaimAndStake {},
 
-    UpdateLssideAddr { address: Addr },
-    UpdateRewardsAddr { address: Addr },
+    UpdateLssideAddr {
+        address: Addr,
+    },
+    UpdateRewardsAddr {
+        address: Addr,
+    },
 
     // // token interaction
     Receive(Cw20ReceiveMsg),
 
     AdvanceWindow {},
-    RebalanceSlash{},
+    RebalanceSlash {},
 
     PauseContract {},
     UnpauseContract {},
@@ -68,7 +74,7 @@ pub enum ExecuteMsg {
 
     // TODO: Add tests for unbonding time.
     ChangeUnbondingTime {
-        new_time: u64
+        new_time: u64,
     },
 
     ChangeDevFee {
@@ -76,7 +82,7 @@ pub enum ExecuteMsg {
         dev_address: Option<Addr>,
     },
     ChangeReferralContract {
-        referral_contract: Addr
+        referral_contract: Addr,
     },
 }
 
@@ -86,45 +92,47 @@ pub enum AirdropMessage1 {
     Claim {
         stage: u8,
         amount: Uint128,
-        proof: Vec<String>
-    }
+        proof: Vec<String>,
+    },
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AirdropMessage2 {
-    Claim {
-        amount: Uint128,
-        proof: Vec<String>
-    }
+    Claim { amount: Uint128, proof: Vec<String> },
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AirdropMessage3 {
     // TODO: add more variations here if found later
-    Claim {}
+    Claim {},
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum RewardClaim {
-    Claim { recipient: String }
+    Claim { recipient: String },
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ReferralMsg {
-    Deposit { recipient: String, code: u64, amount: Uint128 },
-    Withdraw { recipient: String, amount: Uint128 }
+    Deposit {
+        recipient: String,
+        code: u64,
+        amount: Uint128,
+    },
+    Withdraw {
+        recipient: String,
+        amount: Uint128,
+    },
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryRewards {
-    AccruedRewards {
-        address: String
-    },
+    AccruedRewards { address: String },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -140,8 +148,7 @@ pub enum QueryMsg {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct MigrateMsg {
-}
+pub struct MigrateMsg {}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct AccruedRewardsResponse {

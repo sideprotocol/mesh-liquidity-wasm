@@ -2,22 +2,22 @@ use std::cmp::min;
 use std::convert::TryFrom;
 
 use cosmwasm_std::{
-    BankMsg, Coin, CosmosMsg, Env, Response, Addr,
-    StdError, Uint128, DepsMut, MessageInfo, WasmMsg, to_binary
+    to_binary, Addr, BankMsg, Coin, CosmosMsg, DepsMut, Env, MessageInfo, Response, StdError,
+    Uint128, WasmMsg,
 };
-use cw20::{Cw20ReceiveMsg, Cw20ExecuteMsg};
+use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
 use rust_decimal::prelude::ToPrimitive;
 
-use crate::ContractError;
-use crate::msg::ReferralMsg;
 use crate::deposit::calc_fee;
-use crate::staking::{get_rewards, stake_msg, get_balance, lsside_exchange_rate};
+use crate::msg::ReferralMsg;
+use crate::staking::{get_balance, get_rewards, lsside_exchange_rate, stake_msg};
 use crate::state::STATE;
 use crate::types::config::CONFIG;
 use crate::types::killswitch::KillSwitch;
 use crate::types::validator_set::VALIDATOR_SET;
 use crate::types::window_manager::WINDOW_MANANGER;
 use crate::utils::{calc_threshold, calc_withdraw};
+use crate::ContractError;
 
 const MINIMUM_WITHDRAW: u128 = 10_000; // 0.01 seJUNO
 
@@ -59,13 +59,17 @@ pub fn try_withdraw(
     }
 
     if !config.referral_contract.is_none() {
-        messages.push(
-            CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr:  config.referral_contract.unwrap_or(Addr::unchecked("")).to_string(),
-                msg: to_binary(&ReferralMsg::Withdraw { recipient: _cw20_msg.sender.clone(), amount: _cw20_msg.amount })?,
-                funds: vec![],
-            })
-        )
+        messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: config
+                .referral_contract
+                .unwrap_or(Addr::unchecked(""))
+                .to_string(),
+            msg: to_binary(&ReferralMsg::Withdraw {
+                recipient: _cw20_msg.sender.clone(),
+                amount: _cw20_msg.amount,
+            })?,
+            funds: vec![],
+        }))
     }
 
     let mut validator_set = VALIDATOR_SET.load(deps.storage)?;
@@ -87,15 +91,13 @@ pub fn try_withdraw(
 
     messages.append(&mut validator_set.withdraw_rewards_messages());
 
-    let reward_amount = get_rewards(
-        deps.storage,
-        deps.querier,
-        &env.contract.address
-    ).unwrap_or_default();
+    let reward_amount =
+        get_rewards(deps.storage, deps.querier, &env.contract.address).unwrap_or_default();
 
     let fee = calc_fee(reward_amount, config.dev_fee);
     // Move fees to claim reward function only if fee > 0
-    if (fee * 999 / 1000) > 0 {  // leave a tiny amount in the contract for round error purposes
+    if (fee * 999 / 1000) > 0 {
+        // leave a tiny amount in the contract for round error purposes
         messages.push(CosmosMsg::Bank(BankMsg::Send {
             to_address: config.dev_address.to_string(),
             amount: vec![Coin {
@@ -122,7 +124,7 @@ pub fn try_withdraw(
         // check division
         if val_count == 0 {
             return Err(ContractError::Std(StdError::generic_err(
-                "No validator found!"
+                "No validator found!",
             )));
         }
         let to_stake = deposit_amount.checked_div(val_count as u128).unwrap();
@@ -130,9 +132,11 @@ pub fn try_withdraw(
 
         for validator in validator_set.clone().validators.iter() {
             let mut to_stake_amt = to_stake;
-            if validator_idx == val_count.clone().to_u128().unwrap()-1 {
+            if validator_idx == val_count.clone().to_u128().unwrap() - 1 {
                 to_stake_amt = deposit_amount.saturating_sub(
-                    to_stake.checked_mul(val_count.clone().to_u128().unwrap()-1).unwrap()
+                    to_stake
+                        .checked_mul(val_count.clone().to_u128().unwrap() - 1)
+                        .unwrap(),
                 );
             }
             validator_set.stake_at(&validator.address, to_stake_amt)?;
@@ -171,7 +175,7 @@ pub fn release_tokens(
     let mut messages: Vec<CosmosMsg> = vec![];
     let config = CONFIG.load(deps.storage)?;
 
-    let sejuno_xrate = lsside_exchange_rate(deps.storage,deps.querier)?;
+    let sejuno_xrate = lsside_exchange_rate(deps.storage, deps.querier)?;
 
     let side_amount = calc_withdraw(_cw20_msg.amount, sejuno_xrate)?;
     let my_balance = get_balance(deps.querier, &env.contract.address)?;
@@ -182,16 +186,19 @@ pub fn release_tokens(
     };
 
     let burn_msg = Cw20ExecuteMsg::Burn {
-        amount: Uint128::from(_cw20_msg.amount)
+        amount: Uint128::from(_cw20_msg.amount),
     };
 
     // burn unbonding lsSIDE
     messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: config.ls_side_token.ok_or_else(|| {
-            ContractError::Std(StdError::generic_err(
-                "lsSIDE token addr not registered".to_string(),
-            ))
-        })?.to_string(),
+        contract_addr: config
+            .ls_side_token
+            .ok_or_else(|| {
+                ContractError::Std(StdError::generic_err(
+                    "lsSIDE token addr not registered".to_string(),
+                ))
+            })?
+            .to_string(),
         msg: to_binary(&burn_msg)?,
         funds: vec![],
     }));

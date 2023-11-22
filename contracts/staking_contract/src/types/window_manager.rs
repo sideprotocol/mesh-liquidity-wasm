@@ -1,4 +1,4 @@
-use cosmwasm_std::{Addr, StdError, StdResult, Storage, Uint128, Order};
+use cosmwasm_std::{Addr, Order, StdError, StdResult, Storage, Uint128};
 
 use cw_storage_plus::Item;
 use serde::{Deserialize, Serialize};
@@ -7,7 +7,9 @@ use rust_decimal::Decimal;
 use std::collections::VecDeque;
 
 use crate::msg::PendingClaimsResponse;
-use crate::types::withdraw_window::{QueueWindow, OngoingWithdrawWindow, QUEUE_WINDOW_AMOUNT, ONGOING_WITHDRAWS_AMOUNT};
+use crate::types::withdraw_window::{
+    OngoingWithdrawWindow, QueueWindow, ONGOING_WITHDRAWS_AMOUNT, QUEUE_WINDOW_AMOUNT,
+};
 use crate::utils::calc_withdraw;
 
 use crate::types::config::CONFIG;
@@ -28,15 +30,11 @@ impl WindowManager {
         user_addr: Addr,
         lsside_amount: Uint128,
     ) -> StdResult<()> {
-        if let Some(mut already_stored_amount) = QUEUE_WINDOW_AMOUNT.may_load(store, &user_addr)? { 
+        if let Some(mut already_stored_amount) = QUEUE_WINDOW_AMOUNT.may_load(store, &user_addr)? {
             already_stored_amount += lsside_amount;
             QUEUE_WINDOW_AMOUNT.save(store, &user_addr, &already_stored_amount)?;
         } else {
-            QUEUE_WINDOW_AMOUNT.save(
-                store,
-                &user_addr,
-                &lsside_amount,
-            )?;
+            QUEUE_WINDOW_AMOUNT.save(store, &user_addr, &lsside_amount)?;
         }
 
         self.queue_window.total_lsside += lsside_amount;
@@ -50,7 +48,7 @@ impl WindowManager {
         user_addr: Addr,
     ) -> StdResult<Uint128> {
         let mut lsside_amount = Uint128::from(0u128);
-        if let Some(lsside_amount_got) = QUEUE_WINDOW_AMOUNT.may_load(store, &user_addr)? { 
+        if let Some(lsside_amount_got) = QUEUE_WINDOW_AMOUNT.may_load(store, &user_addr)? {
             lsside_amount = lsside_amount_got;
         }
 
@@ -65,9 +63,14 @@ impl WindowManager {
     ) -> StdResult<()> {
         let config = CONFIG.load(store)?;
         let queue_window = self.queue_window.clone();
-        let queue_amounts: StdResult<Vec<_>> = QUEUE_WINDOW_AMOUNT.range(store, None, None, Order::Ascending).collect();
+        let queue_amounts: StdResult<Vec<_>> = QUEUE_WINDOW_AMOUNT
+            .range(store, None, None, Order::Ascending)
+            .collect();
 
-        let lsside_to_side = Uint128::from(calc_withdraw(queue_window.total_lsside, exchange_rate_lsside)?);
+        let lsside_to_side = Uint128::from(calc_withdraw(
+            queue_window.total_lsside,
+            exchange_rate_lsside,
+        )?);
 
         self.ongoing_windows.push_back(OngoingWithdrawWindow {
             id: queue_window.id,
@@ -82,31 +85,23 @@ impl WindowManager {
                 &Uint128::from(calc_withdraw(*queue_amt, exchange_rate_lsside).unwrap()),
             )?;
 
-            QUEUE_WINDOW_AMOUNT.remove(
-                store,
-                user_addr,
-            );
+            QUEUE_WINDOW_AMOUNT.remove(store, user_addr);
         }
 
         self.time_to_close_window = current_time + config.epoch_period;
         self.queue_window = QueueWindow {
-            id: queue_window.id+1,
+            id: queue_window.id + 1,
             total_lsside: Uint128::from(0u128),
         };
 
         Ok(())
     }
 
-    pub fn pop_matured(
-        &mut self,
-        _store: &dyn Storage,
-    ) -> StdResult<OngoingWithdrawWindow> {
+    pub fn pop_matured(&mut self, _store: &dyn Storage) -> StdResult<OngoingWithdrawWindow> {
         if let Some(matured_window) = self.ongoing_windows.pop_front() {
             Ok(matured_window)
         } else {
-            return Err(StdError::generic_err(
-                "Previous windows deque empty"
-            ));
+            return Err(StdError::generic_err("Previous windows deque empty"));
         }
     }
 
@@ -120,7 +115,9 @@ impl WindowManager {
         for ongoing_window in self.ongoing_windows.iter() {
             let window_id = ongoing_window.id.to_string();
 
-            if let Some(user_withdraw_amount) = ONGOING_WITHDRAWS_AMOUNT.may_load(store, (&window_id.to_string(), &address))? {
+            if let Some(user_withdraw_amount) =
+                ONGOING_WITHDRAWS_AMOUNT.may_load(store, (&window_id.to_string(), &address))?
+            {
                 if user_withdraw_amount > Uint128::from(0u128) {
                     pending_withdraws.push(PendingClaimsResponse {
                         window_id: ongoing_window.id,

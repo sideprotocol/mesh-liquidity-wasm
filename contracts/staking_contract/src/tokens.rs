@@ -1,8 +1,10 @@
+use cw20::{Cw20Coin, Cw20QueryMsg, Logo, MinterResponse, TokenInfoResponse};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use cw20::{Cw20Coin, Logo, MinterResponse, Cw20QueryMsg, TokenInfoResponse};
 
-use cosmwasm_std::{Addr, StdError, StdResult, Uint128, CustomQuery, QuerierWrapper, WasmQuery, to_binary};
+use cosmwasm_std::{
+    to_binary, Addr, CustomQuery, QuerierWrapper, StdError, StdResult, Uint128, WasmQuery,
+};
 
 pub fn query_total_supply<Q: CustomQuery>(
     querier: QuerierWrapper<Q>,
@@ -13,14 +15,15 @@ pub fn query_total_supply<Q: CustomQuery>(
         msg: to_binary(&Cw20QueryMsg::TokenInfo {})?,
     };
 
-    let token_info = querier
-        .query(&token_info_query.into())
-        .unwrap_or_else(|_| TokenInfoResponse {
-            name: "NA".to_string(),
-            symbol: "NA".to_string(),
-            decimals: 6,
-            total_supply: Uint128::from(0u128),
-        });
+    let token_info =
+        querier
+            .query(&token_info_query.into())
+            .unwrap_or_else(|_| TokenInfoResponse {
+                name: "NA".to_string(),
+                symbol: "NA".to_string(),
+                decimals: 6,
+                total_supply: Uint128::from(0u128),
+            });
 
     Ok(token_info.total_supply)
 }
@@ -52,7 +55,6 @@ pub struct TokenInitMsg {
 
 #[allow(clippy::too_many_arguments)]
 impl TokenInitMsg {
-    
     pub fn get_cap(&self) -> Option<Uint128> {
         self.mint.as_ref().and_then(|v| v.cap)
     }

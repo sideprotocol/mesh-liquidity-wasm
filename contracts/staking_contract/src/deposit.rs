@@ -1,23 +1,23 @@
 use cosmwasm_std::{
-    Env, MessageInfo, DepsMut, Response, to_binary, BankMsg, Coin, CosmosMsg,
-    StdError, Uint128, WasmMsg, Addr,
+    to_binary, Addr, BankMsg, Coin, CosmosMsg, DepsMut, Env, MessageInfo, Response, StdError,
+    Uint128, WasmMsg,
 };
 
-use std::convert::TryFrom;
-use std::u128;
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, ReferralMsg};
+use std::convert::TryFrom;
+use std::u128;
 
+use cw20::Cw20ExecuteMsg;
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
-use cw20::Cw20ExecuteMsg;
 
-use crate::staking::{get_rewards, stake_msg, lsside_exchange_rate};
+use crate::staking::{get_rewards, lsside_exchange_rate, stake_msg};
+use crate::state::STATE;
+use crate::types::config::CONFIG;
 use crate::types::killswitch::KillSwitch;
 use crate::types::validator_set::VALIDATOR_SET;
 use crate::utils::calc_threshold;
-use crate::types::config::CONFIG;
-use crate::state::STATE;
 
 const FEE_RESOLUTION: u128 = 100_000;
 
@@ -29,7 +29,7 @@ pub fn try_stake(
     _env: Env,
     _info: MessageInfo,
     _msg: ExecuteMsg,
-    referral: u64
+    referral: u64,
 ) -> Result<Response, ContractError> {
     let mut messages: Vec<CosmosMsg> = vec![];
 
@@ -59,13 +59,18 @@ pub fn try_stake(
     }
 
     if !config.referral_contract.is_none() && referral != 0 {
-        messages.push(
-            CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr:  config.referral_contract.unwrap_or(Addr::unchecked("")).to_string(),
-                msg: to_binary(&ReferralMsg::Deposit { recipient: _info.sender.to_string(), code: referral, amount: amount_raw })?,
-                funds: vec![],
-            })
-        )
+        messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: config
+                .referral_contract
+                .unwrap_or(Addr::unchecked(""))
+                .to_string(),
+            msg: to_binary(&ReferralMsg::Deposit {
+                recipient: _info.sender.to_string(),
+                code: referral,
+                amount: amount_raw,
+            })?,
+            funds: vec![],
+        }))
     }
 
     // if SIDE was not sent
@@ -82,11 +87,14 @@ pub fn try_stake(
         )));
     }
 
-    let lsside_token = config.ls_side_token.ok_or_else(|| {
-        ContractError::Std(StdError::generic_err(
-            "lsSIDE token addr not registered".to_string(),
-        ))
-    })?.to_string();
+    let lsside_token = config
+        .ls_side_token
+        .ok_or_else(|| {
+            ContractError::Std(StdError::generic_err(
+                "lsSIDE token addr not registered".to_string(),
+            ))
+        })?
+        .to_string();
 
     // exch rate (SIDE staked + SIDE waiting withdraw) / (total supply in lsSIDE)
     let exch_rate = lsside_exchange_rate(deps.storage, deps.querier)?;
@@ -102,7 +110,7 @@ pub fn try_stake(
 
     let mint_msg = Cw20ExecuteMsg::Mint {
         recipient: _info.sender.to_string(),
-        amount: token_amount.into()
+        amount: token_amount.into(),
     };
 
     // mint message
@@ -146,17 +154,22 @@ pub fn try_claim_stake(
     }
 
     //TODO: check slashing on localnet
-    let slashing_amount = (state.lsside_backing).saturating_sub(state.to_deposit + Uint128::from(validator_set.total_staked()));
-    state.lsside_backing = state.lsside_backing.saturating_sub(Uint128::from(slashing_amount.u128()));
+    let slashing_amount = (state.lsside_backing)
+        .saturating_sub(state.to_deposit + Uint128::from(validator_set.total_staked()));
+    state.lsside_backing = state
+        .lsside_backing
+        .saturating_sub(Uint128::from(slashing_amount.u128()));
 
     // claim rewards
     messages.append(&mut validator_set.withdraw_rewards_messages());
 
-    let reward_amount = get_rewards(deps.storage, deps.querier, &env.contract.address).unwrap_or_default();
+    let reward_amount =
+        get_rewards(deps.storage, deps.querier, &env.contract.address).unwrap_or_default();
 
     let fee = calc_fee(reward_amount, config.dev_fee);
     // Move fees to claim reward function only if fee > 0
-    if (fee * 999 / 1000) > 0 {  // leave a tiny amount in the contract for round error purposes
+    if (fee * 999 / 1000) > 0 {
+        // leave a tiny amount in the contract for round error purposes
         messages.push(CosmosMsg::Bank(BankMsg::Send {
             to_address: config.dev_address.to_string(),
             amount: vec![Coin {
@@ -180,16 +193,20 @@ pub fn try_claim_stake(
         // divide and deposit to multiple validators
         // check division
         if val_count == 0 {
-            return Err(ContractError::Std(StdError::generic_err("No validator found!")));
+            return Err(ContractError::Std(StdError::generic_err(
+                "No validator found!",
+            )));
         }
         let to_stake = deposit_amount.checked_div(val_count as u128).unwrap();
         let mut validator_idx: u128 = 0;
 
         for validator in validator_set.clone().validators.iter() {
             let mut to_stake_amt = to_stake;
-            if validator_idx == val_count.clone().to_u128().unwrap()-1 {
+            if validator_idx == val_count.clone().to_u128().unwrap() - 1 {
                 to_stake_amt = deposit_amount.saturating_sub(
-                    to_stake.checked_mul(val_count.clone().to_u128().unwrap()-1).unwrap()
+                    to_stake
+                        .checked_mul(val_count.clone().to_u128().unwrap() - 1)
+                        .unwrap(),
                 );
             }
             validator_set.stake_at(&validator.address, to_stake_amt)?;
@@ -210,15 +227,18 @@ pub fn try_claim_stake(
 
     if state.lsside_to_burn.u128() > 0 {
         let burn_msg = Cw20ExecuteMsg::Burn {
-            amount: state.lsside_to_burn
+            amount: state.lsside_to_burn,
         };
 
         messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: config.ls_side_token.ok_or_else(|| {
-                ContractError::Std(StdError::generic_err(
-                    "lsSIDE token addr not registered".to_string(),
-                ))
-            })?.to_string(),
+            contract_addr: config
+                .ls_side_token
+                .ok_or_else(|| {
+                    ContractError::Std(StdError::generic_err(
+                        "lsSIDE token addr not registered".to_string(),
+                    ))
+                })?
+                .to_string(),
             msg: to_binary(&burn_msg)?,
             funds: vec![],
         }));
@@ -239,10 +259,7 @@ pub fn try_claim_stake(
  * Adds the balance from the total supply and balance
  * Returns amount of tokens you get
  */
-pub fn calc_deposit(
-    amount: Uint128,
-    exchange_rate: Decimal,
-) -> Result<u128, ContractError> {
+pub fn calc_deposit(amount: Uint128, exchange_rate: Decimal) -> Result<u128, ContractError> {
     let tokens_to_mint = Decimal::from(amount.u128() as u64)
         .checked_div(exchange_rate)
         .unwrap()
@@ -265,4 +282,3 @@ pub fn calc_fee(amount: Uint128, fee: u64) -> u128 {
         .checked_div(FEE_RESOLUTION)
         .unwrap_or(0)
 }
-

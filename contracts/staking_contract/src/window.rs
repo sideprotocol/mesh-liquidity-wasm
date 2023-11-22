@@ -3,18 +3,20 @@ use rust_decimal::Decimal;
 use std::collections::HashMap;
 use std::ops::{Mul, Sub};
 
-use crate::ContractError;
 use crate::msg::ExecuteMsg;
+use crate::staking::{lsside_exchange_rate, undelegate_msg};
 use crate::state::STATE;
 use crate::types::config::CONFIG;
 use crate::types::validator_set::VALIDATOR_SET;
-use crate::types::withdraw_window::{USER_CLAIMABLE, USER_CLAIMABLE_AMOUNT, ONGOING_WITHDRAWS_AMOUNT};
+use crate::types::window_manager::{WindowManager, WINDOW_MANANGER};
+use crate::types::withdraw_window::{
+    ONGOING_WITHDRAWS_AMOUNT, USER_CLAIMABLE, USER_CLAIMABLE_AMOUNT,
+};
 use crate::utils::{calc_threshold, calc_withdraw};
-use crate::staking::{undelegate_msg, lsside_exchange_rate};
-use crate::types::window_manager::{WINDOW_MANANGER, WindowManager};
+use crate::ContractError;
 use cosmwasm_std::{
-    Env, StdError, Addr, StdResult,
-    Uint128, Response, DepsMut, MessageInfo, CosmosMsg, WasmMsg, to_binary, Order,
+    to_binary, Addr, CosmosMsg, DepsMut, Env, MessageInfo, Order, Response, StdError, StdResult,
+    Uint128, WasmMsg,
 };
 use cw20::Cw20ExecuteMsg;
 
@@ -39,10 +41,10 @@ pub fn advance_window(
 
     if _info.sender != config.admin {
         return Err(ContractError::Std(StdError::generic_err(
-            "Only admin can call advance window"
+            "Only admin can call advance window",
         )));
     }
-    
+
     let mut state = STATE.load(deps.storage)?;
     let mut window_manager = WINDOW_MANANGER.load(deps.storage)?;
 
@@ -61,7 +63,8 @@ pub fn advance_window(
         state.lsside_under_withdraw += total_lsside_amount;
 
         // Backing update
-        state.lsside_backing = Uint128::from(state.lsside_backing.u128().saturating_sub(lsside_to_side));
+        state.lsside_backing =
+            Uint128::from(state.lsside_backing.u128().saturating_sub(lsside_to_side));
 
         let val_count = validator_set.validators.len();
         let total_staked = validator_set.total_staked();
@@ -74,7 +77,7 @@ pub fn advance_window(
             // divide and withdraw from multiple validators
             if val_count == 0 {
                 return Err(ContractError::Std(StdError::generic_err(
-                    "No validator found!"
+                    "No validator found!",
                 )));
             }
             let to_withdraw = lsside_to_side.checked_div(val_count as u128).unwrap() - 2; // for division errors
@@ -94,13 +97,11 @@ pub fn advance_window(
                 messages.push(undelegate_msg(&validator.address, temp));
                 // fetch the amount of rewards in the validator
                 // and add it to backing and to_deposit
-                let val_rewards = Uint128::from(
-                    validator_set.query_rewards_validator(
-                        deps.querier,
-                        env.contract.address.to_string(),
-                        validator.address.to_string()
-                    )?
-                );
+                let val_rewards = Uint128::from(validator_set.query_rewards_validator(
+                    deps.querier,
+                    env.contract.address.to_string(),
+                    validator.address.to_string(),
+                )?);
                 remaining_rewards += val_rewards;
             }
         } else if lsside_to_side > 0 {
@@ -112,13 +113,11 @@ pub fn advance_window(
             messages.push(undelegate_msg(&validator, lsside_to_side));
             // fetch the amount of rewards in the validator
             // and add it to backing and to_deposit
-            let val_rewards = Uint128::from(
-                validator_set.query_rewards_validator(
-                    deps.querier,
-                    env.contract.address.to_string(),
-                    validator
-                )?
-            );
+            let val_rewards = Uint128::from(validator_set.query_rewards_validator(
+                deps.querier,
+                env.contract.address.to_string(),
+                validator,
+            )?);
             remaining_rewards += val_rewards;
         }
 
@@ -132,17 +131,20 @@ pub fn advance_window(
 
         // BURN TOKENS
         let burn_msg_lsside = Cw20ExecuteMsg::Burn {
-            amount: Uint128::from(total_lsside_amount)
+            amount: Uint128::from(total_lsside_amount),
         };
 
         // burn unbonding sejuno
         if total_lsside_amount != Uint128::from(0u128) {
             messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: config.ls_side_token.ok_or_else(|| {
-                    ContractError::Std(StdError::generic_err(
-                        "seJUNO token addr not registered".to_string(),
-                    ))
-                })?.to_string(),
+                contract_addr: config
+                    .ls_side_token
+                    .ok_or_else(|| {
+                        ContractError::Std(StdError::generic_err(
+                            "seJUNO token addr not registered".to_string(),
+                        ))
+                    })?
+                    .to_string(),
                 msg: to_binary(&burn_msg_lsside)?,
                 funds: vec![],
             }));
@@ -180,14 +182,16 @@ pub fn advance_window(
             // Add function to remove previous data
             let matured_amounts: StdResult<Vec<_>> = ONGOING_WITHDRAWS_AMOUNT
                 .prefix(&matured_window.id.to_string())
-                .range(deps.storage, None, None, Order::Ascending).collect();
+                .range(deps.storage, None, None, Order::Ascending)
+                .collect();
             for (user_addr, user_juno_amount) in matured_amounts?.iter() {
                 if let Some(already_stored_amount) = ongoing_users_side.get_mut(user_addr) {
                     *already_stored_amount += *user_juno_amount;
                 } else {
                     ongoing_users_side.insert(user_addr.clone(), *user_juno_amount);
                 }
-                ONGOING_WITHDRAWS_AMOUNT.remove(deps.storage, (&matured_window.id.to_string(), user_addr),);
+                ONGOING_WITHDRAWS_AMOUNT
+                    .remove(deps.storage, (&matured_window.id.to_string(), user_addr));
             }
         }
 
@@ -201,14 +205,15 @@ pub fn advance_window(
             // If claimed is less than 90% of expected value, revert
             if claimed_juno < (ongoing_side * 90) / 100 {
                 return Err(ContractError::Std(StdError::generic_err(
-                    "Claim is not processed yet!"
+                    "Claim is not processed yet!",
                 )));
             }
 
             state.side_under_withdraw = state.side_under_withdraw.sub(Uint128::from(ongoing_side)); // juno
 
-            state.lsside_under_withdraw =
-                state.lsside_under_withdraw.sub(Uint128::from(ongoing_lsside)); // lsside
+            state.lsside_under_withdraw = state
+                .lsside_under_withdraw
+                .sub(Uint128::from(ongoing_lsside)); // lsside
 
             let mut ratio = Decimal::from(1u128);
             if ongoing_side > 0 {
@@ -228,10 +233,9 @@ pub fn advance_window(
                         .to_u128()
                         .unwrap();
                     let mut after_user_juno = user_juno;
-                    if let Some(current_user_juno) = USER_CLAIMABLE_AMOUNT.may_load(
-                        deps.storage,
-                        &user_addr,
-                    )? {
+                    if let Some(current_user_juno) =
+                        USER_CLAIMABLE_AMOUNT.may_load(deps.storage, &user_addr)?
+                    {
                         after_user_juno += current_user_juno.u128();
                     }
                     USER_CLAIMABLE_AMOUNT.save(
@@ -240,7 +244,8 @@ pub fn advance_window(
                         &Uint128::from(after_user_juno),
                     )?;
                 }
-                user_claimable.total_side = Uint128::from(user_claimable.total_side.u128() + claimed_juno);
+                user_claimable.total_side =
+                    Uint128::from(user_claimable.total_side.u128() + claimed_juno);
                 USER_CLAIMABLE.save(deps.storage, &user_claimable)?;
             }
         }
@@ -249,7 +254,7 @@ pub fn advance_window(
         WINDOW_MANANGER.save(deps.storage, &window_manager)?;
     } else {
         return Err(ContractError::Std(StdError::generic_err(
-            "Advance window not available yet"
+            "Advance window not available yet",
         )));
     }
 

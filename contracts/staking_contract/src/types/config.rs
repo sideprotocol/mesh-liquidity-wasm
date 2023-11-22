@@ -15,7 +15,7 @@ pub struct Config {
     pub underlying_coin_denom: String,
     pub reward_denom: String,
     pub dev_address: Addr,
-    pub dev_fee: u64,            // 10^-3 percent. 1 = 0.001%
+    pub dev_fee: u64, // 10^-3 percent. 1 = 0.001%
     pub referral_contract: Option<Addr>,
     pub paused: bool,
 }

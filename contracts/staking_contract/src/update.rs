@@ -1,9 +1,9 @@
-use cosmwasm_std::{DepsMut, Env, MessageInfo, Addr, Response, StdError, Uint128};
+use cosmwasm_std::{Addr, DepsMut, Env, MessageInfo, Response, StdError, Uint128};
 
-use crate::ContractError;
 use crate::query::query_delegation;
 use crate::types::config::CONFIG;
 use crate::types::validator_set::VALIDATOR_SET;
+use crate::ContractError;
 
 /**
  * Update lsside token addr in config
@@ -14,12 +14,11 @@ pub fn try_update_lsside_addr(
     info: MessageInfo,
     address: Addr,
 ) -> Result<Response, ContractError> {
-    
     let mut config = CONFIG.load(deps.storage)?;
 
     if info.sender != config.admin {
         return Err(ContractError::Std(StdError::generic_err(
-            "Only admin can update lsside Address"
+            "Only admin can update lsside Address",
         )));
     }
 
@@ -30,12 +29,9 @@ pub fn try_update_lsside_addr(
 }
 
 /**
-* Rebalance staked amount according to current onchain delegation 
+* Rebalance staked amount according to current onchain delegation
 */
-pub fn rebalance_slash(
-    deps: DepsMut,
-    env: Env,
-) -> Result<Response, ContractError> {
+pub fn rebalance_slash(deps: DepsMut, env: Env) -> Result<Response, ContractError> {
     let mut validator_set = VALIDATOR_SET.load(deps.storage)?;
     for val in validator_set.validators.iter_mut() {
         let current_amount = query_delegation(&deps.querier, &val.address, &env.contract.address)?;

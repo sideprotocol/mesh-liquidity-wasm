@@ -1,13 +1,10 @@
 use crate::ContractError;
-use cosmwasm_std::{
-    CosmosMsg, DepsMut, Env, 
-    MessageInfo, Response, StdError
-};
+use cosmwasm_std::{CosmosMsg, DepsMut, Env, MessageInfo, Response, StdError};
 
-use crate::types::validator_set::VALIDATOR_SET;
 use crate::msg::ExecuteMsg;
 use crate::types::config::CONFIG;
 use crate::types::killswitch::KillSwitch;
+use crate::types::validator_set::VALIDATOR_SET;
 
 pub fn admin_commands(
     deps: DepsMut,
@@ -39,9 +36,7 @@ pub fn admin_commands(
             Ok(Response::new())
         }
 
-        ExecuteMsg::ChangeReferralContract {
-            referral_contract
-        } => {
+        ExecuteMsg::ChangeReferralContract { referral_contract } => {
             config.referral_contract = Some(referral_contract);
             CONFIG.save(deps.storage, &config)?;
 

@@ -4,8 +4,8 @@ use std::fs::create_dir_all;
 use cosmwasm_schema::{export_schema, remove_schemas, schema_for};
 
 use staking_contract::msg::{
-    QueryResponse, ExecuteMsg, InstantiateMsg, QueryMsg,
-    TopValidatorsResponse, PendingClaimsResponse, 
+    ExecuteMsg, InstantiateMsg, PendingClaimsResponse, QueryMsg, QueryResponse,
+    TopValidatorsResponse,
 };
 
 fn main() {
