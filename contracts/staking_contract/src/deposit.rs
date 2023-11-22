@@ -7,23 +7,22 @@ use std::convert::TryFrom;
 use std::u128;
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, ReferralMsg};
-use crate::tokens::query_total_supply;
 
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 use cw20::Cw20ExecuteMsg;
 
-use crate::staking::{get_rewards, stake_msg, sejuno_exchange_rate, bjuno_exchange_rate};
+use crate::staking::{get_rewards, stake_msg, sejuno_exchange_rate};
 use crate::types::killswitch::KillSwitch;
-use crate::types::validator_set::{VALIDATOR_SET};
+use crate::types::validator_set::VALIDATOR_SET;
 use crate::utils::calc_threshold;
 use crate::types::config::CONFIG;
-use crate::state::{STATE,RewardExecuteMsg};
+use crate::state::STATE;
 
 const FEE_RESOLUTION: u128 = 100_000;
 
 /**
- * Deposit JUNO amount to the contract and mint seJUNO tokens using seJuno exchange rate.
+ * Deposit SIDE amount to the contract and mint lsSIDE tokens using lsSIDE exchange rate.
  */
 pub fn try_stake(
     deps: DepsMut,
@@ -52,9 +51,9 @@ pub fn try_stake(
         )));
     }
 
-    // read amount of JUNO sent by user on deposit
+    // read amount of SIDE sent by user on deposit
     for coin in &_info.funds {
-        if coin.denom == "ujuno" {
+        if coin.denom == "uside" {
             amount_raw = coin.amount
         }
     }
@@ -69,36 +68,36 @@ pub fn try_stake(
         )
     }
 
-    // if JUNO was not sent
+    // if SIDE was not sent
     if amount_raw == Uint128::default() {
         return Err(ContractError::Std(StdError::generic_err(
-            "Can only deposit a minimum of 1,000,000 ujuno (1 JUNO)".to_string(),
+            "Can only deposit a minimum of 1,000,000 uside (1 SIDE)".to_string(),
         )));
     }
 
-    // if less than 1 JUNO was sent
+    // if less than 1 SIDE was sent
     if amount_raw.u128() < 1_000_000 {
         return Err(ContractError::Std(StdError::generic_err(
-            "Can only deposit a minimum of 1,000,000 ujuno (1 JUNO)".to_string(),
+            "Can only deposit a minimum of 1,000,000 uside (1 SIDE)".to_string(),
         )));
     }
 
-    let sejuno_token = config.sejuno_token.ok_or_else(|| {
+    let lsside_token = config.ls_side_token.ok_or_else(|| {
         ContractError::Std(StdError::generic_err(
-            "seJuno token addr not registered".to_string(),
+            "lsSIDE token addr not registered".to_string(),
         ))
     })?.to_string();
 
-    // exch rate (JUNO staked + JUNO waiting withdraw) / (total supply in seJUNO)
+    // exch rate (SIDE staked + SIDE waiting withdraw) / (total supply in lsSIDE)
     let exch_rate = sejuno_exchange_rate(deps.storage, deps.querier)?;
 
     // Update deposit amount
     state.to_deposit += amount_raw;
-    state.sejuno_backing += amount_raw;
+    state.lsside_backing += amount_raw;
     STATE.save(deps.storage, &state)?;
     // debug_print!("To deposit amount = {}", config.to_deposit);
 
-    // Calculate amount of seJUNO to be minted
+    // Calculate amount of lsSIDE to be minted
     let token_amount = calc_deposit(amount_raw, exch_rate)?;
 
     let mint_msg = Cw20ExecuteMsg::Mint {
@@ -108,129 +107,17 @@ pub fn try_stake(
 
     // mint message
     messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: sejuno_token,
+        contract_addr: lsside_token,
         msg: to_binary(&mint_msg)?,
         funds: vec![],
     }));
 
     Ok(Response::new()
         .add_messages(messages)
-        .add_attribute("action", "stake_for_sejuno")
+        .add_attribute("action", "stake_for_lsside")
         .add_attribute("account", _info.sender.clone())
         .add_attribute("exch_rate_used", exch_rate.to_string())
-        .add_attribute("seJuno amount", &token_amount.to_string()))
-}
-
-/**
- * Deposit JUNO amount to the contract and mint bJUNO tokens using bJuno exchange rate.
- */
-pub fn try_stake_for_bjuno(
-    deps: DepsMut,
-    _env: Env,
-    _info: MessageInfo,
-    _msg: ExecuteMsg,
-    referral: u64
-) -> Result<Response, ContractError> {
-    let mut messages: Vec<CosmosMsg> = vec![];
-
-    let mut amount_raw: Uint128 = Uint128::default();
-    let config = CONFIG.load(deps.storage)?;
-    let mut state = STATE.load(deps.storage)?;
-
-    if config.paused == true {
-        return Err(ContractError::Std(StdError::generic_err(
-            "The contract is temporarily paused",
-        )));
-    }
-
-    let kill_switch = KillSwitch::try_from(config.kill_switch)?;
-
-    if kill_switch == KillSwitch::Unbonding || kill_switch == KillSwitch::Open {
-        return Err(ContractError::Std(StdError::generic_err(
-            "Contract has been frozen. New deposits are not currently possible",
-        )));
-    }
-
-    // read amount of JUNO sent by user on deposit
-    for coin in &_info.funds {
-        if coin.denom == "ujuno" {
-            amount_raw = coin.amount
-        }
-    }
-
-    if !config.referral_contract.is_none() && referral != 0 {
-        messages.push(
-            CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr:  config.referral_contract.unwrap_or(Addr::unchecked("")).to_string(),
-                msg: to_binary(&ReferralMsg::Deposit { recipient: _info.sender.to_string(), code: referral, amount: amount_raw })?,
-                funds: vec![],
-            })
-        )
-    }
-
-    // if JUNO was not sent
-    if amount_raw == Uint128::default() {
-        return Err(ContractError::Std(StdError::generic_err(
-            "Can only deposit a minimum of 1,000,000 ujuno (1 JUNO)".to_string(),
-        )));
-    }
-
-    // if less than 1 JUNO was sent
-    if amount_raw.u128() < 1_000_000 {
-        return Err(ContractError::Std(StdError::generic_err(
-            "Can only deposit a minimum of 1,000,000 ujuno (1 JUNO)".to_string(),
-        )));
-    }
-
-    let bjuno_token = config.bjuno_token.ok_or_else(|| {
-        ContractError::Std(StdError::generic_err(
-            "bJuno token addr not registered".to_string(),
-        ))
-    })?.to_string();
-
-    // exch rate (JUNO staked + JUNO waiting withdraw) / (total supply in bJuno)
-    // TODO: read exch rate for bJuno from state stored
-    let exch_rate = bjuno_exchange_rate(deps.storage, deps.querier)?;
-
-    // Update deposit amount
-    state.to_deposit += amount_raw;
-    state.bjuno_backing += amount_raw;
-    STATE.save(deps.storage, &state)?;
-    // debug_print!("To deposit amount = {}", config.to_deposit);
-
-    // Calculate amount of bJuno to be minted
-    let mut token_amount = calc_deposit(amount_raw, exch_rate)?;
-
-    // peg recovery fee
-    let bjuno_threshold = Decimal::from(config.er_threshold)/Decimal::from(1000u64);
-    let recovery_fee = Decimal::from(config.peg_recovery_fee)/Decimal::from(1000u64);
-    if exch_rate < bjuno_threshold {
-        let max_peg_fee = recovery_fee.checked_mul(Decimal::from(token_amount)).unwrap();
-        let required_peg_fee =
-            query_total_supply(deps.querier, &Addr::unchecked(bjuno_token.clone()))?.u128()
-            .saturating_sub(state.bjuno_to_burn.u128() + state.bjuno_backing.u128());
-        let peg_fee = max_peg_fee.min(Decimal::from(required_peg_fee)).to_u128().unwrap();
-        token_amount = token_amount.checked_sub(peg_fee).unwrap();
-    }
-
-    let mint_msg = Cw20ExecuteMsg::Mint {
-        recipient: _info.sender.to_string(),
-        amount: token_amount.into()
-    };
-
-    // mint message
-    messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: bjuno_token,
-        msg: to_binary(&mint_msg)?,
-        funds: vec![],
-    }));
-
-    Ok(Response::new()
-        .add_messages(messages)
-        .add_attribute("action", "stake_for_bjuno")
-        .add_attribute("account", _info.sender.clone())
-        .add_attribute("exch_rate_used", exch_rate.to_string())
-        .add_attribute("bJuno amount", &token_amount.to_string()))
+        .add_attribute("lsSIDE amount", &token_amount.to_string()))
 }
 
 /**
@@ -259,12 +146,8 @@ pub fn try_claim_stake(
     }
 
     //TODO: check slashing on localnet
-    let slashing_amount = (state.sejuno_backing + state.bjuno_backing).saturating_sub(state.to_deposit + Uint128::from(validator_set.total_staked()));
-
-    let bjuno_slashing_amount = calc_bjuno_reward(slashing_amount,state.bjuno_backing,state.sejuno_backing)?;
-
-    state.bjuno_backing = state.bjuno_backing.saturating_sub(Uint128::from(bjuno_slashing_amount));
-    state.sejuno_backing = state.sejuno_backing.saturating_sub(Uint128::from(slashing_amount.u128().saturating_sub(bjuno_slashing_amount)));
+    let slashing_amount = (state.lsside_backing).saturating_sub(state.to_deposit + Uint128::from(validator_set.total_staked()));
+    state.lsside_backing = state.lsside_backing.saturating_sub(Uint128::from(slashing_amount.u128()));
 
     // claim rewards
     messages.append(&mut validator_set.withdraw_rewards_messages());
@@ -277,52 +160,17 @@ pub fn try_claim_stake(
         messages.push(CosmosMsg::Bank(BankMsg::Send {
             to_address: config.dev_address.to_string(),
             amount: vec![Coin {
-                denom: "ujuno".to_string(),
+                denom: "uside".to_string(),
                 amount: Uint128::from(fee * 999 / 1000),
             }],
         }));
     }
 
     let total_reward_gen = Uint128::from(reward_amount.u128().saturating_sub(fee as u128));
+    state.lsside_backing += total_reward_gen;
 
-    /*
-     * LOGIC TO MOVE REWARD TO REWARD CONTRACT FOR BJUNO
-     */
-    let reward_contract_addr = if let Some(addr) = config.rewards_contract {
-        addr.to_string()
-    }else{
-        return Err(ContractError::Std(StdError::generic_err(
-            "Reward contract is not registered",
-        )));
-    };
-
-    let bjuno_reward = calc_bjuno_reward(total_reward_gen,state.bjuno_backing,state.sejuno_backing)?;
-
-    if bjuno_reward > 0 {
-        messages.push(CosmosMsg::Bank(BankMsg::Send {
-            to_address: reward_contract_addr.clone(),
-            amount: vec![Coin {
-                denom: "ujuno".to_string(),
-                amount: Uint128::from(bjuno_reward),
-            }],
-        }));
-    }
-
-    let global_idx_update_msg = RewardExecuteMsg::UpdateGlobalIndex{};
-    messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: reward_contract_addr.clone(),
-        msg: to_binary(&global_idx_update_msg)?,
-        funds: vec![],
-    }));
-
-    let reward_to_add = total_reward_gen.checked_sub(Uint128::from(bjuno_reward)).unwrap();
-
-    state.sejuno_backing += reward_to_add;
-
-    let deposit_amount = state.to_deposit.u128() + reward_to_add.u128();
-
+    let deposit_amount = state.to_deposit.u128() + total_reward_gen.u128();
     state.to_deposit = Uint128::from(0u128);
-    // debug_print!("To deposit amount = {}", config.to_deposit);
 
     let val_count = validator_set.validators.len();
     let total_staked = validator_set.total_staked();
@@ -360,38 +208,21 @@ pub fn try_claim_stake(
     validator_set.rebalance();
     VALIDATOR_SET.save(deps.storage, &validator_set)?;
 
-    // Burn converted bJUNO or seJUNO
-    if state.bjuno_to_burn.u128() > 0 {
+    if state.lsside_to_burn.u128() > 0 {
         let burn_msg = Cw20ExecuteMsg::Burn {
-            amount: state.bjuno_to_burn
+            amount: state.lsside_to_burn
         };
 
         messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: config.bjuno_token.ok_or_else(|| {
+            contract_addr: config.ls_side_token.ok_or_else(|| {
                 ContractError::Std(StdError::generic_err(
-                    "bJUNO token addr not registered".to_string(),
+                    "lsSIDE token addr not registered".to_string(),
                 ))
             })?.to_string(),
             msg: to_binary(&burn_msg)?,
             funds: vec![],
         }));
-        state.bjuno_to_burn = Uint128::from(0u128);
-    }
-    if state.sejuno_to_burn.u128() > 0 {
-        let burn_msg = Cw20ExecuteMsg::Burn {
-            amount: state.sejuno_to_burn
-        };
-
-        messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: config.sejuno_token.ok_or_else(|| {
-                ContractError::Std(StdError::generic_err(
-                    "seJUNO token addr not registered".to_string(),
-                ))
-            })?.to_string(),
-            msg: to_binary(&burn_msg)?,
-            funds: vec![],
-        }));
-        state.sejuno_to_burn = Uint128::from(0u128);
+        state.lsside_to_burn = Uint128::from(0u128);
     }
 
     STATE.save(deps.storage, &state)?;
@@ -404,7 +235,7 @@ pub fn try_claim_stake(
 }
 
 /**
- * Calculates how much your deposited JUNO is worth in tokens
+ * Calculates how much your deposited SIDE is worth in tokens
  * Adds the balance from the total supply and balance
  * Returns amount of tokens you get
  */
@@ -425,7 +256,7 @@ pub fn calc_deposit(
  * Calculates amount of fees from reward amount
  * and percentage of dev fees set in config.
  *
- * Returns amount of JUNO tokens in dev fees.
+ * Returns amount of SIDE tokens in dev fees.
  */
 pub fn calc_fee(amount: Uint128, fee: u64) -> u128 {
     amount
@@ -434,26 +265,4 @@ pub fn calc_fee(amount: Uint128, fee: u64) -> u128 {
         .checked_div(FEE_RESOLUTION)
         .unwrap_or(0)
 }
-pub fn calc_bjuno_reward(
-    total_reward: Uint128,
-    bjuno_backing: Uint128,
-    sejuno_backing:Uint128
-) -> Result<u128, ContractError> {
-    
-    let total_juno = Decimal::from(bjuno_backing.u128() + sejuno_backing.u128());
-    let bjuno_decimal = Decimal::from(bjuno_backing.u128());
 
-    if (sejuno_backing + bjuno_backing) == Uint128::from(0u128) {
-        return Ok((sejuno_backing + bjuno_backing).u128())
-    }
-
-    let bjuno_ratio = bjuno_decimal / total_juno;
-
-    let bjuno_reward_amount = bjuno_ratio
-    .checked_mul(Decimal::from(total_reward.u128()))
-    .unwrap()
-    .to_u128()
-    .unwrap();
-
-    Ok(bjuno_reward_amount)
-}
