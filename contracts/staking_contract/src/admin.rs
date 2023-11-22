@@ -8,7 +8,7 @@ use crate::types::validator_set::VALIDATOR_SET;
 
 pub fn admin_commands(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
