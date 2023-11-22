@@ -10,11 +10,11 @@ use crate::types::config::CONFIG;
 use crate::types::validator_set::VALIDATOR_SET;
 use crate::types::withdraw_window::{USER_CLAIMABLE, USER_CLAIMABLE_AMOUNT, ONGOING_WITHDRAWS_AMOUNT};
 use crate::utils::{calc_threshold, calc_withdraw};
-use crate::staking::{undelegate_msg, sejuno_exchange_rate};
+use crate::staking::{undelegate_msg, lsside_exchange_rate};
 use crate::types::window_manager::{WINDOW_MANANGER, WindowManager};
 use cosmwasm_std::{
     Env, StdError, Addr, StdResult,
-    Uint128, Response, DepsMut, MessageInfo, CosmosMsg, WasmMsg, to_binary, Order, BankMsg, Coin,
+    Uint128, Response, DepsMut, MessageInfo, CosmosMsg, WasmMsg, to_binary, Order,
 };
 use cw20::Cw20ExecuteMsg;
 
@@ -46,25 +46,22 @@ pub fn advance_window(
     let mut state = STATE.load(deps.storage)?;
     let mut window_manager = WINDOW_MANANGER.load(deps.storage)?;
 
-    let withdraw_amount_juno;
+    let lsside_to_side;
     let mut claimed_juno = 0;
-    let mut ongoing_juno = 0;
+    let mut ongoing_side = 0;
     if check_window_advance(&env, &window_manager) {
         // trigger withdraw request on validator set
         let mut validator_set = VALIDATOR_SET.load(deps.storage)?;
 
-        let exchange_rate_sejuno = sejuno_exchange_rate(deps.storage, deps.querier)?;
+        let exchange_rate_lsside = lsside_exchange_rate(deps.storage, deps.querier)?;
+        let total_lsside_amount = window_manager.queue_window.total_lsside;
+        lsside_to_side = calc_withdraw(total_lsside_amount, exchange_rate_lsside)?;
 
-        let total_sejuno_amount = window_manager.queue_window.total_sejuno;
-    
-        let sejuno_to_juno = calc_withdraw(total_sejuno_amount, exchange_rate_sejuno)?;
-        withdraw_amount_juno = sejuno_to_juno.checked_add(bjuno_to_juno).unwrap();
-
-        state.juno_under_withdraw += Uint128::from(withdraw_amount_juno);
-        state.sejuno_under_withdraw += total_sejuno_amount;
+        state.side_under_withdraw += Uint128::from(lsside_to_side);
+        state.lsside_under_withdraw += total_lsside_amount;
 
         // Backing update
-        state.sejuno_backing = Uint128::from(state.sejuno_backing.u128().saturating_sub(sejuno_to_juno));
+        state.lsside_backing = Uint128::from(state.lsside_backing.u128().saturating_sub(lsside_to_side));
 
         let val_count = validator_set.validators.len();
         let total_staked = validator_set.total_staked();
@@ -72,15 +69,15 @@ pub fn advance_window(
 
         let mut remaining_rewards = Uint128::from(0u128);
 
-        // only call Withdraw msg when withdraw_amount_juno > 0
-        if withdraw_amount_juno > calc_threshold(total_staked, val_count) {
+        // only call Withdraw msg when lsside_to_side > 0
+        if lsside_to_side > calc_threshold(total_staked, val_count) {
             // divide and withdraw from multiple validators
             if val_count == 0 {
                 return Err(ContractError::Std(StdError::generic_err(
                     "No validator found!"
                 )));
             }
-            let to_withdraw = withdraw_amount_juno.checked_div(val_count as u128).unwrap() - 2; // for division errors
+            let to_withdraw = lsside_to_side.checked_div(val_count as u128).unwrap() - 2; // for division errors
 
             for validator in validator_set.clone().validators.iter() {
                 let mut temp = to_withdraw + left;
@@ -106,13 +103,13 @@ pub fn advance_window(
                 );
                 remaining_rewards += val_rewards;
             }
-        } else if withdraw_amount_juno > 0 {
+        } else if lsside_to_side > 0 {
             // withdraw from single validator with most staked amount
             // reduce the amount from our stake tracker
-            let validator = validator_set.unbond_from_largest(withdraw_amount_juno)?;
+            let validator = validator_set.unbond_from_largest(lsside_to_side)?;
             // debug_print!("Unbond {} from {}", withdraw_amount_juno, validator);
             // send the undelegate message
-            messages.push(undelegate_msg(&validator, withdraw_amount_juno));
+            messages.push(undelegate_msg(&validator, lsside_to_side));
             // fetch the amount of rewards in the validator
             // and add it to backing and to_deposit
             let val_rewards = Uint128::from(
@@ -126,27 +123,27 @@ pub fn advance_window(
         }
 
         if remaining_rewards.u128() > 0 {
-            state.to_deposit += remaining_rewards.saturating_sub(Uint128::from(bjuno_reward));
-            state.sejuno_backing += remaining_rewards.saturating_sub(Uint128::from(bjuno_reward));
+            state.to_deposit += remaining_rewards;
+            state.lsside_backing += remaining_rewards;
         }
 
         validator_set.rebalance();
         VALIDATOR_SET.save(deps.storage, &validator_set)?;
 
         // BURN TOKENS
-        let burn_msg_sejuno = Cw20ExecuteMsg::Burn {
-            amount: Uint128::from(total_sejuno_amount)
+        let burn_msg_lsside = Cw20ExecuteMsg::Burn {
+            amount: Uint128::from(total_lsside_amount)
         };
 
         // burn unbonding sejuno
-        if total_sejuno_amount != Uint128::from(0u128) {
+        if total_lsside_amount != Uint128::from(0u128) {
             messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: config.sejuno_token.ok_or_else(|| {
+                contract_addr: config.ls_side_token.ok_or_else(|| {
                     ContractError::Std(StdError::generic_err(
                         "seJUNO token addr not registered".to_string(),
                     ))
                 })?.to_string(),
-                msg: to_binary(&burn_msg_sejuno)?,
+                msg: to_binary(&burn_msg_lsside)?,
                 funds: vec![],
             }));
         }
@@ -155,14 +152,14 @@ pub fn advance_window(
         window_manager.advance_window(
             deps.storage,
             env.block.time.seconds(),
-            exchange_rate_sejuno,
+            exchange_rate_lsside,
         )?;
 
         // mature part should be handled seperately
         // pop from front of ongoing_windows dequeue
         // while the mature timestamp of window is less than current time after active window append to back
-        let mut ongoing_sejuno = 0;
-        let mut ongoing_users_juno: HashMap<Addr, Uint128> = HashMap::new();
+        let mut ongoing_lsside = 0;
+        let mut ongoing_users_side: HashMap<Addr, Uint128> = HashMap::new();
         while window_manager.ongoing_windows.len() as u128 > 0 {
             // continue only if front window is matured
             if let Some(front_window) = window_manager.ongoing_windows.front() {
@@ -170,15 +167,14 @@ pub fn advance_window(
                     break;
                 }
             }
-            // data not deleted from amounts MAP
-            // TODO: check later and remove the amounts from the map
+
             // using prefix iteration
             let matured_window = window_manager.pop_matured(deps.storage)?;
-            let juno_window = matured_window.total_juno;
-            let sejuno_window = matured_window.total_sejuno;
+            let side_window = matured_window.total_side;
+            let lsside_window = matured_window.total_lsside;
 
-            ongoing_juno += juno_window.u128();
-            ongoing_sejuno += sejuno_window.u128();
+            ongoing_side += side_window.u128();
+            ongoing_lsside += lsside_window.u128();
 
             // store-optimize: Delete current window data
             // Add function to remove previous data
@@ -186,16 +182,16 @@ pub fn advance_window(
                 .prefix(&matured_window.id.to_string())
                 .range(deps.storage, None, None, Order::Ascending).collect();
             for (user_addr, user_juno_amount) in matured_amounts?.iter() {
-                if let Some(already_stored_amount) = ongoing_users_juno.get_mut(user_addr) {
+                if let Some(already_stored_amount) = ongoing_users_side.get_mut(user_addr) {
                     *already_stored_amount += *user_juno_amount;
                 } else {
-                    ongoing_users_juno.insert(user_addr.clone(), *user_juno_amount);
+                    ongoing_users_side.insert(user_addr.clone(), *user_juno_amount);
                 }
                 ONGOING_WITHDRAWS_AMOUNT.remove(deps.storage, (&matured_window.id.to_string(), user_addr),);
             }
         }
 
-        if ongoing_juno > 0 {
+        if ongoing_side > 0 {
             let contract_juno = deps
                 .querier
                 .query_balance(env.contract.address.clone(), "ujuno")?
@@ -203,31 +199,31 @@ pub fn advance_window(
             claimed_juno =
                 contract_juno.u128() - state.to_deposit.u128() - state.not_redeemed.u128();
             // If claimed is less than 90% of expected value, revert
-            if claimed_juno < (ongoing_juno * 90) / 100 {
+            if claimed_juno < (ongoing_side * 90) / 100 {
                 return Err(ContractError::Std(StdError::generic_err(
                     "Claim is not processed yet!"
                 )));
             }
 
-            state.juno_under_withdraw = state.juno_under_withdraw.sub(Uint128::from(ongoing_juno)); // juno
+            state.side_under_withdraw = state.side_under_withdraw.sub(Uint128::from(ongoing_side)); // juno
 
-            state.sejuno_under_withdraw =
-                state.sejuno_under_withdraw.sub(Uint128::from(ongoing_sejuno)); // sejuno
+            state.lsside_under_withdraw =
+                state.lsside_under_withdraw.sub(Uint128::from(ongoing_lsside)); // lsside
 
             let mut ratio = Decimal::from(1u128);
-            if ongoing_juno > 0 {
-                ratio = Decimal::from(claimed_juno as u64) / Decimal::from(ongoing_juno as u64);
+            if ongoing_side > 0 {
+                ratio = Decimal::from(claimed_juno as u64) / Decimal::from(ongoing_side as u64);
                 if ratio > Decimal::from(1u128) {
                     ratio = Decimal::from(1u128);
-                    state.not_redeemed += Uint128::from(ongoing_juno);
+                    state.not_redeemed += Uint128::from(ongoing_side);
                 } else {
                     state.not_redeemed += Uint128::from(claimed_juno);
                 }
             }
 
-            if ongoing_users_juno.len() as u128 > 0 {
+            if ongoing_users_side.len() as u128 > 0 {
                 let mut user_claimable = USER_CLAIMABLE.load(deps.storage)?;
-                for (user_addr, juno_amount) in ongoing_users_juno.iter() {
+                for (user_addr, juno_amount) in ongoing_users_side.iter() {
                     let user_juno = (Decimal::from(juno_amount.u128() as u64).mul(ratio))
                         .to_u128()
                         .unwrap();
@@ -246,7 +242,6 @@ pub fn advance_window(
                 }
                 user_claimable.total_side = Uint128::from(user_claimable.total_side.u128() + claimed_juno);
                 USER_CLAIMABLE.save(deps.storage, &user_claimable)?;
-
             }
         }
 
@@ -262,9 +257,9 @@ pub fn advance_window(
         .add_messages(messages)
         .add_attribute("action", "advance_window")
         .add_attribute("account", _info.sender.as_str())
-        .add_attribute("withdraw_amount_side", withdraw_amount_juno.to_string())
+        .add_attribute("withdraw_amount_side", lsside_to_side.to_string())
         .add_attribute("claimed_side", claimed_juno.to_string())
-        .add_attribute("ongoing_side", ongoing_juno.to_string()))
+        .add_attribute("ongoing_side", ongoing_side.to_string()))
 }
 
 pub fn check_window_advance(env: &Env, window_manager: &WindowManager) -> bool {

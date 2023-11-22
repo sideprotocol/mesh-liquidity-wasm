@@ -18,7 +18,7 @@ pub struct QueueWindow {
 pub struct OngoingWithdrawWindow {
     pub id: u64,
     pub time_to_mature_window: u64,
-    pub total_juno: Uint128,
+    pub total_side: Uint128,
     pub total_lsside: Uint128,
 }
 

@@ -62,18 +62,17 @@ impl WindowManager {
         store: &mut dyn Storage,
         current_time: u64,
         exchange_rate_lsside: Decimal,
-        exchange_rate_bjuno: Decimal,
     ) -> StdResult<()> {
         let config = CONFIG.load(store)?;
         let queue_window = self.queue_window.clone();
         let queue_amounts: StdResult<Vec<_>> = QUEUE_WINDOW_AMOUNT.range(store, None, None, Order::Ascending).collect();
 
-        let lsside_to_juno = Uint128::from(calc_withdraw(queue_window.total_lsside, exchange_rate_lsside)?);
+        let lsside_to_side = Uint128::from(calc_withdraw(queue_window.total_lsside, exchange_rate_lsside)?);
 
         self.ongoing_windows.push_back(OngoingWithdrawWindow {
             id: queue_window.id,
             time_to_mature_window: current_time + config.unbonding_period,
-            total_juno: lsside_to_juno,
+            total_side: lsside_to_side,
             total_lsside: queue_window.total_lsside,
         });
         for (user_addr, queue_amt) in queue_amounts?.iter() {
