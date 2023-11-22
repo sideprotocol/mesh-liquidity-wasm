@@ -13,12 +13,11 @@ use crate::ContractError;
 use crate::msg::ReferralMsg;
 use crate::deposit::{calc_fee, calc_bjuno_reward};
 use crate::staking::{get_rewards, stake_msg, sejuno_exchange_rate, bjuno_exchange_rate, get_balance};
-// use crate::state::get_frozen_exchange_rate;
-use crate::state::{STATE,RewardExecuteMsg};
+use crate::state::STATE;
 use crate::tokens::query_total_supply;
 use crate::types::config::CONFIG;
 use crate::types::killswitch::KillSwitch;
-use crate::types::validator_set::{VALIDATOR_SET};
+use crate::types::validator_set::VALIDATOR_SET;
 use crate::types::window_manager::WINDOW_MANANGER;
 use crate::utils::{calc_threshold, calc_withdraw};
 
@@ -288,29 +287,16 @@ pub fn release_tokens(
         amount: Uint128::from(_cw20_msg.amount)
     };
 
-    if bjuno {
-        // burn unbonding bjuno
-        messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: config.bjuno_token.ok_or_else(|| {
-                ContractError::Std(StdError::generic_err(
-                    "bJUNO token addr not registered".to_string(),
-                ))
-            })?.to_string(),
-            msg: to_binary(&burn_msg)?,
-            funds: vec![],
-        }));
-    } else {
-        // burn unbonding sejuno
-        messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: config.sejuno_token.ok_or_else(|| {
-                ContractError::Std(StdError::generic_err(
-                    "seJUNO token addr not registered".to_string(),
-                ))
-            })?.to_string(),
-            msg: to_binary(&burn_msg)?,
-            funds: vec![],
-        }));
-    }
+    // burn unbonding lsSIDE
+    messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: config.ls_side_token.ok_or_else(|| {
+            ContractError::Std(StdError::generic_err(
+                "lsSIDE token addr not registered".to_string(),
+            ))
+        })?.to_string(),
+        msg: to_binary(&burn_msg)?,
+        funds: vec![],
+    }));
 
     messages.push(CosmosMsg::Bank(BankMsg::Send {
         to_address: _cw20_msg.sender.clone(),

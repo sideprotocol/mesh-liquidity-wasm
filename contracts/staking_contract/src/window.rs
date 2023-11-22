@@ -55,22 +55,17 @@ pub fn advance_window(
         let mut validator_set = VALIDATOR_SET.load(deps.storage)?;
 
         let exchange_rate_sejuno = sejuno_exchange_rate(deps.storage, deps.querier)?;
-        let exchange_rate_bjuno = bjuno_exchange_rate(deps.storage, deps.querier)?;
 
         let total_sejuno_amount = window_manager.queue_window.total_sejuno;
-        let total_bjuno_amount = window_manager.queue_window.total_bjuno;
-
+    
         let sejuno_to_juno = calc_withdraw(total_sejuno_amount, exchange_rate_sejuno)?;
-        let bjuno_to_juno = calc_withdraw(total_bjuno_amount, exchange_rate_bjuno)?;
         withdraw_amount_juno = sejuno_to_juno.checked_add(bjuno_to_juno).unwrap();
 
         state.juno_under_withdraw += Uint128::from(withdraw_amount_juno);
         state.sejuno_under_withdraw += total_sejuno_amount;
-        state.bjuno_under_withdraw += total_bjuno_amount;
 
         // Backing update
         state.sejuno_backing = Uint128::from(state.sejuno_backing.u128().saturating_sub(sejuno_to_juno));
-        state.bjuno_backing = Uint128::from(state.bjuno_backing.u128().saturating_sub(bjuno_to_juno));
 
         let val_count = validator_set.validators.len();
         let total_staked = validator_set.total_staked();
@@ -132,27 +127,6 @@ pub fn advance_window(
         }
 
         if remaining_rewards.u128() > 0 {
-            let bjuno_reward = calc_bjuno_reward(
-                remaining_rewards,
-                state.bjuno_backing,
-                state.sejuno_backing
-            )?;
-            if bjuno_reward > 0 {
-                let reward_contract_addr = if let Some(addr) = config.rewards_contract {
-                    addr.to_string()
-                }else{
-                    return Err(ContractError::Std(StdError::generic_err(
-                        "Reward contract is not registered",
-                    )));
-                };
-                messages.push(CosmosMsg::Bank(BankMsg::Send {
-                    to_address: reward_contract_addr,
-                    amount: vec![Coin {
-                        denom: "ujuno".to_string(),
-                        amount: Uint128::from(bjuno_reward),
-                    }],
-                }));
-            }
             state.to_deposit += remaining_rewards.saturating_sub(Uint128::from(bjuno_reward));
             state.sejuno_backing += remaining_rewards.saturating_sub(Uint128::from(bjuno_reward));
         }
@@ -163,9 +137,6 @@ pub fn advance_window(
         // BURN TOKENS
         let burn_msg_sejuno = Cw20ExecuteMsg::Burn {
             amount: Uint128::from(total_sejuno_amount)
-        };
-        let burn_msg_bjuno = Cw20ExecuteMsg::Burn {
-            amount: Uint128::from(total_bjuno_amount)
         };
 
         // burn unbonding sejuno
@@ -180,32 +151,18 @@ pub fn advance_window(
                 funds: vec![],
             }));
         }
-        // burn unbonding bjuno
-        if total_bjuno_amount != Uint128::from(0u128) {
-            messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: config.bjuno_token.ok_or_else(|| {
-                    ContractError::Std(StdError::generic_err(
-                        "bJUNO token addr not registered".to_string(),
-                    ))
-                })?.to_string(),
-                msg: to_binary(&burn_msg_bjuno)?,
-                funds: vec![],
-            }));
-        }
 
         // move active window object to ongoing_windows back
         window_manager.advance_window(
             deps.storage,
             env.block.time.seconds(),
             exchange_rate_sejuno,
-            exchange_rate_bjuno
         )?;
 
         // mature part should be handled seperately
         // pop from front of ongoing_windows dequeue
         // while the mature timestamp of window is less than current time after active window append to back
         let mut ongoing_sejuno = 0;
-        let mut ongoing_bjuno = 0;
         let mut ongoing_users_juno: HashMap<Addr, Uint128> = HashMap::new();
         while window_manager.ongoing_windows.len() as u128 > 0 {
             // continue only if front window is matured
@@ -220,11 +177,9 @@ pub fn advance_window(
             let matured_window = window_manager.pop_matured(deps.storage)?;
             let juno_window = matured_window.total_juno;
             let sejuno_window = matured_window.total_sejuno;
-            let bjuno_window = matured_window.total_bjuno;
 
             ongoing_juno += juno_window.u128();
             ongoing_sejuno += sejuno_window.u128();
-            ongoing_bjuno += bjuno_window.u128();
 
             // store-optimize: Delete current window data
             // Add function to remove previous data
@@ -259,8 +214,6 @@ pub fn advance_window(
 
             state.sejuno_under_withdraw =
                 state.sejuno_under_withdraw.sub(Uint128::from(ongoing_sejuno)); // sejuno
-            state.bjuno_under_withdraw =
-                state.bjuno_under_withdraw.sub(Uint128::from(ongoing_bjuno)); // bjuno
 
             let mut ratio = Decimal::from(1u128);
             if ongoing_juno > 0 {
@@ -292,7 +245,7 @@ pub fn advance_window(
                         &Uint128::from(after_user_juno),
                     )?;
                 }
-                user_claimable.total_juno = Uint128::from(user_claimable.total_juno.u128() + claimed_juno);
+                user_claimable.total_side = Uint128::from(user_claimable.total_side.u128() + claimed_juno);
                 USER_CLAIMABLE.save(deps.storage, &user_claimable)?;
 
             }
@@ -310,9 +263,9 @@ pub fn advance_window(
         .add_messages(messages)
         .add_attribute("action", "advance_window")
         .add_attribute("account", _info.sender.as_str())
-        .add_attribute("withdraw_amount_juno", withdraw_amount_juno.to_string())
-        .add_attribute("claimed_juno", claimed_juno.to_string())
-        .add_attribute("ongoing_juno", ongoing_juno.to_string()))
+        .add_attribute("withdraw_amount_side", withdraw_amount_juno.to_string())
+        .add_attribute("claimed_side", claimed_juno.to_string())
+        .add_attribute("ongoing_side", ongoing_juno.to_string()))
 }
 
 pub fn check_window_advance(env: &Env, window_manager: &WindowManager) -> bool {

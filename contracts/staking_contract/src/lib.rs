@@ -10,7 +10,6 @@ pub mod withdraw;
 pub mod receive;
 pub mod window;
 pub mod update;
-pub mod convert;
 pub mod error;
 pub mod state;
 pub mod query;
