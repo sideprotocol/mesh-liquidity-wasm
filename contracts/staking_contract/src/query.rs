@@ -3,7 +3,7 @@ use cosmwasm_std::{
 };
 
 use crate::msg::QueryResponse;
-use crate::staking::{lsside_exchange_rate, get_total_onchain_balance};
+use crate::staking::lsside_exchange_rate;
 use crate::state::STATE;
 use crate::types::config::CONFIG;
 use crate::types::validator_set::VALIDATOR_SET;
@@ -14,8 +14,6 @@ pub fn query_info(deps: Deps) -> StdResult<Binary> {
     let config = CONFIG.load(deps.storage)?;
     let state = STATE.load(deps.storage)?;
     let validator_set = VALIDATOR_SET.load(deps.storage)?;
-
-    let total_on_chain = get_total_onchain_balance(deps.storage)?;
 
     to_binary(&QueryResponse::Info {
         admin: config.admin,

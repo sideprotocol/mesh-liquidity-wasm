@@ -33,7 +33,7 @@ pub fn try_receive_cw20(
     match from_binary(&_cw20_msg.msg)? {
         Cw20HookMsg::Unbond {} => {
             if info.sender == lsside_contract_addr {
-                try_withdraw(deps, env, info, _cw20_msg,false)
+                try_withdraw(deps, env, info, _cw20_msg)
             } else {
                 Err(ContractError::Std(StdError::generic_err("unauthorized")))
             }

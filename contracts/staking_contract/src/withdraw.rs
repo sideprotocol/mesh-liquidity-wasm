@@ -6,15 +6,13 @@ use cosmwasm_std::{
     StdError, Uint128, DepsMut, MessageInfo, WasmMsg, to_binary
 };
 use cw20::{Cw20ReceiveMsg, Cw20ExecuteMsg};
-use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
 
 use crate::ContractError;
 use crate::msg::ReferralMsg;
-use crate::deposit::{calc_fee, calc_bjuno_reward};
-use crate::staking::{get_rewards, stake_msg, sejuno_exchange_rate, bjuno_exchange_rate, get_balance};
+use crate::deposit::calc_fee;
+use crate::staking::{get_rewards, stake_msg, get_balance, lsside_exchange_rate};
 use crate::state::STATE;
-use crate::tokens::query_total_supply;
 use crate::types::config::CONFIG;
 use crate::types::killswitch::KillSwitch;
 use crate::types::validator_set::VALIDATOR_SET;
@@ -33,7 +31,6 @@ pub fn try_withdraw(
     env: Env,
     _info: MessageInfo,
     _cw20_msg: Cw20ReceiveMsg,
-    bjuno: bool,
 ) -> Result<Response, ContractError> {
     let mut messages: Vec<CosmosMsg> = vec![];
 
@@ -50,13 +47,13 @@ pub fn try_withdraw(
     }
 
     if kill_switch == KillSwitch::Open {
-        return release_tokens(deps, env, _info, _cw20_msg, bjuno);
+        return release_tokens(deps, env, _info, _cw20_msg);
     }
 
-    // cannot withdraw less than 0.01 seJUNO or bJUNO (10_000 seJUNO or bJUNO without decimals)
+    // cannot withdraw less than 0.01 lsSIDE (10_000 lsSIDE without decimals)
     if _cw20_msg.amount < Uint128::from(MINIMUM_WITHDRAW) {
         return Err(ContractError::Std(StdError::generic_err(format!(
-            "Amount withdrawn below minimum of {:?} usejuno or ubjuno",
+            "Amount withdrawn below minimum of {:?} ulsside",
             MINIMUM_WITHDRAW
         ))));
     }
@@ -65,7 +62,7 @@ pub fn try_withdraw(
         messages.push(
             CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr:  config.referral_contract.unwrap_or(Addr::unchecked("")).to_string(),
-                msg: to_binary(&ReferralMsg::Withdraw { recipient: _cw20_msg.sender.clone(), bjuno: bjuno, amount: _cw20_msg.amount })?,
+                msg: to_binary(&ReferralMsg::Withdraw { recipient: _cw20_msg.sender.clone(), amount: _cw20_msg.amount })?,
                 funds: vec![],
             })
         )
@@ -74,70 +71,17 @@ pub fn try_withdraw(
     let mut validator_set = VALIDATOR_SET.load(deps.storage)?;
     let mut window_manager = WINDOW_MANANGER.load(deps.storage)?;
 
-    let mut total_sejuno_amount = window_manager.queue_window.total_sejuno;
-    let mut user_sejuno_amount = window_manager.get_user_sejuno_in_active_window(
+    // Store user's lsside amount in active window (WithdrawWindow)
+    window_manager.add_user_amount_to_active_window(
+        deps.storage,
+        Addr::unchecked(_cw20_msg.sender.clone()),
+        _cw20_msg.amount,
+    )?;
+    let total_seside_amount = window_manager.queue_window.total_lsside;
+    let user_seside_amount = window_manager.get_user_lsside_in_active_window(
         deps.storage,
         Addr::unchecked(_cw20_msg.sender.clone()),
     )?;
-    let mut total_bjuno_amount = window_manager.queue_window.total_bjuno;
-    let mut user_bjuno_amount = window_manager.get_user_bjuno_in_active_window(
-        deps.storage,
-        Addr::unchecked(_cw20_msg.sender.clone()),
-    )?;
-
-    let mut peg_fee = 0u128;
-
-    // Store user's seJUNO or bJUNO amount in active window (WithdrawWindow)
-    if !bjuno { // seJUNO sent by user
-        window_manager.add_user_amount_to_active_window(
-            deps.storage,
-            Addr::unchecked(_cw20_msg.sender.clone()),
-            _cw20_msg.amount,
-            Uint128::from(0u128)
-        )?;
-        total_sejuno_amount = window_manager.queue_window.total_sejuno;
-        user_sejuno_amount = window_manager.get_user_sejuno_in_active_window(
-            deps.storage,
-            Addr::unchecked(_cw20_msg.sender.clone()),
-        )?;
-    }
-    else { // bJUNO sent by user
-        let bjuno_exch_rate = bjuno_exchange_rate(deps.storage, deps.querier)?;
-        let mut bjuno_amount = _cw20_msg.amount.clone().u128();
-        let bjuno_token = config.bjuno_token.ok_or_else(|| {
-            ContractError::Std(StdError::generic_err(
-                "bJuno token addr not registered".to_string(),
-            ))
-        })?.to_string();
-
-        // peg recovery fee
-        let bjuno_threshold = Decimal::from(config.er_threshold)/Decimal::from(1000u64);
-        let recovery_fee = Decimal::from(config.peg_recovery_fee)/Decimal::from(1000u64);
-        if bjuno_exch_rate < bjuno_threshold {
-            let max_peg_fee = recovery_fee.checked_mul(Decimal::from(bjuno_amount)).unwrap();
-            let required_peg_fee =
-                query_total_supply(deps.querier, &Addr::unchecked(bjuno_token.clone()))?.u128()
-                .saturating_sub(state.bjuno_to_burn.u128() + state.bjuno_backing.u128());
-            peg_fee = max_peg_fee.min(Decimal::from(required_peg_fee)).to_u128().unwrap();
-            bjuno_amount = bjuno_amount.checked_sub(peg_fee).unwrap();
-        }
-
-        window_manager.add_user_amount_to_active_window(
-            deps.storage,
-            Addr::unchecked(_cw20_msg.sender.clone()),
-            Uint128::from(0u128),
-            Uint128::from(bjuno_amount),
-        )?;
-        total_bjuno_amount = window_manager.queue_window.total_bjuno;
-        user_bjuno_amount = window_manager.get_user_bjuno_in_active_window(
-            deps.storage,
-            Addr::unchecked(_cw20_msg.sender.clone()),
-        )?;
-    }
-
-    if peg_fee > 0 {
-        state.bjuno_to_burn += Uint128::from(peg_fee);
-    }
 
     WINDOW_MANANGER.save(deps.storage, &window_manager)?;
 
@@ -155,51 +99,19 @@ pub fn try_withdraw(
         messages.push(CosmosMsg::Bank(BankMsg::Send {
             to_address: config.dev_address.to_string(),
             amount: vec![Coin {
-                denom: "ujuno".to_string(),
+                denom: "uside".to_string(),
                 amount: Uint128::from(fee * 999 / 1000),
             }],
         }));
     }
 
     let total_reward_gen = Uint128::from(reward_amount.u128().saturating_sub(fee as u128));
+    state.lsside_backing += total_reward_gen;
 
-    let reward_contract_addr = if let Some(addr) = config.rewards_contract {
-        addr.to_string()
-    }else{
-        return Err(ContractError::Std(StdError::generic_err(
-            "Reward contract is not registered",
-        )));
-    };
-
-    let bjuno_reward = calc_bjuno_reward(total_reward_gen,state.bjuno_backing,state.sejuno_backing)?;
-
-    if bjuno_reward > 0 {
-        messages.push(CosmosMsg::Bank(BankMsg::Send {
-            to_address: reward_contract_addr.clone(),
-            amount: vec![Coin {
-                denom: "ujuno".to_string(),
-                amount: Uint128::from(bjuno_reward),
-            }],
-        }));
-    }
-
-    let global_idx_update_msg = RewardExecuteMsg::UpdateGlobalIndex{};
-    messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: reward_contract_addr.clone(),
-        msg: to_binary(&global_idx_update_msg)?,
-        funds: vec![],
-    }));
-
-    let reward_to_add = total_reward_gen.checked_sub(Uint128::from(bjuno_reward)).unwrap();
-
-    state.sejuno_backing += reward_to_add;
-
-    let deposit_amount = state.to_deposit.u128() + reward_to_add.u128();
-    // let deposit_amount = state.to_deposit.u128() + reward_amount_to_add.u128();
+    let deposit_amount = state.to_deposit.u128() + total_reward_gen.u128();
 
     state.to_deposit = Uint128::from(0u128);
     STATE.save(deps.storage, &state)?;
-    // debug_print!("To deposit amount = {}", state.to_deposit);
 
     let val_count = validator_set.validators.len();
     let total_staked = validator_set.total_staked();
@@ -242,10 +154,8 @@ pub fn try_withdraw(
     Ok(Response::new()
         .add_messages(messages)
         .add_attribute("action", "withdraw")
-        .add_attribute("total seJUNO amount in active window", total_sejuno_amount)
-        .add_attribute("total bJUNO amount in active window", total_bjuno_amount)
-        .add_attribute("user seJUNO amount in active window", user_sejuno_amount)
-        .add_attribute("user bJUNO amount in active window", user_bjuno_amount))
+        .add_attribute("total lsSIDE amount in active window", total_seside_amount)
+        .add_attribute("user lsSIDE amount in active window", user_seside_amount))
 }
 
 /**
@@ -257,30 +167,18 @@ pub fn release_tokens(
     env: Env,
     _info: MessageInfo,
     _cw20_msg: Cw20ReceiveMsg,
-    bjuno: bool
 ) -> Result<Response, ContractError> {
     let mut messages: Vec<CosmosMsg> = vec![];
     let config = CONFIG.load(deps.storage)?;
 
-    // debug_print(format!("** tokens withdrawn: {}", amount));
-    let sejuno_xrate = sejuno_exchange_rate(deps.storage,deps.querier)?;
-    let bjuno_xrate = bjuno_exchange_rate(deps.storage,deps.querier)?;
+    let sejuno_xrate = lsside_exchange_rate(deps.storage,deps.querier)?;
 
-    // debug_print(format!("** Frozen sejuno exchange rate: {}", sejuno_xrate.to_string()));
-    // debug_print(format!("** Frozen bjuno exchange rate: {}", bjuno_xrate.to_string()));
-    let mut juno_amount:u128 = 0;
-    if bjuno {
-        juno_amount = calc_withdraw(_cw20_msg.amount, bjuno_xrate)?;
-    }else{
-        juno_amount = calc_withdraw(_cw20_msg.amount, sejuno_xrate)?;
-    }
-    // debug_print(format!("** JUNO amount withdrawn: {}", juno_amount));
+    let side_amount = calc_withdraw(_cw20_msg.amount, sejuno_xrate)?;
     let my_balance = get_balance(deps.querier, &env.contract.address)?;
-    // debug_print(format!("** contract balance: {}", my_balance));
 
-    let juno_coin = Coin {
-        denom: "ujuno".to_string(),
-        amount: min(my_balance, Uint128::from(juno_amount)),
+    let side_coin = Coin {
+        denom: "uside".to_string(),
+        amount: min(my_balance, Uint128::from(side_amount)),
     };
 
     let burn_msg = Cw20ExecuteMsg::Burn {
@@ -300,12 +198,12 @@ pub fn release_tokens(
 
     messages.push(CosmosMsg::Bank(BankMsg::Send {
         to_address: _cw20_msg.sender.clone(),
-        amount: vec![juno_coin.clone()],
+        amount: vec![side_coin.clone()],
     }));
 
     Ok(Response::new()
         .add_messages(messages)
         .add_attribute("action", "withdraw")
         .add_attribute("account", _cw20_msg.sender.clone())
-        .add_attribute("amount", juno_coin.amount))
+        .add_attribute("amount", side_coin.amount))
 }

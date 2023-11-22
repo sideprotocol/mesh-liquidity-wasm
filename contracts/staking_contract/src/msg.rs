@@ -116,7 +116,7 @@ pub enum RewardClaim {
 #[serde(rename_all = "snake_case")]
 pub enum ReferralMsg {
     Deposit { recipient: String, code: u64, amount: Uint128 },
-    Withdraw { recipient: String, bjuno: bool, amount: Uint128 }
+    Withdraw { recipient: String, amount: Uint128 }
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
