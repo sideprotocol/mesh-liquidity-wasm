@@ -24,5 +24,5 @@ pub struct OngoingWithdrawWindow {
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct UserClaimable {
-    pub total_juno: Uint128,
+    pub total_side: Uint128,
 }

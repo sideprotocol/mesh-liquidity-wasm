@@ -8,7 +8,7 @@ use cosmwasm_std::{
 };
 
 /**
- * Transfer matured JUNO from contract to user's wallet.
+ * Transfer matured SIDE from contract to user's wallet.
  */
 pub fn claim(
     deps: DepsMut,
@@ -28,27 +28,25 @@ pub fn claim(
 
     let mut user_claimable = USER_CLAIMABLE.load(deps.storage)?;
 
-    let juno_amount: Uint128 = Uint128::from(0u128);
-    if let Some(juno_amount) = USER_CLAIMABLE_AMOUNT.may_load(deps.storage, &_info.sender)? {
-        user_claimable.total_juno -= juno_amount;
+    let side_amount: Uint128 = Uint128::from(0u128);
+    if let Some(side_amount) = USER_CLAIMABLE_AMOUNT.may_load(deps.storage, &_info.sender)? {
+        user_claimable.total_side -= side_amount;
 
-        if juno_amount > Uint128::from(0u128) {
-                // If users wants juno amount
+        if side_amount > Uint128::from(0u128) {
+                // If users wants side amount
                 messages.push(CosmosMsg::Bank(BankMsg::Send {
                     to_address: _info.sender.to_string(),
                     amount: vec![Coin {
-                        denom: "ujuno".to_string(),
-                        amount: Uint128::from(juno_amount),
+                        denom: "uside".to_string(),
+                        amount: Uint128::from(side_amount),
                     }],
                 }));
 
-            state.not_redeemed -= juno_amount.clone();
+            state.not_redeemed -= side_amount.clone();
         }
+    
         STATE.save(deps.storage, &state)?;
         USER_CLAIMABLE.save(deps.storage, &user_claimable)?;
-
-        // store-optimize
-        //USER_CLAIMABLE_AMOUNT.save(deps.storage, &_info.sender, &Uint128::from(0u128))?;
         USER_CLAIMABLE_AMOUNT.remove(deps.storage, &_info.sender);
     }
 
@@ -56,5 +54,5 @@ pub fn claim(
         .add_messages(messages)
         .add_attribute("action", "claim")
         .add_attribute("account", _info.sender)
-        .add_attribute("amount", juno_amount))
+        .add_attribute("amount", side_amount))
 }

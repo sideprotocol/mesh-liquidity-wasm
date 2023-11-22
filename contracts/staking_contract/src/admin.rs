@@ -1,16 +1,11 @@
-use crate::state::{STATE};
 use crate::ContractError;
 use cosmwasm_std::{
-    to_binary, BankMsg, Coin, CosmosMsg, DepsMut, Env, 
-    MessageInfo, Response, StdError, WasmMsg, Uint128,
-    WasmQuery, QueryRequest, attr
+    CosmosMsg, DepsMut, Env, 
+    MessageInfo, Response, StdError
 };
-use cw20::Cw20ExecuteMsg;
 
-use crate::types::validator_set::{VALIDATOR_SET};
-use crate::msg::{ExecuteMsg, RewardClaim, QueryRewards, AccruedRewardsResponse};
-use crate::staking::{redelegate_msg, sejuno_exchange_rate, bjuno_exchange_rate};
-use crate::deposit::calc_bjuno_reward;
+use crate::types::validator_set::VALIDATOR_SET;
+use crate::msg::ExecuteMsg;
 use crate::types::config::CONFIG;
 use crate::types::killswitch::KillSwitch;
 
@@ -44,28 +39,10 @@ pub fn admin_commands(
             Ok(Response::new())
         }
 
-        ExecuteMsg::ChangePegRecoveryFee {
-            peg_recovery_fee,
-        } => {
-            config.peg_recovery_fee = peg_recovery_fee;
-            CONFIG.save(deps.storage, &config)?;
-
-            Ok(Response::new())
-        }
-
         ExecuteMsg::ChangeReferralContract {
             referral_contract
         } => {
             config.referral_contract = Some(referral_contract);
-            CONFIG.save(deps.storage, &config)?;
-
-            Ok(Response::new())
-        }
-
-        ExecuteMsg::ChangeThreshold {
-            er_threshold,
-        } => {
-            config.er_threshold = er_threshold.min(1000u64);
             CONFIG.save(deps.storage, &config)?;
 
             Ok(Response::new())
