@@ -3,7 +3,7 @@ use cosmwasm_std::{
 };
 
 use crate::msg::QueryResponse;
-use crate::staking::{sejuno_exchange_rate, get_total_onchain_balance};
+use crate::staking::{lsside_exchange_rate, get_total_onchain_balance};
 use crate::state::STATE;
 use crate::types::config::CONFIG;
 use crate::types::validator_set::VALIDATOR_SET;
@@ -47,7 +47,7 @@ pub fn query_dev_fee(deps: Deps) -> StdResult<Binary> {
 }
 
 pub fn query_sejuno_exchange_rate(deps: Deps) -> StdResult<Binary> {
-    let ratio = sejuno_exchange_rate(deps.storage, deps.querier)?;
+    let ratio = lsside_exchange_rate(deps.storage, deps.querier)?;
 
     let rate = if ratio.is_zero() {
         "1".to_string()

@@ -12,7 +12,7 @@ use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 use cw20::Cw20ExecuteMsg;
 
-use crate::staking::{get_rewards, stake_msg, sejuno_exchange_rate};
+use crate::staking::{get_rewards, stake_msg, lsside_exchange_rate};
 use crate::types::killswitch::KillSwitch;
 use crate::types::validator_set::VALIDATOR_SET;
 use crate::utils::calc_threshold;
@@ -89,7 +89,7 @@ pub fn try_stake(
     })?.to_string();
 
     // exch rate (SIDE staked + SIDE waiting withdraw) / (total supply in lsSIDE)
-    let exch_rate = sejuno_exchange_rate(deps.storage, deps.querier)?;
+    let exch_rate = lsside_exchange_rate(deps.storage, deps.querier)?;
 
     // Update deposit amount
     state.to_deposit += amount_raw;

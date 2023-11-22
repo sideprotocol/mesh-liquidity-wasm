@@ -225,7 +225,7 @@ pub fn try_kill_switch_unbond(
             "lsSIDE token addr not registered".to_string(),
         )
     })?;
-    let total_on_chain_se = get_onchain_balance_with_rewards(deps.querier, deps.storage, &contract_address,false)?;
+    let total_on_chain_se = get_onchain_balance_with_rewards(deps.querier, deps.storage, &contract_address)?;
     let tokens_se =
         query_total_supply(deps.querier, &lsside_token)?
         .saturating_sub(state.lsside_to_burn);

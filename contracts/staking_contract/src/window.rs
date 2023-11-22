@@ -4,14 +4,13 @@ use std::collections::HashMap;
 use std::ops::{Mul, Sub};
 
 use crate::ContractError;
-use crate::deposit::calc_bjuno_reward;
 use crate::msg::ExecuteMsg;
-use crate::state::{STATE};
+use crate::state::STATE;
 use crate::types::config::CONFIG;
-use crate::types::validator_set::{VALIDATOR_SET};
+use crate::types::validator_set::VALIDATOR_SET;
 use crate::types::withdraw_window::{USER_CLAIMABLE, USER_CLAIMABLE_AMOUNT, ONGOING_WITHDRAWS_AMOUNT};
 use crate::utils::{calc_threshold, calc_withdraw};
-use crate::staking::{undelegate_msg, sejuno_exchange_rate, bjuno_exchange_rate};
+use crate::staking::{undelegate_msg, sejuno_exchange_rate};
 use crate::types::window_manager::{WINDOW_MANANGER, WindowManager};
 use cosmwasm_std::{
     Env, StdError, Addr, StdResult,
