@@ -44,7 +44,7 @@ pub fn claim(
 
             state.not_redeemed -= side_amount.clone();
         }
-    
+
         STATE.save(deps.storage, &state)?;
         USER_CLAIMABLE.save(deps.storage, &user_claimable)?;
         USER_CLAIMABLE_AMOUNT.remove(deps.storage, &_info.sender);

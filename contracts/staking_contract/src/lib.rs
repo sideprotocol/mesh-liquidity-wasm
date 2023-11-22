@@ -16,6 +16,5 @@ pub mod state;
 pub mod query;
 pub mod types;
 pub mod admin;
-pub mod airdrop;
 
 pub use crate::error::ContractError;
