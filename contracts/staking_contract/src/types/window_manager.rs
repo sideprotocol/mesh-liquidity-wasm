@@ -1,6 +1,6 @@
 use cosmwasm_std::{Addr, StdError, StdResult, Storage, Uint128, Order};
 
-use cw_storage_plus::{Item};
+use cw_storage_plus::Item;
 use serde::{Deserialize, Serialize};
 
 use rust_decimal::Decimal;
@@ -11,8 +11,6 @@ use crate::types::withdraw_window::{QueueWindow, OngoingWithdrawWindow, QUEUE_WI
 use crate::utils::calc_withdraw;
 
 use crate::types::config::CONFIG;
-
-use super::withdraw_window::BQUEUE_WINDOW_AMOUNT;
 
 pub const WINDOW_MANANGER: Item<WindowManager> = Item::new("window_manager");
 
@@ -28,131 +26,73 @@ impl WindowManager {
         &mut self,
         store: &mut dyn Storage,
         user_addr: Addr,
-        sejuno_amount: Uint128,
-        bjuno_amount: Uint128,
+        lsside_amount: Uint128,
     ) -> StdResult<()> {
         if let Some(mut already_stored_amount) = QUEUE_WINDOW_AMOUNT.may_load(store, &user_addr)? { 
-            already_stored_amount += sejuno_amount;
+            already_stored_amount += lsside_amount;
             QUEUE_WINDOW_AMOUNT.save(store, &user_addr, &already_stored_amount)?;
         } else {
             QUEUE_WINDOW_AMOUNT.save(
                 store,
                 &user_addr,
-                &sejuno_amount,
-            )?;
-        }
-        if let Some(mut already_stored_amount) = BQUEUE_WINDOW_AMOUNT.may_load(store, &user_addr)? { 
-            already_stored_amount += bjuno_amount;
-            BQUEUE_WINDOW_AMOUNT.save(store, &user_addr, &already_stored_amount)?;
-        } else {
-            BQUEUE_WINDOW_AMOUNT.save(
-                store,
-                &user_addr,
-                &bjuno_amount,
+                &lsside_amount,
             )?;
         }
 
-        self.queue_window.total_sejuno += sejuno_amount;
-        self.queue_window.total_bjuno += bjuno_amount;
+        self.queue_window.total_lsside += lsside_amount;
 
         Ok(())
     }
 
-    pub fn get_user_sejuno_in_active_window(
+    pub fn get_user_lsside_in_active_window(
         &self,
         store: &dyn Storage,
         user_addr: Addr,
     ) -> StdResult<Uint128> {
-        let mut sejuno_amount = Uint128::from(0u128);
-        if let Some(sejuno_amount_got) = QUEUE_WINDOW_AMOUNT.may_load(store, &user_addr)? { 
-            sejuno_amount = sejuno_amount_got;
+        let mut lsside_amount = Uint128::from(0u128);
+        if let Some(lsside_amount_got) = QUEUE_WINDOW_AMOUNT.may_load(store, &user_addr)? { 
+            lsside_amount = lsside_amount_got;
         }
 
-        Ok(sejuno_amount)
-    }
-    pub fn get_user_bjuno_in_active_window(
-        &self,
-        store: &dyn Storage,
-        user_addr: Addr,
-    ) -> StdResult<Uint128> {
-        let mut bjuno_amount = Uint128::from(0u128);
-        if let Some(bjuno_amount_got) = BQUEUE_WINDOW_AMOUNT.may_load(store, &user_addr)? { 
-            bjuno_amount = bjuno_amount_got;
-        }
-
-        Ok(bjuno_amount)
+        Ok(lsside_amount)
     }
 
     pub fn advance_window(
         &mut self,
         store: &mut dyn Storage,
         current_time: u64,
-        exchange_rate_sejuno: Decimal,
+        exchange_rate_lsside: Decimal,
         exchange_rate_bjuno: Decimal,
     ) -> StdResult<()> {
         let config = CONFIG.load(store)?;
         let queue_window = self.queue_window.clone();
         let queue_amounts: StdResult<Vec<_>> = QUEUE_WINDOW_AMOUNT.range(store, None, None, Order::Ascending).collect();
-        let bqueue_amounts: StdResult<Vec<_>> = BQUEUE_WINDOW_AMOUNT.range(store, None, None, Order::Ascending).collect();
 
-        let sejuno_to_juno = Uint128::from(calc_withdraw(queue_window.total_sejuno, exchange_rate_sejuno)?);
-        let bjuno_to_juno = Uint128::from(calc_withdraw(queue_window.total_bjuno, exchange_rate_bjuno)?);
+        let lsside_to_juno = Uint128::from(calc_withdraw(queue_window.total_lsside, exchange_rate_lsside)?);
 
         self.ongoing_windows.push_back(OngoingWithdrawWindow {
             id: queue_window.id,
             time_to_mature_window: current_time + config.unbonding_period,
-            total_juno: sejuno_to_juno + bjuno_to_juno,
-            total_sejuno: queue_window.total_sejuno,
-            total_bjuno: queue_window.total_bjuno,
+            total_juno: lsside_to_juno,
+            total_lsside: queue_window.total_lsside,
         });
         for (user_addr, queue_amt) in queue_amounts?.iter() {
             ONGOING_WITHDRAWS_AMOUNT.save(
                 store,
                 (&queue_window.id.to_string(), user_addr),
-                &Uint128::from(calc_withdraw(*queue_amt, exchange_rate_sejuno).unwrap()),
+                &Uint128::from(calc_withdraw(*queue_amt, exchange_rate_lsside).unwrap()),
             )?;
 
-            // Store-optimize: Instead of zero, remove
-            // Add function to remove previous zero values.
             QUEUE_WINDOW_AMOUNT.remove(
                 store,
                 user_addr,
             );
-            // QUEUE_WINDOW_AMOUNT.save(   // set queue window amounts to zero
-            //     store,
-            //     user_addr,
-            //     &Uint128::from(0u128),
-            // )?;
-        }
-        for (user_addr, queue_amt) in bqueue_amounts?.iter() {
-            let mut temp = Uint128::from(calc_withdraw(*queue_amt, exchange_rate_bjuno).unwrap());
-            if let Some(ongoing_user_amt) = ONGOING_WITHDRAWS_AMOUNT.may_load(store, (&queue_window.id.to_string(), user_addr))? {
-                temp += ongoing_user_amt;
-            }
-            ONGOING_WITHDRAWS_AMOUNT.save(
-                store,
-                (&queue_window.id.to_string(), user_addr),
-                &temp,
-            )?;
-
-            // Store-optimize: Instead of zero, remove
-            // Add function to remove previous zero values.
-            BQUEUE_WINDOW_AMOUNT.remove(
-                store,
-                user_addr,
-            );
-            // BQUEUE_WINDOW_AMOUNT.save(   // set juno queue window amounts to zero
-            //     store,
-            //     user_addr,
-            //     &Uint128::from(0u128),
-            // )?;
         }
 
         self.time_to_close_window = current_time + config.epoch_period;
         self.queue_window = QueueWindow {
             id: queue_window.id+1,
-            total_sejuno: Uint128::from(0u128),
-            total_bjuno: Uint128::from(0u128),
+            total_lsside: Uint128::from(0u128),
         };
 
         Ok(())

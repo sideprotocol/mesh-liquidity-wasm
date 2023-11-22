@@ -190,7 +190,7 @@ impl ValidatorSet {
         for val in self.validators.iter() {
             if let Some(query) = querier.query_delegation(address.clone(), val.address.clone())? {
                 for reward in query.accumulated_rewards.iter() {
-                    if reward.denom == "ujuno" {
+                    if reward.denom == "uside" {
                         total_rewards += reward.amount.u128();
                     }
                 }
@@ -208,7 +208,7 @@ impl ValidatorSet {
         let mut total_rewards = 0u128;
         if let Some(query) = querier.query_delegation(address.clone(), validator)? {
             for reward in query.accumulated_rewards.iter() {
-                if reward.denom == "ujuno" {
+                if reward.denom == "uside" {
                     total_rewards += reward.amount.u128();
                 }
             }
