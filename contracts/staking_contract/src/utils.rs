@@ -20,7 +20,7 @@ pub fn dec_to_uint(dec: String) -> StdResult<u128> {
 }
 
 /**
- * Calculates how much your withdrawn tokens are worth in JUNO
+ * Calculates how much your withdrawn tokens are worth in SIDE
  */
 pub fn calc_withdraw(amount: Uint128, exchange_rate: Decimal) -> StdResult<u128> {
     let normalized_amount = Decimal::from(amount.u128() as u64);
@@ -38,7 +38,7 @@ pub fn calc_withdraw(amount: Uint128, exchange_rate: Decimal) -> StdResult<u128>
  * Calculates threshold amount from reward amount
  * and count of validators.
  *
- * Returns amount of JUNO tokens as threshold value.
+ * Returns amount of SIDE tokens as threshold value.
  */
 pub fn calc_threshold(amount: u128, val_count: usize) -> u128 {
     amount.checked_div(val_count as u128).unwrap_or(0)

@@ -26,7 +26,7 @@ pub fn try_receive_cw20(
         se
     } else {
         return Err(ContractError::Std(StdError::generic_err(
-            "the seJuno token contract must have been registered",
+            "the lsSIDE token contract must have been registered",
         )));
     };
 

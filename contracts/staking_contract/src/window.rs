@@ -49,7 +49,7 @@ pub fn advance_window(
     let mut window_manager = WINDOW_MANANGER.load(deps.storage)?;
 
     let lsside_to_side;
-    let mut claimed_juno = 0;
+    let mut claimed_side = 0;
     let mut ongoing_side = 0;
     if check_window_advance(&env, &window_manager) {
         // trigger withdraw request on validator set
@@ -108,7 +108,6 @@ pub fn advance_window(
             // withdraw from single validator with most staked amount
             // reduce the amount from our stake tracker
             let validator = validator_set.unbond_from_largest(lsside_to_side)?;
-            // debug_print!("Unbond {} from {}", withdraw_amount_juno, validator);
             // send the undelegate message
             messages.push(undelegate_msg(&validator, lsside_to_side));
             // fetch the amount of rewards in the validator
@@ -134,14 +133,14 @@ pub fn advance_window(
             amount: Uint128::from(total_lsside_amount),
         };
 
-        // burn unbonding sejuno
+        // burn unbonding lsSIDE
         if total_lsside_amount != Uint128::from(0u128) {
             messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: config
                     .ls_side_token
                     .ok_or_else(|| {
                         ContractError::Std(StdError::generic_err(
-                            "seJUNO token addr not registered".to_string(),
+                            "lsSIDE token addr not registered".to_string(),
                         ))
                     })?
                     .to_string(),
@@ -184,11 +183,11 @@ pub fn advance_window(
                 .prefix(&matured_window.id.to_string())
                 .range(deps.storage, None, None, Order::Ascending)
                 .collect();
-            for (user_addr, user_juno_amount) in matured_amounts?.iter() {
+            for (user_addr, user_side_amount) in matured_amounts?.iter() {
                 if let Some(already_stored_amount) = ongoing_users_side.get_mut(user_addr) {
-                    *already_stored_amount += *user_juno_amount;
+                    *already_stored_amount += *user_side_amount;
                 } else {
-                    ongoing_users_side.insert(user_addr.clone(), *user_juno_amount);
+                    ongoing_users_side.insert(user_addr.clone(), *user_side_amount);
                 }
                 ONGOING_WITHDRAWS_AMOUNT
                     .remove(deps.storage, (&matured_window.id.to_string(), user_addr));
@@ -196,20 +195,20 @@ pub fn advance_window(
         }
 
         if ongoing_side > 0 {
-            let contract_juno = deps
+            let contract_side = deps
                 .querier
-                .query_balance(env.contract.address.clone(), "ujuno")?
+                .query_balance(env.contract.address.clone(), "uside")?
                 .amount;
-            claimed_juno =
-                contract_juno.u128() - state.to_deposit.u128() - state.not_redeemed.u128();
+            claimed_side =
+                contract_side.u128() - state.to_deposit.u128() - state.not_redeemed.u128();
             // If claimed is less than 90% of expected value, revert
-            if claimed_juno < (ongoing_side * 90) / 100 {
+            if claimed_side < (ongoing_side * 90) / 100 {
                 return Err(ContractError::Std(StdError::generic_err(
                     "Claim is not processed yet!",
                 )));
             }
 
-            state.side_under_withdraw = state.side_under_withdraw.sub(Uint128::from(ongoing_side)); // juno
+            state.side_under_withdraw = state.side_under_withdraw.sub(Uint128::from(ongoing_side));
 
             state.lsside_under_withdraw = state
                 .lsside_under_withdraw
@@ -217,35 +216,35 @@ pub fn advance_window(
 
             let mut ratio = Decimal::from(1u128);
             if ongoing_side > 0 {
-                ratio = Decimal::from(claimed_juno as u64) / Decimal::from(ongoing_side as u64);
+                ratio = Decimal::from(claimed_side as u64) / Decimal::from(ongoing_side as u64);
                 if ratio > Decimal::from(1u128) {
                     ratio = Decimal::from(1u128);
                     state.not_redeemed += Uint128::from(ongoing_side);
                 } else {
-                    state.not_redeemed += Uint128::from(claimed_juno);
+                    state.not_redeemed += Uint128::from(claimed_side);
                 }
             }
 
             if ongoing_users_side.len() as u128 > 0 {
                 let mut user_claimable = USER_CLAIMABLE.load(deps.storage)?;
-                for (user_addr, juno_amount) in ongoing_users_side.iter() {
-                    let user_juno = (Decimal::from(juno_amount.u128() as u64).mul(ratio))
+                for (user_addr, side_amount) in ongoing_users_side.iter() {
+                    let user_side = (Decimal::from(side_amount.u128() as u64).mul(ratio))
                         .to_u128()
                         .unwrap();
-                    let mut after_user_juno = user_juno;
-                    if let Some(current_user_juno) =
+                    let mut after_user_side = user_side;
+                    if let Some(current_user_side) =
                         USER_CLAIMABLE_AMOUNT.may_load(deps.storage, &user_addr)?
                     {
-                        after_user_juno += current_user_juno.u128();
+                        after_user_side += current_user_side.u128();
                     }
                     USER_CLAIMABLE_AMOUNT.save(
                         deps.storage,
                         &user_addr,
-                        &Uint128::from(after_user_juno),
+                        &Uint128::from(after_user_side),
                     )?;
                 }
                 user_claimable.total_side =
-                    Uint128::from(user_claimable.total_side.u128() + claimed_juno);
+                    Uint128::from(user_claimable.total_side.u128() + claimed_side);
                 USER_CLAIMABLE.save(deps.storage, &user_claimable)?;
             }
         }
@@ -263,7 +262,7 @@ pub fn advance_window(
         .add_attribute("action", "advance_window")
         .add_attribute("account", _info.sender.as_str())
         .add_attribute("withdraw_amount_side", lsside_to_side.to_string())
-        .add_attribute("claimed_side", claimed_juno.to_string())
+        .add_attribute("claimed_side", claimed_side.to_string())
         .add_attribute("ongoing_side", ongoing_side.to_string()))
 }
 

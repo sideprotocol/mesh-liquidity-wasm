@@ -42,7 +42,7 @@ pub fn query_dev_fee(deps: Deps) -> StdResult<Binary> {
     })
 }
 
-pub fn query_sejuno_exchange_rate(deps: Deps) -> StdResult<Binary> {
+pub fn query_lsside_exchange_rate(deps: Deps) -> StdResult<Binary> {
     let ratio = lsside_exchange_rate(deps.storage, deps.querier)?;
 
     let rate = if ratio.is_zero() {
@@ -51,7 +51,7 @@ pub fn query_sejuno_exchange_rate(deps: Deps) -> StdResult<Binary> {
         ratio.to_string()
     };
 
-    to_binary(&QueryResponse::SejunoExchangeRate {
+    to_binary(&QueryResponse::LssideExchangeRate {
         rate,
         denom: "uside".to_string(),
     })
@@ -90,13 +90,13 @@ pub fn query_active_undelegation(_deps: Deps, address: Addr) -> StdResult<Binary
 }
 
 pub fn query_user_claimable(deps: Deps, address: Addr) -> StdResult<Binary> {
-    let mut user_juno_amount = Uint128::from(0u128);
+    let mut user_side_amount = Uint128::from(0u128);
     if let Some(user_claimable) = USER_CLAIMABLE_AMOUNT.may_load(deps.storage, &address)? {
-        user_juno_amount = user_claimable;
+        user_side_amount = user_claimable;
     }
 
     to_binary(&QueryResponse::Claimable {
-        claimable_amount: user_juno_amount,
+        claimable_amount: user_side_amount,
     })
 }
 

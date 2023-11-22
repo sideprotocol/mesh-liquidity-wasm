@@ -19,12 +19,10 @@ use crate::types::window_manager::WINDOW_MANANGER;
 use crate::utils::{calc_threshold, calc_withdraw};
 use crate::ContractError;
 
-const MINIMUM_WITHDRAW: u128 = 10_000; // 0.01 seJUNO
+const MINIMUM_WITHDRAW: u128 = 10_000; // 0.01 lsSIDE
 
 /**
  * Adds user addr, amount to active withdraw window
- * bjuno is true when withdrawing juno for bjuno tokens.
- * bjuno is false when withdrawing juno for sejuno tokens.
  */
 pub fn try_withdraw(
     deps: DepsMut,
@@ -162,10 +160,6 @@ pub fn try_withdraw(
         .add_attribute("user lsSIDE amount in active window", user_seside_amount))
 }
 
-/**
- * If bjuno is true then release amount for bjuno else
- * return amount for sejuno
- */
 pub fn release_tokens(
     deps: DepsMut,
     env: Env,
@@ -175,9 +169,9 @@ pub fn release_tokens(
     let mut messages: Vec<CosmosMsg> = vec![];
     let config = CONFIG.load(deps.storage)?;
 
-    let sejuno_xrate = lsside_exchange_rate(deps.storage, deps.querier)?;
+    let lsside_xrate = lsside_exchange_rate(deps.storage, deps.querier)?;
 
-    let side_amount = calc_withdraw(_cw20_msg.amount, sejuno_xrate)?;
+    let side_amount = calc_withdraw(_cw20_msg.amount, lsside_xrate)?;
     let my_balance = get_balance(deps.querier, &env.contract.address)?;
 
     let side_coin = Coin {

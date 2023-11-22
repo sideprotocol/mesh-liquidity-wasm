@@ -122,7 +122,7 @@ impl WindowManager {
                     pending_withdraws.push(PendingClaimsResponse {
                         window_id: ongoing_window.id,
                         claim_time: ongoing_window.time_to_mature_window.clone(),
-                        juno_amount: user_withdraw_amount,
+                        side_amount: user_withdraw_amount,
                     })
                 }
             }

@@ -16,7 +16,7 @@ use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
 use crate::query::{
     query_active_undelegation, query_current_window, query_dev_fee, query_info,
-    query_pending_claims, query_sejuno_exchange_rate, query_user_claimable,
+    query_pending_claims, query_lsside_exchange_rate, query_user_claimable,
 };
 use crate::receive::try_receive_cw20;
 use crate::staking::{get_onchain_balance_with_rewards, redelegate_msg};
@@ -321,7 +321,7 @@ pub fn try_redelegate(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::Info {} => query_info(deps),
-        QueryMsg::LssideExchangeRate {} => query_sejuno_exchange_rate(deps),
+        QueryMsg::LssideExchangeRate {} => query_lsside_exchange_rate(deps),
         QueryMsg::QueryDevFee {} => query_dev_fee(deps),
         QueryMsg::Window {} => query_current_window(deps),
         QueryMsg::Undelegations { address } => query_pending_claims(deps, address),

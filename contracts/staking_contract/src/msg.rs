@@ -177,7 +177,7 @@ pub enum QueryMsgValidator {
 pub struct PendingClaimsResponse {
     pub window_id: u64,
     pub claim_time: u64,
-    pub juno_amount: Uint128,
+    pub side_amount: Uint128,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
@@ -210,11 +210,7 @@ pub enum QueryResponse {
     TopValidators {
         validators: Vec<String>,
     },
-    SejunoExchangeRate {
-        rate: String,
-        denom: String,
-    },
-    BjunoExchangeRate {
+    LssideExchangeRate {
         rate: String,
         denom: String,
     },
