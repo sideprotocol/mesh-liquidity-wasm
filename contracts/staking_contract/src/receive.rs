@@ -1,10 +1,10 @@
 use cosmwasm_std::{DepsMut, Env, MessageInfo, Response, from_binary, StdError};
 use cw20::Cw20ReceiveMsg;
 
-use crate::{ContractError, msg::Cw20HookMsg, types::config::CONFIG, withdraw::{try_withdraw}, convert::{try_convert_to_sejuno, try_convert_to_bjuno}};
+use crate::{ContractError, msg::Cw20HookMsg, types::config::CONFIG, withdraw::try_withdraw};
 
 /**
- * Receive cw20 token (seJuno, bJuno) and 
+ * Receive cw20 token (lsSIDE) and 
  * apply action either convert or withdraw
  * read from msg parameters.
  */
@@ -22,15 +22,7 @@ pub fn try_receive_cw20(
         )));
     }
 
-    let bjuno_contract_addr = if let Some(b) = config.bjuno_token {
-        b
-    } else {
-        return Err(ContractError::Std(StdError::generic_err(
-            "the bJuno token contract must have been registered",
-        )));
-    };
-
-    let sejuno_contract_addr = if let Some(se) = config.sejuno_token {
+    let lsside_contract_addr = if let Some(se) = config.ls_side_token {
         se
     } else {
         return Err(ContractError::Std(StdError::generic_err(
@@ -40,19 +32,8 @@ pub fn try_receive_cw20(
 
     match from_binary(&_cw20_msg.msg)? {
         Cw20HookMsg::Unbond {} => {
-            if info.sender == bjuno_contract_addr {
-                try_withdraw(deps, env, info, _cw20_msg,true)
-            } else if info.sender == sejuno_contract_addr {
+            if info.sender == lsside_contract_addr {
                 try_withdraw(deps, env, info, _cw20_msg,false)
-            } else {
-                Err(ContractError::Std(StdError::generic_err("unauthorized")))
-            }
-        }
-        Cw20HookMsg::Convert {} => {
-            if info.sender == bjuno_contract_addr {
-                try_convert_to_sejuno(deps, env, info, _cw20_msg)
-            } else if info.sender == sejuno_contract_addr {
-                try_convert_to_bjuno(deps, env, info, _cw20_msg)
             } else {
                 Err(ContractError::Std(StdError::generic_err("unauthorized")))
             }

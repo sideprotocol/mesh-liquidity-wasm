@@ -195,7 +195,6 @@ pub struct AccruedRewardsResponse {
 #[serde(rename_all = "snake_case")]
 pub enum Cw20HookMsg {
     Unbond {},
-    Convert {},
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
