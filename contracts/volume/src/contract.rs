@@ -16,6 +16,8 @@ use crate::state::{Config, Observation, CONFIG, OBSERVATIONS, ORDER, Order};
 const CONTRACT_NAME: &str = "volume";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+const TIME_24H: u64 = 86_400_000_000_000;
+
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
@@ -255,7 +257,8 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::TotalVolume {} => to_binary(&query_total_volume(deps, env)?),
         QueryMsg::TotalVolumeAt { timestamp } => {
             to_binary(&query_total_volume_at(deps, timestamp)?)
-        } //QueryMsg::VolumeInterval { start, end } => to_binary(&query_total_volume_interval(deps, start, end)?),
+        }
+        QueryMsg::Volume24 {} => to_binary(&query_volume_24(deps)?)
     }
 }
 
@@ -265,8 +268,18 @@ fn query_contract(deps: Deps) -> StdResult<String> {
     Ok(config.contract_address)
 }
 
-fn query_total_volume(deps: Deps, env: Env) -> StdResult<Observation> {
-    let res = binary_search(deps, env.block.time.nanos())?;
+fn query_total_volume(
+    deps: Deps,
+    env: Env
+) -> StdResult<Observation> {
+    let config = CONFIG.load(deps.storage)?;
+    let last_ob = OBSERVATIONS.load(deps.storage, config.current_idx)?;
+    let block_timestamp = env.block.time.nanos();
+
+    if block_timestamp > last_ob.block_timestamp {
+        return Ok(last_ob);
+    }
+    let res = binary_search(deps, block_timestamp)?;
     Ok(OBSERVATIONS.load(deps.storage, res)?)
 }
 
@@ -275,11 +288,31 @@ fn query_total_volume_at(deps: Deps, timestamp: u64) -> StdResult<Observation> {
     Ok(OBSERVATIONS.load(deps.storage, res)?)
 }
 
-// fn query_total_volume_interval(
-//     deps: Deps,
-//     start: u64,
-//     end: u64
-// ) -> StdResult<Observation> {
-//     let res = binary_search(deps, timestamp)?;
-//     Ok(OBSERVATIONS.load(deps.storage, res)?)
-// }
+fn query_volume_24(
+    deps: Deps,
+) -> StdResult<Observation> {
+    let config = CONFIG.load(deps.storage)?;
+    let last_timestamp = OBSERVATIONS.load(deps.storage, config.current_idx)?.block_timestamp;
+    let req_timestamp;
+    if last_timestamp >= TIME_24H {
+        req_timestamp = last_timestamp - TIME_24H;
+    } else {
+        req_timestamp = last_timestamp;
+    }
+
+    let left_index = binary_search(deps, req_timestamp)?;
+    let current_ob = OBSERVATIONS.load(deps.storage, config.current_idx)?;
+
+    if left_index == 0 {
+        return  Ok(current_ob);
+    }
+
+    let prev_ob = OBSERVATIONS.load(deps.storage, left_index - 1)?;
+    let res = Observation {
+        num_of_observations: current_ob.num_of_observations - prev_ob.num_of_observations,
+        block_timestamp: current_ob.block_timestamp - prev_ob.block_timestamp,
+        volume1: current_ob.volume1 - prev_ob.volume1,
+        volume2: current_ob.volume2 - prev_ob.volume2
+    };
+    Ok(res)
+}

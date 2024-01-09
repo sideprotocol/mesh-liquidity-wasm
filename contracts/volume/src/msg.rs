@@ -30,6 +30,7 @@ pub enum QueryMsg {
     TotalVolume {},
     /// Returns total volume till given timestamp
     TotalVolumeAt { timestamp: u64 },
+    Volume24 {},
     /// Returns contract address for which volume is tracked
     Contract {},
 }

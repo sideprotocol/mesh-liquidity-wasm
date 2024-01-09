@@ -39,6 +39,18 @@
       "additionalProperties": false
     },
     {
+      "type": "object",
+      "required": [
+        "volume24"
+      ],
+      "properties": {
+        "volume24": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
       "description": "Returns contract address for which volume is tracked",
       "type": "object",
       "required": [
