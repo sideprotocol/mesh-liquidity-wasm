@@ -10,7 +10,7 @@ use cw2::set_contract_version;
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
-use crate::state::{Config, Observation, CONFIG, OBSERVATIONS};
+use crate::state::{Config, Observation, CONFIG, OBSERVATIONS, ORDER, Order};
 
 // Version info, for migration info
 const CONTRACT_NAME: &str = "volume";
@@ -73,16 +73,27 @@ pub fn execute_log_observation(
             volume2: token2.amount.u128(),
             num_of_observations: 1,
         };
+        config.is_new = false;
         CONFIG.save(deps.storage, &config)?;
         OBSERVATIONS.save(deps.storage, config.current_idx, &obs)?;
-        config.is_new = false;
+        ORDER.save(deps.storage, &Order {token1: token1.denom, token2: token2.denom})?;
     } else {
-        write(
-            deps,
-            env.block.time.nanos(),
-            token1.amount.u128(),
-            token2.amount.u128(),
-        )?;
+        let order = ORDER.load(deps.storage)?;
+        if order.token1 == token1.denom {
+            write(
+                deps,
+                env.block.time.nanos(),
+                token1.amount.u128(),
+                token2.amount.u128(),
+            )?;
+        } else {
+            write(
+                deps,
+                env.block.time.nanos(),
+                token2.amount.u128(),
+                token1.amount.u128(),
+            )?;
+        }
     }
 
     let res = Response::new().add_attribute("action", "log_observation");

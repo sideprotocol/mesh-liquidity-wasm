@@ -78,7 +78,6 @@ To keep track of unbonding SIDE from validators we are using a data structure na
       |-- side_users_amount (hashmap which contains SIDE corresponding each user)
 ```
 
-
 - On receiving sdSIDE tokens, `try_withdraw` function only updates queue_window's data of window_manager.
 - Now, to unbond SIDE from validators, contract manager advances the window and call `AdvanceWindow` which triggers `advance_window_1` function.
 ```rust

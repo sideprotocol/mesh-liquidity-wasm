@@ -32,6 +32,16 @@ pub struct Config {
     // total observations in map
     pub counter: u64,
 }
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct Order {
+    pub token1: String,
+    pub token2: String,
+}
+
 pub const OBSERVATIONS: Map<u64, Observation> = Map::new("observations");
 
 pub const CONFIG: Item<Config> = Item::new("config");
+
+pub const ORDER: Item<Order> = Item::new("order");
+
