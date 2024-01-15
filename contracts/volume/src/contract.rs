@@ -3,14 +3,14 @@ use std::cmp::min;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult,
+    to_binary, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult, Uint128,
 };
 
 use cw2::set_contract_version;
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
-use crate::state::{Config, Observation, CONFIG, OBSERVATIONS, ORDER, Order};
+use crate::state::{Config, Observation, CONFIG, OBSERVATIONS, ORDER, Order, ObservationOutput};
 
 // Version info, for migration info
 const CONTRACT_NAME: &str = "volume";
@@ -271,26 +271,52 @@ fn query_contract(deps: Deps) -> StdResult<String> {
 fn query_total_volume(
     deps: Deps,
     env: Env
-) -> StdResult<Observation> {
+) -> StdResult<ObservationOutput> {
     let config = CONFIG.load(deps.storage)?;
     let last_ob = OBSERVATIONS.load(deps.storage, config.current_idx)?;
     let block_timestamp = env.block.time.nanos();
+    let order = ORDER.load(deps.storage)?;
 
     if block_timestamp > last_ob.block_timestamp {
-        return Ok(last_ob);
+        return Ok(
+            ObservationOutput {
+                num_of_observations: last_ob.num_of_observations,
+                block_timestamp: last_ob.block_timestamp,
+                volume1: Coin { denom: order.token1, amount: Uint128::from(last_ob.volume1) },
+                volume2: Coin { denom: order.token2, amount: Uint128::from(last_ob.volume2) }
+            }
+        );
     }
     let res = binary_search(deps, block_timestamp)?;
-    Ok(OBSERVATIONS.load(deps.storage, res)?)
+    let obs = OBSERVATIONS.load(deps.storage, res)?;
+    Ok(
+        ObservationOutput {
+            num_of_observations: obs.num_of_observations,
+            block_timestamp: obs.block_timestamp,
+            volume1: Coin { denom: order.token1, amount: Uint128::from(obs.volume1) },
+            volume2: Coin { denom: order.token2, amount: Uint128::from(obs.volume2) }
+        }
+    )
 }
 
-fn query_total_volume_at(deps: Deps, timestamp: u64) -> StdResult<Observation> {
+fn query_total_volume_at(deps: Deps, timestamp: u64) -> StdResult<ObservationOutput> {
     let res = binary_search(deps, timestamp)?;
-    Ok(OBSERVATIONS.load(deps.storage, res)?)
+    let order = ORDER.load(deps.storage)?;
+
+    let obs = OBSERVATIONS.load(deps.storage, res)?;
+    Ok(
+        ObservationOutput {
+            num_of_observations: obs.num_of_observations,
+            block_timestamp: obs.block_timestamp,
+            volume1: Coin { denom: order.token1, amount: Uint128::from(obs.volume1) },
+            volume2: Coin { denom: order.token2, amount: Uint128::from(obs.volume2) }
+        }
+    )
 }
 
 fn query_volume_24(
     deps: Deps,
-) -> StdResult<Observation> {
+) -> StdResult<ObservationOutput> {
     let config = CONFIG.load(deps.storage)?;
     let last_timestamp = OBSERVATIONS.load(deps.storage, config.current_idx)?.block_timestamp;
     let req_timestamp;
@@ -302,17 +328,24 @@ fn query_volume_24(
 
     let left_index = binary_search(deps, req_timestamp)?;
     let current_ob = OBSERVATIONS.load(deps.storage, config.current_idx)?;
+    let order = ORDER.load(deps.storage)?;
 
     if left_index == 0 {
-        return  Ok(current_ob);
+        return  Ok(
+            ObservationOutput {
+                num_of_observations: current_ob.num_of_observations,
+                block_timestamp: current_ob.block_timestamp,
+                volume1: Coin { denom: order.token1, amount: Uint128::from(current_ob.volume1) },
+                volume2: Coin { denom: order.token2, amount: Uint128::from(current_ob.volume2) }
+            });
     }
 
     let prev_ob = OBSERVATIONS.load(deps.storage, left_index - 1)?;
-    let res = Observation {
+    let res = ObservationOutput {
         num_of_observations: current_ob.num_of_observations - prev_ob.num_of_observations,
         block_timestamp: current_ob.block_timestamp - prev_ob.block_timestamp,
-        volume1: current_ob.volume1 - prev_ob.volume1,
-        volume2: current_ob.volume2 - prev_ob.volume2
+        volume1: Coin { denom: order.token1, amount: Uint128::from(current_ob.volume1 - prev_ob.volume1) },
+        volume2: Coin { denom: order.token2, amount: Uint128::from(current_ob.volume2 - prev_ob.volume2) }
     };
     Ok(res)
 }
