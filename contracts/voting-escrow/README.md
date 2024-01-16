@@ -18,3 +18,30 @@ Slopes and biases change both when a user deposits and locks governance tokens, 
 Ref: [CRV](https://curve.readthedocs.io/dao-vecrv.html), [BAL](https://docs.balancer.fi/concepts/governance/veBAL/)
 
 # Querying Balances, Locks and supply
+
+## User balance
+```
+    /// Return the user's veSIDE balance
+    Balance { address: String },
+```
+`address`: User address
+
+## TokenInfo
+```
+/// Fetch the veSIDE token information
+TokenInfo {},
+```
+
+## Total voting power
+```
+/// Return the current total amount of veSIDE
+TotalVotingPower {},
+```
+
+## Total voting power
+```
+/// Return the total amount of veSIDE at some point in the past
+TotalVotingPowerAt { time: u64 },
+```
+`time`: Time in seconds
+
