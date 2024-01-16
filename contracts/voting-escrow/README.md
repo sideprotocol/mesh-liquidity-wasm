@@ -38,10 +38,39 @@ TokenInfo {},
 TotalVotingPower {},
 ```
 
-## Total voting power
+## Total voting power at some point
 ```
 /// Return the total amount of veSIDE at some point in the past
 TotalVotingPowerAt { time: u64 },
 ```
 `time`: Time in seconds
 
+## User voting power
+```
+/// Return the user's current voting power (veSIDE balance)
+UserVotingPower { user: String },
+```
+`user`: User address
+
+## User voting power at some point
+```
+/// Return the user's veSIDE balance at some point in the past
+UserVotingPowerAt { user: String, time: u64 },
+```
+`user`: User address
+`time`: Time in seconds
+
+## User lock info
+```
+/// Return information about a user's lock position
+LockInfo { user: String },
+```
+`user`: User address
+
+## User deposit at height
+```
+/// Return user's locked LP balance at the given block height
+UserDepositAtHeight { user: String, height: u64 },
+```
+`user`: User address
+`height`: Block height
