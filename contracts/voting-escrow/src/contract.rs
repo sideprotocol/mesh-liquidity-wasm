@@ -649,7 +649,7 @@ fn query_token_info(deps: Deps, env: Env) -> StdResult<TokenInfoResponse> {
 }
 
 fn query_simulate_lock(deps: Deps, env: Env, user: String, add_amount: Option<Uint128>, time: Option<u64>) -> StdResult<Point> {
-    Ok(checkpoint_query(deps, env, Addr::unchecked(user), add_amount, time)?)
+    checkpoint_query(deps, env, Addr::unchecked(user), add_amount, time)
 }
 
 /// Checkpoint a user's voting power (veSIDE balance).
@@ -692,7 +692,7 @@ fn checkpoint_query(
         let new_slope = if dt != 0 {
             if end > point.end && add_amount.is_zero() {
                 // This is extend_lock_time. Recalculating user's voting power
-                let mut lock = LOCKED.load(deps.storage, addr.clone())?;
+                let mut lock = LOCKED.load(deps.storage, addr)?;
                 let mut new_voting_power = calc_coefficient(dt).checked_mul_uint128(lock.amount)?;
                 let slope = adjust_vp_and_slope(&mut new_voting_power, dt)?;
                 // new_voting_power should always be >= current_power. saturating_sub is used for extra safety
