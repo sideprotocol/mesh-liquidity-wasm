@@ -11,7 +11,7 @@ use cw20_base::state::{MinterData, TokenInfo, TOKEN_INFO};
 use crate::error::ContractError;
 use crate::msg::{
     ConfigResponse, Cw20HookMsg, ExecuteMsg, InstantiateMsg, LockInfoResponse, MigrateMsg,
-    QueryMsg, VotingPowerResponse,
+    QueryMsg, VotingPowerResponse
 };
 use crate::state::{Config, Lock, Point, CONFIG, HISTORY, LAST_SLOPE_CHANGE, LOCKED};
 use crate::utils::{
@@ -649,6 +649,89 @@ fn query_token_info(deps: Deps, env: Env) -> StdResult<TokenInfoResponse> {
         total_supply: total_vp.voting_power,
     };
     Ok(res)
+}
+
+fn query_simulate_lock(deps: Deps, env: Env, user: String, add_amount: Option<Uint128>, new_end: Option<u64>) -> StdResult<Point> {
+    Ok(checkpoint_query(deps, env, Addr::unchecked(user), add_amount, new_end)?)
+}
+
+/// Checkpoint a user's voting power (veSIDE balance).
+/// This function fetches the user's last available checkpoint, calculates the user's current voting power, applies slope changes based on
+/// `add_amount` and `new_end` parameters
+/// If a user already checkpointed themselves for the current period, then this function uses the current checkpoint as the latest
+/// available one.
+///
+/// * **addr** staker for which we checkpoint the voting power.
+///
+/// * **add_amount** amount of veSIDE to add to the staker's balance.
+///
+/// * **new_end** new lock time for the staker's veSIDE position.
+fn checkpoint_query(
+    deps: Deps,
+    env: Env,
+    addr: Addr,
+    add_amount: Option<Uint128>,
+    new_end: Option<u64>,
+) -> StdResult<Point> {
+    let cur_period = get_period(env.block.time.seconds())?;
+    let cur_period_key = cur_period;
+    let add_amount = add_amount.unwrap_or_default();
+    let mut old_slope = Default::default();
+    let mut add_voting_power = Uint128::zero();
+
+    // Get the last user checkpoint
+    let last_checkpoint = fetch_last_checkpoint(deps.storage, &addr, cur_period_key)?;
+    let new_point = if let Some((_, point)) = last_checkpoint {
+        let end = new_end.unwrap_or(point.end);
+        let dt = end.saturating_sub(cur_period);
+        let current_power = calc_voting_power(&point, cur_period);
+        let new_slope = if dt != 0 {
+            if end > point.end && add_amount.is_zero() {
+                // This is extend_lock_time. Recalculating user's voting power
+                let mut lock = LOCKED.load(deps.storage, addr.clone())?;
+                let mut new_voting_power = calc_coefficient(dt).checked_mul_uint128(lock.amount)?;
+                let slope = adjust_vp_and_slope(&mut new_voting_power, dt)?;
+                // new_voting_power should always be >= current_power. saturating_sub is used for extra safety
+                add_voting_power = new_voting_power.saturating_sub(current_power);
+                lock.last_extend_lock_period = cur_period;
+                slope
+            } else {
+                // This is an increase in the user's lock amount
+                let raw_add_voting_power = calc_coefficient(dt).checked_mul_uint128(add_amount)?;
+                let mut new_voting_power = current_power.checked_add(raw_add_voting_power)?;
+                let slope = adjust_vp_and_slope(&mut new_voting_power, dt)?;
+                // new_voting_power should always be >= current_power. saturating_sub is used for extra safety
+                add_voting_power = new_voting_power.saturating_sub(current_power);
+                slope
+            }
+        } else {
+            Uint128::zero()
+        };
+    
+        // We need to subtract the slope point from the total voting power slope
+        old_slope = point.slope;
+
+        Point {
+            power: current_power + add_voting_power,
+            slope: new_slope,
+            start: cur_period,
+            end,
+        }
+    } else {
+        // This error can't happen since this if-branch is intended for checkpoint creation
+        let end =
+            new_end.ok_or_else(|| StdError::generic_err("Checkpoint initialization error"))?;
+        let dt = end - cur_period;
+        add_voting_power = calc_coefficient(dt).checked_mul_uint128(add_amount)?;
+        let slope = adjust_vp_and_slope(&mut add_voting_power, dt)?;
+        Point {
+            power: add_voting_power,
+            slope,
+            start: cur_period,
+            end,
+        }
+    };
+    Ok(new_point)
 }
 
 /// Manages contract migration.

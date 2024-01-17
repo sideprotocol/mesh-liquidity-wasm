@@ -1,6 +1,7 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Decimal, Uint128};
 use cw20::{BalanceResponse, Cw20ReceiveMsg, TokenInfoResponse};
+use crate::state::Point;
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -92,7 +93,7 @@ pub enum QueryMsg {
     #[returns(ConfigResponse)]
     Config {},
     /// Return the veSIDE amount for staking x amount of lp-token or adding some time
-    #[returns(LockInfoResponse)]
+    #[returns(Point)]
     SimulateLock {
         user: String,
         add_amount: Option<Uint128>,
