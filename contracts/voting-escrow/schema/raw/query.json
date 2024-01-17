@@ -1,0 +1,247 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "QueryMsg",
+  "description": "This structure describes the query messages available in the contract.",
+  "oneOf": [
+    {
+      "description": "Return the user's veSIDE balance",
+      "type": "object",
+      "required": [
+        "balance"
+      ],
+      "properties": {
+        "balance": {
+          "type": "object",
+          "required": [
+            "address"
+          ],
+          "properties": {
+            "address": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Fetch the veSIDE token information",
+      "type": "object",
+      "required": [
+        "token_info"
+      ],
+      "properties": {
+        "token_info": {
+          "type": "object",
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Return the current total amount of veSIDE",
+      "type": "object",
+      "required": [
+        "total_voting_power"
+      ],
+      "properties": {
+        "total_voting_power": {
+          "type": "object",
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Return the total amount of veSIDE at some point in the past",
+      "type": "object",
+      "required": [
+        "total_voting_power_at"
+      ],
+      "properties": {
+        "total_voting_power_at": {
+          "type": "object",
+          "required": [
+            "time"
+          ],
+          "properties": {
+            "time": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Return the total voting power at a specific period",
+      "type": "object",
+      "required": [
+        "total_voting_power_at_period"
+      ],
+      "properties": {
+        "total_voting_power_at_period": {
+          "type": "object",
+          "required": [
+            "period"
+          ],
+          "properties": {
+            "period": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Return the user's current voting power (veSIDE balance)",
+      "type": "object",
+      "required": [
+        "user_voting_power"
+      ],
+      "properties": {
+        "user_voting_power": {
+          "type": "object",
+          "required": [
+            "user"
+          ],
+          "properties": {
+            "user": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Return the user's veSIDE balance at some point in the past",
+      "type": "object",
+      "required": [
+        "user_voting_power_at"
+      ],
+      "properties": {
+        "user_voting_power_at": {
+          "type": "object",
+          "required": [
+            "time",
+            "user"
+          ],
+          "properties": {
+            "time": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "user": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Return the user's voting power at a specific period",
+      "type": "object",
+      "required": [
+        "user_voting_power_at_period"
+      ],
+      "properties": {
+        "user_voting_power_at_period": {
+          "type": "object",
+          "required": [
+            "period",
+            "user"
+          ],
+          "properties": {
+            "period": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "user": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Return information about a user's lock position",
+      "type": "object",
+      "required": [
+        "lock_info"
+      ],
+      "properties": {
+        "lock_info": {
+          "type": "object",
+          "required": [
+            "user"
+          ],
+          "properties": {
+            "user": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Return user's locked LP balance at the given block height",
+      "type": "object",
+      "required": [
+        "user_deposit_at_height"
+      ],
+      "properties": {
+        "user_deposit_at_height": {
+          "type": "object",
+          "required": [
+            "height",
+            "user"
+          ],
+          "properties": {
+            "height": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "user": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Return the  veSIDE contract configuration",
+      "type": "object",
+      "required": [
+        "config"
+      ],
+      "properties": {
+        "config": {
+          "type": "object",
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  ]
+}

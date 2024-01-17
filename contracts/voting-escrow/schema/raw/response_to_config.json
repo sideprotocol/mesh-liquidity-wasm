@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ConfigResponse",
+  "description": "This structure stores the parameters returned when querying for a contract's configuration.",
+  "type": "object",
+  "required": [
+    "admin",
+    "deposit_token"
+  ],
+  "properties": {
+    "admin": {
+      "type": "string"
+    },
+    "deposit_token": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

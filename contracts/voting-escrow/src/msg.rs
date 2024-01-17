@@ -32,6 +32,28 @@ pub enum Cw20HookMsg {
     ExtendLockAmount {},
 }
 
+// First category
+// Calls will be made to lp-token contract
+
+// Send {
+//     contract: side1zn9r7u0rgxnwwh08pv2x9l2ut7fz6ya22remklstyfgunq9mhd2qktttm2,
+//     amount: "100",
+//     msg: Binary(CreateLock {time: <days, weeks, etc in seconds>})
+// }
+
+// Send {
+//     contract: side1zn9r7u0rgxnwwh08pv2x9l2ut7fz6ya22remklstyfgunq9mhd2qktttm2,
+//     amount: "100",
+//     msg: Binary(ExtendLockAmount {})
+// }
+
+// Second category
+// Calls will be made to ve-token contract
+
+// ExtendLockTime { time: u64 },
+
+// Withdraw {},
+
 /// This structure describes the query messages available in the contract.
 #[cw_serde]
 #[derive(QueryResponses)]
@@ -69,6 +91,13 @@ pub enum QueryMsg {
     /// Return the  veSIDE contract configuration
     #[returns(ConfigResponse)]
     Config {},
+    /// Return the veSIDE amount for staking x amount of lp-token or adding some time
+    #[returns(LockInfoResponse)]
+    SimulateLock {
+        user: String,
+        add_amount: Option<Uint128>,
+        add_time: Option<u64>, 
+    },
 }
 
 /// This structure is used to return a user's amount of veSIDE.

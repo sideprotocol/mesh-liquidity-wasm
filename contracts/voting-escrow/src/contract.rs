@@ -484,6 +484,11 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
         }
         QueryMsg::Balance { address } => to_binary(&get_user_balance(deps, env, address)?),
         QueryMsg::TokenInfo {} => to_binary(&query_token_info(deps, env)?),
+        QueryMsg::SimulateLock { user, add_amount, add_time } => 
+        to_binary(&query_simulate_lock(deps, env, user, add_amount, add_time)?),
+        // 1. Show veSIDE to users, input 10, how many.
+        // 2. If they extend time, show how much veSIDE they will get.
+        // 3. Unlock tokens, how many lp-token they will get ? UserDepositAtHeight
     }
 }
 
