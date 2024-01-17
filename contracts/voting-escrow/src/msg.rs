@@ -97,7 +97,7 @@ pub enum QueryMsg {
     SimulateLock {
         user: String,
         add_amount: Option<Uint128>,
-        add_time: Option<u64>, 
+        time: Option<u64>, 
     },
 }
 

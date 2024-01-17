@@ -484,11 +484,8 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
         }
         QueryMsg::Balance { address } => to_binary(&get_user_balance(deps, env, address)?),
         QueryMsg::TokenInfo {} => to_binary(&query_token_info(deps, env)?),
-        QueryMsg::SimulateLock { user, add_amount, add_time } => 
-        to_binary(&query_simulate_lock(deps, env, user, add_amount, add_time)?),
-        // 1. Show veSIDE to users, input 10, how many.
-        // 2. If they extend time, show how much veSIDE they will get.
-        // 3. Unlock tokens, how many lp-token they will get ? UserDepositAtHeight
+        QueryMsg::SimulateLock { user, add_amount, time } => 
+        to_binary(&query_simulate_lock(deps, env, user, add_amount, time)?),
     }
 }
 
@@ -651,8 +648,8 @@ fn query_token_info(deps: Deps, env: Env) -> StdResult<TokenInfoResponse> {
     Ok(res)
 }
 
-fn query_simulate_lock(deps: Deps, env: Env, user: String, add_amount: Option<Uint128>, new_end: Option<u64>) -> StdResult<Point> {
-    checkpoint_query(deps, env, Addr::unchecked(user), add_amount, new_end)
+fn query_simulate_lock(deps: Deps, env: Env, user: String, add_amount: Option<Uint128>, time: Option<u64>) -> StdResult<Point> {
+    Ok(checkpoint_query(deps, env, Addr::unchecked(user), add_amount, time)?)
 }
 
 /// Checkpoint a user's voting power (veSIDE balance).
@@ -671,12 +668,20 @@ fn checkpoint_query(
     env: Env,
     addr: Addr,
     add_amount: Option<Uint128>,
-    new_end: Option<u64>,
+    time: Option<u64>,
 ) -> StdResult<Point> {
     let cur_period = get_period(env.block.time.seconds())?;
     let cur_period_key = cur_period;
     let add_amount = add_amount.unwrap_or_default();
     let mut add_voting_power = Uint128::zero();
+
+    let block_period = get_period(env.block.time.seconds())?;
+    let new_end: Option<u64>;
+    if let Some(val) = time {
+        new_end = Some(block_period + get_periods_count(val));
+    } else {
+        new_end = None;
+    }
 
     // Get the last user checkpoint
     let last_checkpoint = fetch_last_checkpoint(deps.storage, &addr, cur_period_key)?;
@@ -687,7 +692,7 @@ fn checkpoint_query(
         let new_slope = if dt != 0 {
             if end > point.end && add_amount.is_zero() {
                 // This is extend_lock_time. Recalculating user's voting power
-                let mut lock = LOCKED.load(deps.storage, addr)?;
+                let mut lock = LOCKED.load(deps.storage, addr.clone())?;
                 let mut new_voting_power = calc_coefficient(dt).checked_mul_uint128(lock.amount)?;
                 let slope = adjust_vp_and_slope(&mut new_voting_power, dt)?;
                 // new_voting_power should always be >= current_power. saturating_sub is used for extra safety
