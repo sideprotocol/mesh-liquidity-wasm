@@ -11,7 +11,7 @@ pub const WEEK: u64 = 7 * 86400; // lock period is rounded down by week
 /// Seconds in 2 years which is the maximum lock period.
 pub const MAX_LOCK_TIME: u64 = 2 * 365 * 86400; // 2 years (104 weeks)
 
-pub const EPOCH_START: u64 = 1700161903;
+pub const EPOCH_START: u64 = 1705475751;
 
 /// Calculates the period number. Time should be formatted as a timestamp.
 pub fn get_period(time: u64) -> StdResult<u64> {
