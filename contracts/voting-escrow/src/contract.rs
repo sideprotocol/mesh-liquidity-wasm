@@ -652,7 +652,7 @@ fn query_token_info(deps: Deps, env: Env) -> StdResult<TokenInfoResponse> {
 }
 
 fn query_simulate_lock(deps: Deps, env: Env, user: String, add_amount: Option<Uint128>, new_end: Option<u64>) -> StdResult<Point> {
-    Ok(checkpoint_query(deps, env, Addr::unchecked(user), add_amount, new_end)?)
+    checkpoint_query(deps, env, Addr::unchecked(user), add_amount, new_end)
 }
 
 /// Checkpoint a user's voting power (veSIDE balance).
@@ -676,7 +676,6 @@ fn checkpoint_query(
     let cur_period = get_period(env.block.time.seconds())?;
     let cur_period_key = cur_period;
     let add_amount = add_amount.unwrap_or_default();
-    let mut old_slope = Default::default();
     let mut add_voting_power = Uint128::zero();
 
     // Get the last user checkpoint
@@ -688,7 +687,7 @@ fn checkpoint_query(
         let new_slope = if dt != 0 {
             if end > point.end && add_amount.is_zero() {
                 // This is extend_lock_time. Recalculating user's voting power
-                let mut lock = LOCKED.load(deps.storage, addr.clone())?;
+                let mut lock = LOCKED.load(deps.storage, addr)?;
                 let mut new_voting_power = calc_coefficient(dt).checked_mul_uint128(lock.amount)?;
                 let slope = adjust_vp_and_slope(&mut new_voting_power, dt)?;
                 // new_voting_power should always be >= current_power. saturating_sub is used for extra safety
@@ -707,9 +706,6 @@ fn checkpoint_query(
         } else {
             Uint128::zero()
         };
-    
-        // We need to subtract the slope point from the total voting power slope
-        old_slope = point.slope;
 
         Point {
             power: current_power + add_voting_power,
