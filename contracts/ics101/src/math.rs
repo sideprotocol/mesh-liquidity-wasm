@@ -43,7 +43,7 @@ pub fn solve_constant_function_invariant(
     Ok(amount_y)
 }
 
-/// ## Description - Inspired from Osmosis implementaton here - https://github.com/osmosis-labs/osmosis/blob/main/x/gamm/pool-models/balancer/amm.go#L116
+/// ## Description - Inspired from Osmosis implementation here - https://github.com/osmosis-labs/osmosis/blob/main/x/gamm/pool-models/balancer/amm.go#L116
 /// Calculates the amount of LP shares to be minted for Single asset joins.
 pub fn calc_minted_shares_given_single_asset_in(
     token_amount_in: Uint128,

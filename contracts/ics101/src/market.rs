@@ -161,7 +161,7 @@ impl InterchainMarketMaker {
             return Err(StdError::generic_err("Pool is not active!"));
         } else {
             let pool_asset_weighted = &WeightedAsset {
-                asset: token.clone(),
+                asset: asset.balance.clone(),
                 weight: Decimal::from_ratio(asset.weight, Uint128::from(100u64)),
             };
 
