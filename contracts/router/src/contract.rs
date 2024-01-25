@@ -1,17 +1,15 @@
 use cosmwasm_std::{
     entry_point, to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response,
-    StdResult, StdError, Querier
+    StdResult, StdError
 };
 
 use crate::error::ContractError;
-use crate::msg::{ ExecuteMsg, InstantiateMsg, QueryMsg, CountResponse};
+use crate::msg::{ ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::state::{Constants, CONSTANTS};
-use crate::querier::SideQuerier;
-use crate::query::SideQueryWrapper;
 
 #[entry_point]
 pub fn instantiate(
-    deps: DepsMut<SideQueryWrapper>,
+    deps: DepsMut,
     _env: Env,
     _info: MessageInfo,
     msg: InstantiateMsg,
@@ -28,7 +26,7 @@ pub fn instantiate(
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
-    deps: DepsMut<SideQueryWrapper>,
+    deps: DepsMut,
     env: Env,
     info: MessageInfo,
     msg: ExecuteMsg,
@@ -41,7 +39,7 @@ pub fn execute(
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps<SideQueryWrapper>, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
            QueryMsg::GetCount {} => query_count(deps),
     }
@@ -62,7 +60,7 @@ fn handle_callback(
 }
 
 fn try_increment(
-    deps: DepsMut<SideQueryWrapper>,
+    deps: DepsMut,
     _env: Env,
     _info: MessageInfo,
 ) -> Result<Response, ContractError> {
@@ -74,7 +72,7 @@ fn try_increment(
 }
 
 fn try_reset(
-    deps: DepsMut<SideQueryWrapper>,
+    deps: DepsMut,
     _env: Env,
     info: MessageInfo,
     count: i32
@@ -91,11 +89,10 @@ fn try_reset(
         .add_attribute("action", "COUNT reset successfully"))
 }
 
-pub fn query_count(deps: Deps<SideQueryWrapper>) -> StdResult<Binary> {
-    let querier: SideQuerier<'_> = SideQuerier::new(&deps.querier);
-    let res = querier.query_params()?;
-    to_binary(&(res))
-}
+// pub fn query_count(deps: Deps) -> StdResult<Binary> {
+//     let res = deps.querier.query_params()?;
+//     to_binary(&(res))
+// }
 
 // pub fn query_count(deps: Deps<SideQueryWrapper>) -> StdResult<Binary> {
 //     let querier: SideQuerier<'_> = SideQuerier::new(&deps.querier);

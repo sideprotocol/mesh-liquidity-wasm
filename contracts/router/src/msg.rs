@@ -1,3 +1,4 @@
+use cosmwasm_std::{Addr, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -12,6 +13,29 @@ pub enum ExecuteMsg {
     Increment {},
     Reset { count: i32 },
     Callback {}
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CallbackMsg {
+    HopSwap {
+        requests: Vec<SwapRequest>,
+        offer_asset: String,
+        prev_ask_amount: Uint128,
+        recipient: Addr,
+        minimum_receive: Uint128,
+    },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct SwapRequest {
+    /// Pool Id via which the swap is to be routed
+    pub pool_id: Uint128,
+    /// The offer asset denom
+    pub asset_in: String,
+    ///  The ask asset denom
+    pub asset_out: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
