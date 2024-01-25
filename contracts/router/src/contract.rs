@@ -1,10 +1,9 @@
 use cosmwasm_std::{
-    entry_point, to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response,
-    StdResult, StdError
+    entry_point, to_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult, Uint128
 };
 
 use crate::error::ContractError;
-use crate::msg::{ ExecuteMsg, InstantiateMsg, QueryMsg};
+use crate::msg::{ CallbackMsg, ExecuteMsg, InstantiateMsg, QueryMsg, SwapRequest};
 use crate::state::{Constants, CONSTANTS};
 
 #[entry_point]
@@ -32,9 +31,10 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::Increment {} => try_increment(deps, env, info),
+        ExecuteMsg::MultiSwap { requests, offer_amount, receiver, minimum_receive }
+        => multi_swap(deps, env, info, requests, offer_amount, receiver, minimum_receive),
         ExecuteMsg::Reset { count } => try_reset(deps, env, info, count),
-        ExecuteMsg::Callback {} => handle_callback(deps, env, info),
+        ExecuteMsg::Callback(msg) => handle_callback(deps, env, info, msg),
     }
 }
 
@@ -49,6 +49,7 @@ fn handle_callback(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
+    msg: CallbackMsg,
 ) -> Result<Response, ContractError> {
     // Callback functions can only be called by contract only
     if info.sender != env.contract.address {
@@ -57,18 +58,58 @@ fn handle_callback(
         )));
     }
     
+    match msg {
+        CallbackMsg::HopSwap {
+            requests,
+            offer_asset,
+            prev_ask_amount,
+            recipient,
+            minimum_receive,
+        } => hop_swap(
+            deps,
+            env,
+            info,
+            requests,
+            offer_asset,
+            prev_ask_amount,
+            recipient,
+            minimum_receive,
+        ),
+    }
+
 }
 
-fn try_increment(
+fn hop_swap(
     deps: DepsMut,
-    _env: Env,
-    _info: MessageInfo,
+    env: Env,
+    info: MessageInfo,
+    requests: Vec<SwapRequest>,
+    offer_asset: String,
+    prev_ask_amount: Uint128,
+    recipient: Addr,
+    minimum_receive: Uint128,
+) -> Result<Response, ContractError> {
+
+
+
+    Ok(Response::new()
+    .add_attribute("action", "hop_swap"))
+}
+
+fn multi_swap(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    requests: Vec<SwapRequest>,
+    offer_amount: Uint128,
+    receiver: Option<Addr>,
+    minimum_receive: Option<Uint128>,
 ) -> Result<Response, ContractError> {
     let mut constant = CONSTANTS.load(deps.storage)?;
     constant.count += 1;
     CONSTANTS.save(deps.storage,&constant)?;
     Ok(Response::new()
-        .add_attribute("action", "increment"))
+        .add_attribute("action", "multi_swap"))
 }
 
 fn try_reset(

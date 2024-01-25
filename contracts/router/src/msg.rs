@@ -10,9 +10,14 @@ pub struct InstantiateMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
-    Increment {},
+    MultiSwap {
+        requests: Vec<SwapRequest>,
+        offer_amount: Uint128,
+        receiver: Option<Addr>,
+        minimum_receive: Option<Uint128>,
+    },
     Reset { count: i32 },
-    Callback {}
+    Callback(CallbackMsg)
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
