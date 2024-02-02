@@ -1,7 +1,5 @@
 use cosmwasm_std::{
-    entry_point, to_binary, Addr, BalanceResponse, BankQuery, Binary,
-    CosmosMsg, Deps, DepsMut, Env, MessageInfo, QuerierWrapper,
-    QueryRequest, Response, StdError, StdResult, Uint128, WasmMsg
+    entry_point, to_binary, Addr, BalanceResponse, BankMsg, BankQuery, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, MessageInfo, QuerierWrapper, QueryRequest, Response, StdError, StdResult, Uint128, WasmMsg
 };
 
 use crate::error::ContractError;
@@ -118,8 +116,13 @@ fn hop_swap(
                 msg: format!("Minimum receive amount not met. Swap failed. Amount received = {} Minimum receive amount = {}", amount_returned_prev_hop, minimum_receive),
             });
         }
-        // TODO: Bank transfer amount
-        // execute_msgs.push(offer_asset.create_transfer_msg(recipient, amount_returned_prev_hop)?);
+        execute_msgs.push(CosmosMsg::Bank(BankMsg::Send {
+            to_address: recipient.to_string(),
+            amount: vec![Coin {
+                denom: offer_asset,
+                amount: amount_returned_prev_hop,
+            }],
+        }));
     } else {
         let next_hop = requests[0].clone();
 
