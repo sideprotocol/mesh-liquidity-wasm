@@ -26,7 +26,7 @@ pub fn instantiate(
     CONSTANTS.save(deps.storage,&state)?;
     Ok(Response::new()
         .add_attribute("action", "initialisation")
-        .add_attribute("sender", _info.sender.clone()))
+        .add_attribute("sender", _info.sender))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -112,7 +112,7 @@ fn hop_swap(
     let current_ask_balance: Uint128;
 
     // If Hop is over, check if the minimum receive amount is met and transfer the tokens to the recipient
-    if requests.len() == 0 {
+    if requests.is_empty() {
         if amount_returned_prev_hop < minimum_receive {
             return Err(ContractError::InvalidMultihopSwapRequest {
                 msg: format!("Minimum receive amount not met. Swap failed. Amount received = {} Minimum receive amount = {}", amount_returned_prev_hop, minimum_receive),
@@ -124,7 +124,7 @@ fn hop_swap(
         let next_hop = requests[0].clone();
 
         // Asset returned from prev hop needs to match the asset to be used for the next hop
-        if offer_asset != next_hop.asset_in.clone() {
+        if offer_asset != next_hop.asset_in {
             return Err(ContractError::InvalidMultihopSwapRequest {
                 msg:
                 format!("Invalid multiswap request. Asset {} out of previous hop does not match the asset {} to be provided for next hop."
@@ -136,7 +136,7 @@ fn hop_swap(
         let token_out = "1".to_string() + &next_hop.asset_out;
         let swap_msg = CosmosMsg::Custom(SideMsg::Swap {
             pool_id: next_hop.pool_id,
-            token_in: token_in, token_out: token_out, slippage: "99".to_string() 
+            token_in, token_out, slippage: "99".to_string() 
         });
         execute_msgs.push(swap_msg);
 
@@ -147,7 +147,7 @@ fn hop_swap(
         requests.remove(0);
         let arb_chain_msg = CallbackMsg::HopSwap {
             requests,
-            offer_asset: next_hop.asset_out.clone(),
+            offer_asset: next_hop.asset_out,
             prev_ask_amount: current_ask_balance,
             recipient,
             minimum_receive,
@@ -199,7 +199,7 @@ fn multi_swap(
     let minimum_receive = minimum_receive.unwrap_or(Uint128::zero());
 
     // Current ask token balance available with the router contract
-    let current_ask_balance: Uint128;
+    
 
     // Check sent tokens
     // Query - Get number of offer asset (Native) tokens sent with the msg
@@ -238,17 +238,17 @@ fn multi_swap(
 
     let swap_msg = CosmosMsg::Custom(SideMsg::Swap {
         pool_id: first_hop.pool_id,
-        token_in: token_in, token_out: token_out, slippage: "99".to_string() 
+        token_in, token_out, slippage: "99".to_string() 
     });
     execute_msgs.push(swap_msg);
 
     // Get current balance of the ask asset (Native) token
-    current_ask_balance = query_balance(&deps.querier, env.contract.address.clone(), requests[0].asset_out.clone())?;
+    let current_ask_balance: Uint128 = query_balance(&deps.querier, env.contract.address.clone(), requests[0].asset_out.clone())?;
 
     // CallbackMsg - Add Callback Msg as we need to continue with the hops
     requests.remove(0);
     let arb_chain_msg = CallbackMsg::HopSwap {
-        requests: requests,
+        requests,
         offer_asset: first_hop.asset_out,
         prev_ask_amount: current_ask_balance,
         recipient,
