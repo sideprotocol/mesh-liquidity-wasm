@@ -36,7 +36,7 @@ pub enum CallbackMsg {
 #[serde(rename_all = "snake_case")]
 pub struct SwapRequest {
     /// Pool Id via which the swap is to be routed
-    pub pool_id: Uint128,
+    pub pool_id: String,
     /// The offer asset denom
     pub asset_in: String,
     ///  The ask asset denom

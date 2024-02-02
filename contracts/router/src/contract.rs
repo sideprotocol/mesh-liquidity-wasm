@@ -1,10 +1,13 @@
 use cosmwasm_std::{
-    entry_point, to_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult, Uint128
+    entry_point, to_binary, Addr, Api, Binary, CosmosMsg, Deps, DepsMut, Env, Event, MessageInfo, Response, StdError, StdResult, Uint128
 };
 
 use crate::error::ContractError;
+use crate::interaction_gmm::SideMsg;
 use crate::msg::{ CallbackMsg, ExecuteMsg, InstantiateMsg, QueryMsg, SwapRequest};
 use crate::state::{Constants, CONSTANTS};
+
+pub const MAX_SWAP_OPERATIONS: usize = 50;
 
 #[entry_point]
 pub fn instantiate(
@@ -105,11 +108,125 @@ fn multi_swap(
     receiver: Option<Addr>,
     minimum_receive: Option<Uint128>,
 ) -> Result<Response, ContractError> {
+    let recipient = deps.api.addr_validate(receiver.unwrap_or(info.sender.clone()).as_str())?;
+
+    // Validate the multiswap request
+    let requests_len = requests.len();
+    if requests_len < 1 {
+        return Err(ContractError::InvalidMultihopSwapRequest {
+            msg: "Multihop swap request must contain at least 1 hop".to_string(),
+        });
+    }
+
+    if requests_len > MAX_SWAP_OPERATIONS {
+        return Err(ContractError::InvalidMultihopSwapRequest {
+            msg: "The swap operation limit was exceeded!".to_string(),
+        });
+    }
+
+    // Assert the requests are properly set
+    assert_requests(&requests)?;
+
+    // CosmosMsgs to be sent in the response
+    let mut execute_msgs: Vec<CosmosMsg> = vec![];
+    let minimum_receive = minimum_receive.unwrap_or(Uint128::zero());
+
+    // Current ask token balance available with the router contract
+    let current_ask_balance: Uint128;
+
+    // Check sent tokens
+    // Query - Get number of offer asset (Native) tokens sent with the msg
+    let tokens_received = requests[0]
+    .asset_in
+    .get_sent_native_token_balance(&info);
+
+    // Error - if the number of native tokens sent is less than the offer amount, then return error
+    if tokens_received < offer_amount {
+        return Err(ContractError::InvalidMultihopSwapRequest {
+            msg: format!(
+                "Invalid number of tokens sent. The offer amount is larger than the number of tokens received. Tokens received = {} Tokens offered = {}",
+                tokens_received, offer_amount
+            ),
+        });
+    }
+
+    
+    // Create SingleSwapRequest for the first hop
+    let first_hop = requests[0].clone();
+    // let first_hop_swap_request = SingleSwapRequest {
+    //     pool_id: first_hop.pool_id,
+    //     asset_in: first_hop.asset_in.clone(),
+    //     asset_out: first_hop.asset_out.clone(),
+    //     swap_type: SwapType::GiveIn {},
+    //     // Amount provided is the amount to be used for the first hop
+    //     amount: offer_amount,
+    //     max_spread: first_hop.max_spread,
+    //     belief_price: first_hop.belief_price,
+    // };
+
+    // Need to send native tokens if the offer asset is native token
+    // ExecuteMsg - For the first hop
+    // let first_hop_execute_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+    //     contract_addr: config.dexter_vault.to_string(),
+    //     funds: coins,
+    //     msg: to_json_binary(&vault::ExecuteMsg::Swap {
+    //         swap_request: first_hop_swap_request.clone(),
+    //         recipient: Some(env.contract.address.clone().to_string()),
+    //         min_receive: None,
+    //         max_spend: None,
+    //     })?,
+    // });
+    // execute_msgs.push(first_hop_execute_msg);
+
+    SideMsg::Swap {
+        pool_id: first_hop.pool_id,
+        token_in: first_hop.asset_in, token_out: first_hop.asset_out };
+
+    // Get current balance of the ask asset (Native) token
+    current_ask_balance = requests[0]
+        .asset_out
+        .query_for_balance(&deps.querier, env.contract.address.clone())?;
+
+    // CallbackMsg - Add Callback Msg as we need to continue with the hops
+    requests.remove(0);
+    let arb_chain_msg = CallbackMsg::HopSwap {
+        requests: requests,
+        offer_asset: first_hop.asset_out,
+        prev_ask_amount: current_ask_balance,
+        recipient,
+        minimum_receive,
+    }
+    .to_cosmos_msg(&env.contract.address)?;
+    execute_msgs.push(arb_chain_msg);
+
     let mut constant = CONSTANTS.load(deps.storage)?;
     constant.count += 1;
     CONSTANTS.save(deps.storage,&constant)?;
     Ok(Response::new()
-        .add_attribute("action", "multi_swap"))
+        .add_attribute("action", "multi_swap")
+        .add_attribute("offer_amount", offer_amount.to_string())
+        .add_attribute("recipient", recipient.to_string())
+        .add_attribute("minimum_receive", minimum_receive.to_string())
+        .add_attribute("hops_left", requests.len().to_string())
+    )
+}
+
+/// Validates swap requests.
+///
+/// * **requests** is a vector that contains objects of type [`HopSwapRequest`]. These are all the swap operations we check.
+fn assert_requests(requests: &[SwapRequest]) -> Result<(), ContractError> {
+    let mut prev_req: SwapRequest = requests[0].clone();
+
+    for i in 1..requests.len() {
+        if requests[i].asset_in != prev_req.asset_out {
+            return Err(ContractError::InvalidMultihopSwapRequest {
+                msg: "invalid sequence of requests; prev output doesn't match current input".to_string()
+            });
+        }
+        prev_req = requests[i].clone();
+    }
+
+    Ok(())
 }
 
 fn try_reset(
