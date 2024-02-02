@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    entry_point, to_binary, Addr, Api, BalanceResponse, BankQuery, Binary, CosmosMsg, Deps, DepsMut, Env, Event, MessageInfo, QuerierWrapper, QueryRequest, Response, StdError, StdResult, Uint128
+    entry_point, to_binary, Addr, BalanceResponse, BankQuery, Binary, CosmosMsg, Deps, DepsMut, Env, Event, MessageInfo, QuerierWrapper, QueryRequest, Response, StdError, StdResult, Uint128
 };
 
 use crate::error::ContractError;
@@ -101,10 +101,70 @@ fn hop_swap(
     minimum_receive: Uint128,
 ) -> Result<Response, ContractError> {
 
+    // Calculate current offer asset balance
+    let asset_balance = query_balance(&deps.querier, env.contract.address, offer_asset)?;
 
+    // Amount returned from the last hop swap
+    let amount_returned_prev_hop = asset_balance.checked_sub(prev_ask_amount).unwrap();
+
+    // ExecuteMsgs
+    let mut response = Response::new();
+    let mut execute_msgs: Vec<CosmosMsg> = vec![];
+    let current_ask_balance: Uint128;
+
+    // If Hop is over, check if the minimum receive amount is met and transfer the tokens to the recipient
+    if requests.len() == 0 {
+        if amount_returned_prev_hop < minimum_receive {
+            return Err(ContractError::InvalidMultihopSwapRequest {
+                msg: format!("Minimum receive amount not met. Swap failed. Amount received = {} Minimum receive amount = {}", amount_returned_prev_hop, minimum_receive),
+            });
+        }
+        // TODO: Bank transfer amount
+        // execute_msgs.push(offer_asset.create_transfer_msg(recipient, amount_returned_prev_hop)?);
+    } else {
+        let next_hop = requests[0].clone();
+
+        // Asset returned from prev hop needs to match the asset to be used for the next hop
+        if offer_asset != next_hop.asset_in.clone() {
+            return Err(ContractError::InvalidMultihopSwapRequest {
+                msg:
+                format!("Invalid multiswap request. Asset {} out of previous hop does not match the asset {} to be provided for next hop."
+                , offer_asset, next_hop.asset_in),
+            });
+        }
+
+        // `// Create SingleSwapRequest for the next hop
+        // let next_hop_swap_request = SingleSwapRequest {
+        //     pool_id: next_hop.pool_id,
+        //     asset_in: next_hop.asset_in.clone(),
+        //     asset_out: next_hop.asset_out,
+        //     swap_type: SwapType::GiveIn {},
+        //     // Amount returned from prev hop is to be used for the next hop
+        //     amount: amount_returned_prev_hop,
+        //     max_spread: next_hop.max_spread,
+        //     belief_price: next_hop.belief_price,
+        // };
+
+        // Get current balance of the ask asset (Native) token
+        current_ask_balance = query_balance(&deps.querier, env.contract.address, requests[0].asset_out)?;
+
+        // Add Callback Msg as we need to continue with the hops
+        requests.remove(0);
+        let arb_chain_msg = CallbackMsg::HopSwap {
+            requests,
+            offer_asset: next_hop.asset_out.clone(),
+            prev_ask_amount: current_ask_balance,
+            recipient,
+            minimum_receive,
+        }
+        .to_cosmos_msg(&env.contract.address)?;
+        execute_msgs.push(arb_chain_msg);
+    }
 
     Ok(Response::new()
-    .add_attribute("action", "hop_swap"))
+        .add_attribute("action", "hop_swap")
+        .add_messages(execute_msgs)
+    )
 }
 
 fn multi_swap(
