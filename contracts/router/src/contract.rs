@@ -1,5 +1,7 @@
 use cosmwasm_std::{
-    entry_point, to_binary, Addr, BalanceResponse, BankQuery, Binary, CosmosMsg, Deps, DepsMut, Env, Event, MessageInfo, QuerierWrapper, QueryRequest, Response, StdError, StdResult, Uint128
+    entry_point, to_binary, Addr, BalanceResponse, BankQuery, Binary,
+    CosmosMsg, Deps, DepsMut, Env, MessageInfo, QuerierWrapper,
+    QueryRequest, Response, StdError, StdResult, Uint128, WasmMsg
 };
 
 use crate::error::ContractError;
@@ -16,10 +18,9 @@ pub fn instantiate(
     deps: DepsMut,
     _env: Env,
     _info: MessageInfo,
-    msg: InstantiateMsg,
+    _msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     let state = Constants {
-        count: msg.count,
         owner: _info.sender.to_string()
     };
     CONSTANTS.save(deps.storage,&state)?;
@@ -34,11 +35,10 @@ pub fn execute(
     env: Env,
     info: MessageInfo,
     msg: ExecuteMsg,
-) -> Result<Response, ContractError> {
+) -> Result<Response<SideMsg>, ContractError> {
     match msg {
         ExecuteMsg::MultiSwap { requests, offer_amount, receiver, minimum_receive }
         => multi_swap(deps, env, info, requests, offer_amount, receiver, minimum_receive),
-        ExecuteMsg::Reset { count } => try_reset(deps, env, info, count),
         ExecuteMsg::Callback(msg) => handle_callback(deps, env, info, msg),
     }
 }
@@ -61,14 +61,14 @@ fn handle_callback(
     env: Env,
     info: MessageInfo,
     msg: CallbackMsg,
-) -> Result<Response, ContractError> {
+) -> Result<Response<SideMsg>, ContractError> {
     // Callback functions can only be called by contract only
     if info.sender != env.contract.address {
         return Err(ContractError::Std(StdError::generic_err(
             "callbacks cannot be invoked externally",
         )));
     }
-    
+
     match msg {
         CallbackMsg::HopSwap {
             requests,
@@ -93,23 +93,22 @@ fn handle_callback(
 fn hop_swap(
     deps: DepsMut,
     env: Env,
-    info: MessageInfo,
-    requests: Vec<SwapRequest>,
+    _info: MessageInfo,
+    mut requests: Vec<SwapRequest>,
     offer_asset: String,
     prev_ask_amount: Uint128,
     recipient: Addr,
     minimum_receive: Uint128,
-) -> Result<Response, ContractError> {
+) -> Result<Response<SideMsg>, ContractError> {
 
     // Calculate current offer asset balance
-    let asset_balance = query_balance(&deps.querier, env.contract.address, offer_asset)?;
+    let asset_balance = query_balance(&deps.querier, env.contract.address.clone(), offer_asset.clone())?;
 
     // Amount returned from the last hop swap
     let amount_returned_prev_hop = asset_balance.checked_sub(prev_ask_amount).unwrap();
 
     // ExecuteMsgs
-    let mut response = Response::new();
-    let mut execute_msgs: Vec<CosmosMsg> = vec![];
+    let mut execute_msgs: Vec<CosmosMsg<SideMsg>> = vec![];
     let current_ask_balance: Uint128;
 
     // If Hop is over, check if the minimum receive amount is met and transfer the tokens to the recipient
@@ -133,20 +132,16 @@ fn hop_swap(
             });
         }
 
-        // `// Create SingleSwapRequest for the next hop
-        // let next_hop_swap_request = SingleSwapRequest {
-        //     pool_id: next_hop.pool_id,
-        //     asset_in: next_hop.asset_in.clone(),
-        //     asset_out: next_hop.asset_out,
-        //     swap_type: SwapType::GiveIn {},
-        //     // Amount returned from prev hop is to be used for the next hop
-        //     amount: amount_returned_prev_hop,
-        //     max_spread: next_hop.max_spread,
-        //     belief_price: next_hop.belief_price,
-        // };
+        let token_in = amount_returned_prev_hop.to_string() + &next_hop.asset_in;
+        let token_out = "1".to_string() + &next_hop.asset_out;
+        let swap_msg = CosmosMsg::Custom(SideMsg::Swap {
+            pool_id: next_hop.pool_id,
+            token_in: token_in, token_out: token_out, slippage: "99".to_string() 
+        });
+        execute_msgs.push(swap_msg);
 
         // Get current balance of the ask asset (Native) token
-        current_ask_balance = query_balance(&deps.querier, env.contract.address, requests[0].asset_out)?;
+        current_ask_balance = query_balance(&deps.querier, env.contract.address.clone(), requests[0].asset_out.clone())?;
 
         // Add Callback Msg as we need to continue with the hops
         requests.remove(0);
@@ -156,9 +151,13 @@ fn hop_swap(
             prev_ask_amount: current_ask_balance,
             recipient,
             minimum_receive,
-        }
-        .to_cosmos_msg(&env.contract.address)?;
-        execute_msgs.push(arb_chain_msg);
+        };
+        let arb_chain = CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: String::from(env.contract.address),
+            msg: to_binary(&ExecuteMsg::Callback(arb_chain_msg))?,
+            funds: vec![],
+        });
+        execute_msgs.push(arb_chain);
     }
 
     Ok(Response::new()
@@ -171,11 +170,11 @@ fn multi_swap(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    requests: Vec<SwapRequest>,
+    mut requests: Vec<SwapRequest>,
     offer_amount: Uint128,
     receiver: Option<Addr>,
     minimum_receive: Option<Uint128>,
-) -> Result<Response, ContractError> {
+) -> Result<Response<SideMsg>, ContractError> {
     let recipient = deps.api.addr_validate(receiver.unwrap_or(info.sender.clone()).as_str())?;
 
     // Validate the multiswap request
@@ -196,7 +195,7 @@ fn multi_swap(
     assert_requests(&requests)?;
 
     // CosmosMsgs to be sent in the response
-    let mut execute_msgs: Vec<CosmosMsg> = vec![];
+    let mut execute_msgs: Vec<CosmosMsg<SideMsg>> = vec![];
     let minimum_receive = minimum_receive.unwrap_or(Uint128::zero());
 
     // Current ask token balance available with the router contract
@@ -205,7 +204,7 @@ fn multi_swap(
     // Check sent tokens
     // Query - Get number of offer asset (Native) tokens sent with the msg
     // check if given tokens are received here
-    let tokens_received;
+    let mut tokens_received = Uint128::from(0u64);
     let mut ok = false;
     for asset in info.funds {
         if asset.denom == requests[0].asset_in {
@@ -233,37 +232,18 @@ fn multi_swap(
     
     // Create SingleSwapRequest for the first hop
     let first_hop = requests[0].clone();
-    // let first_hop_swap_request = SingleSwapRequest {
-    //     pool_id: first_hop.pool_id,
-    //     asset_in: first_hop.asset_in.clone(),
-    //     asset_out: first_hop.asset_out.clone(),
-    //     swap_type: SwapType::GiveIn {},
-    //     // Amount provided is the amount to be used for the first hop
-    //     amount: offer_amount,
-    //     max_spread: first_hop.max_spread,
-    //     belief_price: first_hop.belief_price,
-    // };
 
-    // Need to send native tokens if the offer asset is native token
-    // ExecuteMsg - For the first hop
-    // let first_hop_execute_msg = CosmosMsg::Wasm(WasmMsg::Execute {
-    //     contract_addr: config.dexter_vault.to_string(),
-    //     funds: coins,
-    //     msg: to_json_binary(&vault::ExecuteMsg::Swap {
-    //         swap_request: first_hop_swap_request.clone(),
-    //         recipient: Some(env.contract.address.clone().to_string()),
-    //         min_receive: None,
-    //         max_spend: None,
-    //     })?,
-    // });
-    // execute_msgs.push(first_hop_execute_msg);
+    let token_in = tokens_received.to_string() + &first_hop.asset_in;
+    let token_out = "1".to_string() + &first_hop.asset_out;
 
-    SideMsg::Swap {
+    let swap_msg = CosmosMsg::Custom(SideMsg::Swap {
         pool_id: first_hop.pool_id,
-        token_in: first_hop.asset_in, token_out: first_hop.asset_out };
+        token_in: token_in, token_out: token_out, slippage: "99".to_string() 
+    });
+    execute_msgs.push(swap_msg);
 
     // Get current balance of the ask asset (Native) token
-    current_ask_balance = query_balance(&deps.querier, env.contract.address, requests[0].asset_out)?;
+    current_ask_balance = query_balance(&deps.querier, env.contract.address.clone(), requests[0].asset_out.clone())?;
 
     // CallbackMsg - Add Callback Msg as we need to continue with the hops
     requests.remove(0);
@@ -273,19 +253,20 @@ fn multi_swap(
         prev_ask_amount: current_ask_balance,
         recipient,
         minimum_receive,
-    }
-    .to_cosmos_msg(&env.contract.address)?;
-    execute_msgs.push(arb_chain_msg);
+    };
 
-    let mut constant = CONSTANTS.load(deps.storage)?;
-    constant.count += 1;
-    CONSTANTS.save(deps.storage,&constant)?;
+    let arb_chain = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: String::from(env.contract.address),
+        msg: to_binary(&ExecuteMsg::Callback(arb_chain_msg))?,
+        funds: vec![],
+    });
+    execute_msgs.push(arb_chain);
+
     Ok(Response::new()
+        .add_messages(execute_msgs)
         .add_attribute("action", "multi_swap")
         .add_attribute("offer_amount", offer_amount.to_string())
-        .add_attribute("recipient", recipient.to_string())
         .add_attribute("minimum_receive", minimum_receive.to_string())
-        .add_attribute("hops_left", requests.len().to_string())
     )
 }
 
@@ -307,24 +288,6 @@ fn assert_requests(requests: &[SwapRequest]) -> Result<(), ContractError> {
     Ok(())
 }
 
-fn try_reset(
-    deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
-    count: i32
-) -> Result<Response, ContractError> {
-    let mut constant = CONSTANTS.load(deps.storage)?;
-    if constant.owner != info.sender {
-        return Err(ContractError::Std(StdError::generic_err(
-            "Unauthorized",
-        )));
-    }
-    constant.count = count;
-    CONSTANTS.save(deps.storage, & constant)?;
-    Ok(Response::new()
-        .add_attribute("action", "COUNT reset successfully"))
-}
-
 /// ## Description
 /// Returns the balance of the denom at the specified account address.
 /// ## Params
@@ -342,14 +305,3 @@ pub fn query_balance(
     }))?;
     Ok(balance.amount.amount)
 }
-
-// pub fn query_count(deps: Deps) -> StdResult<Binary> {
-//     let res = deps.querier.query_params()?;
-//     to_binary(&(res))
-// }
-
-// pub fn query_count(deps: Deps<SideQueryWrapper>) -> StdResult<Binary> {
-//     let querier: SideQuerier<'_> = SideQuerier::new(&deps.querier);
-//     let res = querier.query_params()?;
-//     to_binary(&(res))
-// }

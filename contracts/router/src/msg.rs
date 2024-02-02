@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {
-    pub count: i32,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -16,7 +15,6 @@ pub enum ExecuteMsg {
         receiver: Option<Addr>,
         minimum_receive: Option<Uint128>,
     },
-    Reset { count: i32 },
     Callback(CallbackMsg)
 }
 

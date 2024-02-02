@@ -6,7 +6,6 @@ pub const CONSTANTS: Item<Constants> = Item::new("constants");
 
 #[derive(Serialize, Debug, Deserialize, Clone, PartialEq, JsonSchema)]
 pub struct Constants {
-    pub count: i32,
     pub owner: String
 }
 

@@ -1,4 +1,4 @@
-use cosmwasm_std::{Coin, CosmosMsg, CustomMsg};
+use cosmwasm_std::{CosmosMsg, CustomMsg};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -8,8 +8,9 @@ use serde::{Deserialize, Serialize};
 pub enum SideMsg {
     Swap {
         pool_id: String,
-        token_in: Coin,
-        token_out: Coin,
+        token_in: String,
+        token_out: String,
+        slippage: String,
     },
 }
 
