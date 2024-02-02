@@ -3,7 +3,6 @@ mod error;
 mod msg;
 mod state;
 mod query;
-mod route;
 mod querier;
 mod interaction_gmm;
 

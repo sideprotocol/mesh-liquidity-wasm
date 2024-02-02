@@ -5,6 +5,8 @@ use cosmwasm_std::{
 use crate::error::ContractError;
 use crate::interaction_gmm::SideMsg;
 use crate::msg::{ CallbackMsg, ExecuteMsg, InstantiateMsg, QueryMsg, SwapRequest};
+use crate::querier::SideQuerier;
+use crate::query::SideQuery;
 use crate::state::{Constants, CONSTANTS};
 
 pub const MAX_SWAP_OPERATIONS: usize = 50;
@@ -42,10 +44,16 @@ pub fn execute(
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+pub fn query(deps: Deps<SideQuery>, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-           QueryMsg::GetCount {} => query_count(deps),
+           QueryMsg::GetCount {} => query_param(deps),
     }
+}
+
+pub fn query_param(deps: Deps<SideQuery>) -> StdResult<Binary> {
+    let querier: SideQuerier<'_> = SideQuerier::new(&deps.querier);
+    let res = querier.query_params()?;
+    to_binary(&(res))
 }
 
 fn handle_callback(
