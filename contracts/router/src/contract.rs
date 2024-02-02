@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    entry_point, to_binary, Addr, Api, Binary, CosmosMsg, Deps, DepsMut, Env, Event, MessageInfo, Response, StdError, StdResult, Uint128
+    entry_point, to_binary, Addr, Api, BalanceResponse, BankQuery, Binary, CosmosMsg, Deps, DepsMut, Env, Event, MessageInfo, QuerierWrapper, QueryRequest, Response, StdError, StdResult, Uint128
 };
 
 use crate::error::ContractError;
@@ -144,9 +144,21 @@ fn multi_swap(
 
     // Check sent tokens
     // Query - Get number of offer asset (Native) tokens sent with the msg
-    let tokens_received = requests[0]
-    .asset_in
-    .get_sent_native_token_balance(&info);
+    // check if given tokens are received here
+    let tokens_received;
+    let mut ok = false;
+    for asset in info.funds {
+        if asset.denom == requests[0].asset_in {
+            ok = true;
+            tokens_received = asset.amount;
+        }
+    }
+    if !ok {
+        return Err(ContractError::Std(StdError::generic_err(
+            "Funds not found: Funds not sent"
+                .to_string(),
+        )));
+    }
 
     // Error - if the number of native tokens sent is less than the offer amount, then return error
     if tokens_received < offer_amount {
@@ -191,9 +203,7 @@ fn multi_swap(
         token_in: first_hop.asset_in, token_out: first_hop.asset_out };
 
     // Get current balance of the ask asset (Native) token
-    current_ask_balance = requests[0]
-        .asset_out
-        .query_for_balance(&deps.querier, env.contract.address.clone())?;
+    current_ask_balance = query_balance(&deps.querier, env.contract.address, requests[0].asset_out)?;
 
     // CallbackMsg - Add Callback Msg as we need to continue with the hops
     requests.remove(0);
@@ -253,6 +263,24 @@ fn try_reset(
     CONSTANTS.save(deps.storage, & constant)?;
     Ok(Response::new()
         .add_attribute("action", "COUNT reset successfully"))
+}
+
+/// ## Description
+/// Returns the balance of the denom at the specified account address.
+/// ## Params
+/// * **querier** is the object of type [`QuerierWrapper`].
+/// * **account_addr** is the object of type [`Addr`].
+/// * **denom** is the object of type [`String`].
+pub fn query_balance(
+    querier: &QuerierWrapper,
+    account_addr: Addr,
+    denom: String,
+) -> StdResult<Uint128> {
+    let balance: BalanceResponse = querier.query(&QueryRequest::Bank(BankQuery::Balance {
+        address: String::from(account_addr),
+        denom,
+    }))?;
+    Ok(balance.amount.amount)
 }
 
 // pub fn query_count(deps: Deps) -> StdResult<Binary> {
