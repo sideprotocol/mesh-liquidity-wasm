@@ -55,7 +55,6 @@ pub struct CountResponse {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-#[serde(rename_all = "camelCase")]
 pub struct Params {
     pub pool_creation_fee: u64,
 }

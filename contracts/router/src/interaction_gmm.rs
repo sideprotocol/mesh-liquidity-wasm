@@ -7,10 +7,10 @@ use serde::{Deserialize, Serialize};
 /// A number of Custom messages that can call into the side bindings
 pub enum SideMsg {
     Swap {
-        pool_id: String,
+        pool_i_d: String,
         token_in: Coin,
         token_out: Coin,
-        slippage: u64,
+        slippage: String,
     },
 }
 
