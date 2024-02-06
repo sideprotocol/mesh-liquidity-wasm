@@ -135,10 +135,11 @@ fn hop_swap(
             });
         }
 
-        let token_in = amount_returned_prev_hop.to_string() + &next_hop.asset_in;
-        let token_out = "1".to_string() + &next_hop.asset_out;
+        let token_in: Coin = Coin { denom: next_hop.asset_in, amount: amount_returned_prev_hop };
+        let token_out: Coin = Coin { denom: next_hop.asset_out.clone(), amount: Uint128::from(1u64) };
+    
         let swap_msg = CosmosMsg::Custom(SideMsg::Swap {
-            pool_id: next_hop.pool_id,
+            pool_i_d: next_hop.pool_id,
             token_in, token_out, slippage: "99".to_string() 
         });
         execute_msgs.push(swap_msg);
@@ -232,17 +233,17 @@ fn multi_swap(
         });
     }
 
-    
     // Create SingleSwapRequest for the first hop
     let first_hop = requests[0].clone();
 
-    let token_in = tokens_received.to_string() + &first_hop.asset_in;
-    let token_out = "1".to_string() + &first_hop.asset_out;
+    let token_in: Coin = Coin { denom: first_hop.asset_in, amount: tokens_received };
+    let token_out: Coin = Coin { denom: first_hop.asset_out.clone(), amount: Uint128::from(1u64) };
 
     let swap_msg = CosmosMsg::Custom(SideMsg::Swap {
-        pool_id: first_hop.pool_id,
-        token_in, token_out, slippage: "99".to_string() 
+        pool_i_d: first_hop.pool_id,
+        token_in, token_out, slippage: "99".to_string()  
     });
+
     execute_msgs.push(swap_msg);
 
     // Get current balance of the ask asset (Native) token

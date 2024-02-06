@@ -1,4 +1,4 @@
-use cosmwasm_std::{CosmosMsg, CustomMsg};
+use cosmwasm_std::{Coin, CosmosMsg, CustomMsg};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -7,9 +7,9 @@ use serde::{Deserialize, Serialize};
 /// A number of Custom messages that can call into the side bindings
 pub enum SideMsg {
     Swap {
-        pool_id: String,
-        token_in: String,
-        token_out: String,
+        pool_i_d: String,
+        token_in: Coin,
+        token_out: Coin,
         slippage: String,
     },
 }
