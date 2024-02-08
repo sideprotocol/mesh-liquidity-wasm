@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::msg::LPAllocation;
 use crate::msg::LogExecuteMsg::LogObservation;
+use crate::msg::RouterExecuteMsg::MultiSwap;
 use crate::{
     error::ContractError,
     market::{
@@ -644,12 +645,29 @@ pub(crate) fn on_received_swap(
     }
 
     let token_out = state_change.out_tokens.unwrap();
+    let mut sub_messages: Vec<SubMsg>;
+    // Handle routing here
+    if let Some(route) = msg.route {
+        let route_msg = MultiSwap {
+            requests: route.requests, offer_amount: token_out.get(0).unwrap().clone().amount,
+            receiver: Some(Addr::unchecked(msg.recipient)), minimum_receive: route.minimum_receive 
+        };
+        let cfg = CONFIG.load(deps.storage)?;
 
-    // send tokens
-    let mut sub_messages = send_tokens_coin(
-        &Addr::unchecked(msg.recipient),
-        token_out.get(0).unwrap().clone(),
-    )?;
+        // router message
+        sub_messages = [SubMsg::new(WasmMsg::Execute {
+            contract_addr: cfg.router,
+            msg: to_binary(&route_msg)?,
+            funds: vec![token_out.get(0).unwrap().clone()],
+        })].to_vec();
+    } else {
+        // send tokens
+        sub_messages = send_tokens_coin(
+            &Addr::unchecked(msg.recipient),
+            token_out.get(0).unwrap().clone(),
+        )?;
+    }
+
     let log_token_1;
     let log_token_2;
     // Update pool status by subtracting output token and adding input token

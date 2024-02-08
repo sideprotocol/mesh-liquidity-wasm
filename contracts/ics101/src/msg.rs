@@ -255,9 +255,8 @@ pub struct MsgSwapRequest {
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct SwapRoute {
-    requests: Vec<SwapRequest>,
-    receiver: Option<Addr>,
-    minimum_receive: Option<Uint128>,
+    pub requests: Vec<SwapRequest>,
+    pub minimum_receive: Option<Uint128>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -331,6 +330,16 @@ impl TokenInstantiateMsg {
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub enum LogExecuteMsg {
     LogObservation { token1: Coin, token2: Coin },
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub enum RouterExecuteMsg {
+    MultiSwap {
+        requests: Vec<SwapRequest>,
+        offer_amount: Uint128,
+        receiver: Option<Addr>,
+        minimum_receive: Option<Uint128>,
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
