@@ -16,7 +16,7 @@ use cw_storage_plus::Bound;
 use crate::error::ContractError;
 use crate::ibc::{ACK_FAILURE_ID, RECEIVE_ID};
 use crate::interchainswap_handler::ack_fail;
-use crate::market::{InterchainLiquidityPool, InterchainMarketMaker, PoolSide, PoolStatus};
+use crate::market::{InterchainLiquidityPool, InterchainMarketMaker, PoolSide, PoolStatus, LP_TOKEN_PRECISION};
 use crate::msg::{
     Cw20HookMsg, ExecuteMsg, InstantiateMsg, InterchainListResponse, InterchainPoolResponse,
     MigrateMsg, MsgCancelMultiAssetDepositRequest, MsgCancelPoolRequest,
@@ -300,7 +300,7 @@ fn make_pool(
                 msg: to_binary(&TokenInstantiateMsg {
                     name: "sideLP".to_string(),
                     symbol: "sideLP".to_string(),
-                    decimals: 6,
+                    decimals: LP_TOKEN_PRECISION,
                     initial_balances: vec![],
                     marketing: None,
                     mint: Some(MinterResponse {
@@ -387,7 +387,7 @@ fn take_pool(
                 msg: to_binary(&TokenInstantiateMsg {
                     name: "sideLP".to_string(),
                     symbol: "sideLP".to_string(),
-                    decimals: 6,
+                    decimals: LP_TOKEN_PRECISION,
                     initial_balances: vec![],
                     marketing: None,
                     mint: Some(MinterResponse {

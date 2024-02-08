@@ -12,6 +12,7 @@ use crate::{
 
 pub const FEE_PRECISION: u16 = 10000;
 pub const FIXED_PRECISION: u8 = 12;
+pub const LP_TOKEN_PRECISION: u8 = 6;
 /// Number of LP tokens to mint when liquidity is provided for the first time to the pool.
 /// This does not include the token decimals.
 // const INIT_LP_TOKENS: u128 = 100;
@@ -194,7 +195,7 @@ impl InterchainMarketMaker {
                     let dec_asset_amount = adjust_precision(
                         asset.balance.amount,
                         asset.decimal.try_into().unwrap(),
-                        18,
+                        LP_TOKEN_PRECISION,
                     )?;
                     total_asset_amount += dec_asset_amount;
                 }
