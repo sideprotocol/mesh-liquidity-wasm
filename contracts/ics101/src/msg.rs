@@ -2,7 +2,7 @@ use cw20::{Cw20Coin, Logo, MinterResponse};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{Coin, Response, StdError, StdResult, Uint128};
+use cosmwasm_std::{Addr, Coin, Response, StdError, StdResult, Uint128};
 
 use crate::error::ContractError;
 use crate::market::{InterchainLiquidityPool, InterchainMarketMaker, PoolAsset, PoolStatus};
@@ -12,6 +12,7 @@ use crate::utils::{is_valid_name, is_valid_symbol};
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct InstantiateMsg {
     pub token_code_id: u64,
+    pub router: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -27,6 +28,7 @@ pub enum ExecuteMsg {
     Swap(MsgSwapRequest),
     RemovePool(MsgRemovePool),
     SetLogAddress { pool_id: String, address: String }, // Receive(Cw20ReceiveMsg)
+    SetRouter {address: String},
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -248,6 +250,25 @@ pub struct MsgSwapRequest {
     pub timeout_height: u64,
     #[serde(rename = "timeoutTimestamp")]
     pub timeout_timestamp: u64,
+    pub route: Option<SwapRoute>
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct SwapRoute {
+    requests: Vec<SwapRequest>,
+    receiver: Option<Addr>,
+    minimum_receive: Option<Uint128>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct SwapRequest {
+    /// Pool Id via which the swap is to be routed
+    pub pool_id: String,
+    /// The offer asset denom
+    pub asset_in: String,
+    ///  The ask asset denom
+    pub asset_out: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]

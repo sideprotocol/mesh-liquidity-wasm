@@ -26,6 +26,8 @@ pub struct Config {
     pub token_code_id: u64,
     // Admin address
     pub admin: String,
+    // Router address
+    pub router: String,
 }
 
 // Each pool has it's pool token (cw20)
