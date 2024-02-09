@@ -16,7 +16,7 @@ use cw_storage_plus::Bound;
 use crate::error::ContractError;
 use crate::ibc::{ACK_FAILURE_ID, RECEIVE_ID};
 use crate::interchainswap_handler::ack_fail;
-use crate::market::{InterchainLiquidityPool, InterchainMarketMaker, PoolSide, PoolStatus};
+use crate::market::{InterchainLiquidityPool, InterchainMarketMaker, PoolSide, PoolStatus, LP_TOKEN_PRECISION};
 use crate::msg::{
     Cw20HookMsg, ExecuteMsg, InstantiateMsg, InterchainListResponse, InterchainPoolResponse,
     MigrateMsg, MsgCancelMultiAssetDepositRequest, MsgCancelPoolRequest,
@@ -57,6 +57,7 @@ pub fn instantiate(
         counter: 0,
         token_code_id: msg.token_code_id,
         admin: info.sender.to_string(),
+        router: msg.router,
     };
 
     CONFIG.save(deps.storage, &config)?;
@@ -135,6 +136,7 @@ pub fn execute(
         ExecuteMsg::SetLogAddress { pool_id, address } => {
             set_log_address(deps, env, info, pool_id, address)
         } //ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
+        ExecuteMsg::SetRouter { address } => set_router_address(deps, env, info, address)
     }
 }
 
@@ -172,6 +174,25 @@ fn set_log_address(
     }
 
     LOG_VOLUME.save(deps.storage, pool_id, &address)?;
+
+    Ok(Response::default())
+}
+
+fn set_router_address(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    address: String,
+) -> Result<Response, ContractError> {
+    let mut config = CONFIG.load(deps.storage)?;
+    if config.admin != info.sender {
+        return Err(ContractError::Std(StdError::generic_err(
+            "not allowed".to_string(),
+        )));
+    }
+
+    config.router = address;
+    CONFIG.save(deps.storage, &config)?;
 
     Ok(Response::default())
 }
@@ -300,7 +321,7 @@ fn make_pool(
                 msg: to_binary(&TokenInstantiateMsg {
                     name: "sideLP".to_string(),
                     symbol: "sideLP".to_string(),
-                    decimals: 6,
+                    decimals: LP_TOKEN_PRECISION,
                     initial_balances: vec![],
                     marketing: None,
                     mint: Some(MinterResponse {
@@ -387,7 +408,7 @@ fn take_pool(
                 msg: to_binary(&TokenInstantiateMsg {
                     name: "sideLP".to_string(),
                     symbol: "sideLP".to_string(),
-                    decimals: 6,
+                    decimals: LP_TOKEN_PRECISION,
                     initial_balances: vec![],
                     marketing: None,
                     mint: Some(MinterResponse {
@@ -1451,7 +1472,7 @@ mod tests {
         let mut deps = mock_dependencies();
 
         // Instantiate an empty contract
-        let instantiate_msg = InstantiateMsg { token_code_id: 1 };
+        let instantiate_msg = InstantiateMsg { token_code_id: 1, router: "".to_string() };
         let info = mock_info("anyone", &[]);
         let res = instantiate(deps.as_mut(), mock_env(), info, instantiate_msg).unwrap();
         assert_eq!(0, res.messages.len());

@@ -12,6 +12,7 @@ use crate::{
 
 pub const FEE_PRECISION: u16 = 10000;
 pub const FIXED_PRECISION: u8 = 12;
+pub const LP_TOKEN_PRECISION: u8 = 6;
 /// Number of LP tokens to mint when liquidity is provided for the first time to the pool.
 /// This does not include the token decimals.
 // const INIT_LP_TOKENS: u128 = 100;
@@ -155,7 +156,6 @@ impl InterchainMarketMaker {
             .ok_or_else(|| StdError::generic_err("Asset not found"))?;
 
         let issue_amount;
-        let _fee_charged;
 
         if self.pool.status != PoolStatus::Active {
             return Err(StdError::generic_err("Pool is not active!"));
@@ -166,12 +166,11 @@ impl InterchainMarketMaker {
             };
 
             // Asset weights already normalized
-            (issue_amount, _fee_charged) = calc_minted_shares_given_single_asset_in(
+            issue_amount = calc_minted_shares_given_single_asset_in(
                 token.amount,
                 asset.decimal,
                 pool_asset_weighted,
                 self.pool.supply.amount,
-                Decimal::from_ratio(self.fee_rate, FEE_PRECISION),
             )?;
         }
 
@@ -194,7 +193,7 @@ impl InterchainMarketMaker {
                     let dec_asset_amount = adjust_precision(
                         asset.balance.amount,
                         asset.decimal.try_into().unwrap(),
-                        18,
+                        LP_TOKEN_PRECISION,
                     )?;
                     total_asset_amount += dec_asset_amount;
                 }
