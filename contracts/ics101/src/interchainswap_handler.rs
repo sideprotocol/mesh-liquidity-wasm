@@ -3,6 +3,7 @@ use std::vec;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::market::FEE_PRECISION;
 use crate::msg::LPAllocation;
 use crate::msg::LogExecuteMsg::LogObservation;
 use crate::msg::RouterExecuteMsg::MultiSwap;
@@ -645,27 +646,40 @@ pub(crate) fn on_received_swap(
     }
 
     let token_out = state_change.out_tokens.unwrap();
+    let cfg = CONFIG.load(deps.storage)?;
     let mut sub_messages: Vec<SubMsg>;
+    // Deduct fees
+    let fee_charged = token_out.get(0).unwrap().clone().amount.checked_div(FEE_PRECISION.into()).unwrap().checked_mul(interchain_pool.swap_fee.into()).unwrap();
+    let output_token = Coin {
+        denom: token_out.get(0).unwrap().clone().denom,
+        amount: token_out.get(0).unwrap().clone().amount.checked_sub(fee_charged).unwrap(),
+    };
+    sub_messages = send_tokens_coin(
+        &Addr::unchecked(cfg.admin),
+        Coin { denom: output_token.denom.clone(), amount: fee_charged },
+    )?;
+
     // Handle routing here
     if let Some(route) = msg.route {
         let route_msg = MultiSwap {
-            requests: route.requests, offer_amount: token_out.get(0).unwrap().clone().amount,
-            receiver: Some(Addr::unchecked(msg.recipient)), minimum_receive: route.minimum_receive 
+            requests: route.requests, offer_amount: output_token.amount,
+            receiver: Some(Addr::unchecked(msg.recipient)),
+            minimum_receive: route.minimum_receive 
         };
-        let cfg = CONFIG.load(deps.storage)?;
-
+    
         // router message
-        sub_messages = [SubMsg::new(WasmMsg::Execute {
+        sub_messages.push(SubMsg::new(WasmMsg::Execute {
             contract_addr: cfg.router,
             msg: to_binary(&route_msg)?,
-            funds: vec![token_out.get(0).unwrap().clone()],
-        })].to_vec();
+            funds: vec![output_token],
+        }));
     } else {
         // send tokens
-        sub_messages = send_tokens_coin(
+        let send_tokens_msg = send_tokens_coin(
             &Addr::unchecked(msg.recipient),
-            token_out.get(0).unwrap().clone(),
+            output_token,
         )?;
+        sub_messages.append(&mut send_tokens_msg.clone());
     }
 
     let log_token_1;

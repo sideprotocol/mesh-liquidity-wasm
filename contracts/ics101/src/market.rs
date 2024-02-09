@@ -156,7 +156,6 @@ impl InterchainMarketMaker {
             .ok_or_else(|| StdError::generic_err("Asset not found"))?;
 
         let issue_amount;
-        let _fee_charged;
 
         if self.pool.status != PoolStatus::Active {
             return Err(StdError::generic_err("Pool is not active!"));
@@ -167,12 +166,11 @@ impl InterchainMarketMaker {
             };
 
             // Asset weights already normalized
-            (issue_amount, _fee_charged) = calc_minted_shares_given_single_asset_in(
+            issue_amount = calc_minted_shares_given_single_asset_in(
                 token.amount,
                 asset.decimal,
                 pool_asset_weighted,
                 self.pool.supply.amount,
-                Decimal::from_ratio(self.fee_rate, FEE_PRECISION),
             )?;
         }
 

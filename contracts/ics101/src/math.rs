@@ -50,16 +50,8 @@ pub fn calc_minted_shares_given_single_asset_in(
     in_precision: u32,
     asset_weight_and_balance: &WeightedAsset,
     total_shares: Uint128,
-    swap_fee_rate: Decimal,
-) -> StdResult<(Uint128, Uint128)> {
-    // deduct swapfee on the in asset.
-    // We don't charge swap fee on the token amount that we imagine as unswapped (the normalized weight).
-    // So, effective_swapfee = swapfee * (1 - normalized_token_weight)
-    let fee_ratio = fee_ratio(asset_weight_and_balance.weight, swap_fee_rate);
-    let token_amount_in_after_fee = token_amount_in * fee_ratio;
-    let fee_charged = token_amount_in.checked_sub(token_amount_in_after_fee)?;
-
-    let in_decimal = Decimal::from_atomics(token_amount_in_after_fee, in_precision).unwrap();
+) -> StdResult<Uint128> {
+    let in_decimal = Decimal::from_atomics(token_amount_in, in_precision).unwrap();
     let balance_decimal =
         Decimal::from_atomics(asset_weight_and_balance.asset.amount, in_precision).unwrap();
 
@@ -84,23 +76,8 @@ pub fn calc_minted_shares_given_single_asset_in(
         Decimal::DECIMAL_PLACES as u8,
     )?;
 
-    Ok((pool_amount_out_adj, fee_charged))
+    Ok(pool_amount_out_adj)
 }
-
-// feeRatio returns the fee ratio that is defined as follows:
-// 1 - ((1 - normalizedTokenWeightOut) * swapFee)
-fn fee_ratio(normalized_weight: Decimal, swap_fee: Decimal) -> Decimal {
-    Decimal::one() - ((Decimal::one() - normalized_weight) * swap_fee)
-}
-
-// ## Description
-// Calculates the weight of an asset as % of the total weight share. Returns a decimal.
-// ## Params
-// * **weight** is the weight of the asset.
-// * **total_weight** is the total weight of all assets.
-// pub fn get_normalized_weight(weight: Uint128, total_weight: Uint128) -> Decimal {
-//     Decimal::from_ratio(weight, total_weight)
-// }
 
 #[cfg(test)]
 mod tests {
