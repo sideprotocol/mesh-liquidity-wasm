@@ -139,7 +139,7 @@ fn hop_swap(
         let token_out: Coin = Coin { denom: next_hop.asset_out.clone(), amount: Uint128::from(1u64) };
     
         let swap_msg = CosmosMsg::Custom(SideMsg::Swap {
-            pool_i_d: next_hop.pool_id,
+            pool_id: next_hop.pool_id,
             token_in, token_out, slippage: "99".to_string() 
         });
         execute_msgs.push(swap_msg);
@@ -240,7 +240,7 @@ fn multi_swap(
     let token_out: Coin = Coin { denom: first_hop.asset_out.clone(), amount: Uint128::from(1u64) };
 
     let swap_msg = CosmosMsg::Custom(SideMsg::Swap {
-        pool_i_d: first_hop.pool_id,
+        pool_id: first_hop.pool_id,
         token_in, token_out, slippage: "99".to_string()  
     });
 
