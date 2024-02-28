@@ -32,7 +32,7 @@ use crate::state::{
 };
 use crate::types::{
     InterchainMessageType, InterchainSwapPacketData, MultiAssetDepositOrder, OrderStatus,
-    StateChange,Memo, Forward,
+    StateChange
 };
 use crate::utils::{
     get_coins_from_deposits, get_order_id, get_pool_id_with_tokens, INSTANTIATE_TOKEN_REPLY_ID,
