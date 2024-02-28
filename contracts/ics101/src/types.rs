@@ -21,6 +21,22 @@ pub struct StateChange {
     pub shares: Option<Uint128>,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct Forward {
+    pub port: String,
+    pub channel: String,
+    pub timeout: String,
+    pub retries: i32,
+    #[serde(skip_serializing_if = "Option::is_none")] // This line is to skip serialization if next is None
+    pub next: Option<String>, // Optional because it seems to be a comment in your example
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Memo {
+    pub forward: Forward,
+}
+
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InterchainSwapPacketData {
     #[serde(rename = "Type")]
@@ -29,6 +45,8 @@ pub struct InterchainSwapPacketData {
     pub data: Binary,
     #[serde(rename = "StateChange")]
     pub state_change: Option<Binary>,
+    #[serde(rename = "Memo")]
+    pub memo: Option<Binary>
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
