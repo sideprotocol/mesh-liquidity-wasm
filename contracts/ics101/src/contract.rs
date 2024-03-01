@@ -38,6 +38,7 @@ use crate::utils::{
     get_coins_from_deposits, get_order_id, get_pool_id_with_tokens, INSTANTIATE_TOKEN_REPLY_ID,
 };
 
+
 // Version info, for migration info
 const CONTRACT_NAME: &str = "ics101-interchainswap";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -352,6 +353,8 @@ fn make_pool(
     })?;
 
     let pool_data = to_binary(&msg)?;
+    // Assuming `msg.memo` is an Option<String> containing the base64-encoded memo
+   // Decode the base64 memo using the standard engine
     let ibc_packet_data = InterchainSwapPacketData {
         r#type: InterchainMessageType::MakePool,
         data: pool_data,
