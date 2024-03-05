@@ -138,9 +138,37 @@ fn hop_swap(
             });
         }
 
-        let token_in: Coin = Coin { denom: next_hop.asset_in, amount: amount_returned_prev_hop };
+        let token_in: Coin = Coin { denom: next_hop.asset_in.clone(), amount: amount_returned_prev_hop };
         let token_out: Coin = Coin { denom: next_hop.asset_out.clone(), amount: Uint128::from(1u64) };
     
+        // Handle interchain paths here
+        if let Some(val) = next_hop.contract_address {
+            let swap_msg = MsgSwapRequest {
+                swap_type: SwapMsgType::LEFT,
+                sender: env.contract.address.to_string(),
+                pool_id: next_hop.pool_id,
+                token_in: Coin { denom: next_hop.asset_in, amount: amount_returned_prev_hop },
+                token_out: Coin { denom: next_hop.asset_out, amount: Uint128::from(0u64) },
+                slippage: 90,
+                recipient: recipient.to_string(),
+                route: Some(SwapRoute {requests: requests, minimum_receive: None}),
+                timeout_height: 100,
+                timeout_timestamp: 100,
+            };
+
+            // router message
+            execute_msgs.push(CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr:  val,
+                msg: to_binary(&swap_msg)?,
+                funds: vec![token_in],
+            }));
+
+            return Ok(Response::new()
+                .add_messages(execute_msgs)
+                .add_attribute("action", "hop_swap")
+            );
+        }
+        
         let swap_msg = CosmosMsg::Custom(SideMsg::Swap {
             pool_id: next_hop.pool_id,
             token_in, token_out, slippage: "99".to_string() 
