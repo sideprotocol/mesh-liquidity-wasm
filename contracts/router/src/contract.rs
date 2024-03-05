@@ -1,10 +1,13 @@
 use cosmwasm_std::{
-    entry_point, to_binary, Addr, BalanceResponse, BankMsg, BankQuery, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, MessageInfo, QuerierWrapper, QueryRequest, Response, StdError, StdResult, Uint128, WasmMsg
+    entry_point, to_binary, Addr, BalanceResponse, BankMsg, BankQuery,
+    Binary, Coin, CosmosMsg, Deps, DepsMut, Env, MessageInfo, QuerierWrapper,
+    QueryRequest, Response, StdError, StdResult, Uint128, WasmMsg
 };
 
 use crate::error::ContractError;
 use crate::interaction_gmm::SideMsg;
-use crate::msg::{ CallbackMsg, ExecuteMsg, InstantiateMsg, QueryMsg, SwapRequest};
+use crate::msg::{SwapMsgType, SwapRoute};
+use crate::msg::{ CallbackMsg, ExecuteMsg, InstantiateMsg, QueryMsg, SwapRequest, InterchainExecuteMsg::MsgSwapRequest};
 use crate::querier::SideQuerier;
 use crate::query::SideQuery;
 use crate::state::{Constants, CONSTANTS};
@@ -135,9 +138,37 @@ fn hop_swap(
             });
         }
 
-        let token_in: Coin = Coin { denom: next_hop.asset_in, amount: amount_returned_prev_hop };
+        let token_in: Coin = Coin { denom: next_hop.asset_in.clone(), amount: amount_returned_prev_hop };
         let token_out: Coin = Coin { denom: next_hop.asset_out.clone(), amount: Uint128::from(1u64) };
     
+        // Handle interchain paths here
+        if let Some(val) = next_hop.contract_address {
+            let swap_msg = MsgSwapRequest {
+                swap_type: SwapMsgType::LEFT,
+                sender: env.contract.address.to_string(),
+                pool_id: next_hop.pool_id,
+                token_in: Coin { denom: next_hop.asset_in, amount: amount_returned_prev_hop },
+                token_out: Coin { denom: next_hop.asset_out, amount: Uint128::from(0u64) },
+                slippage: 90,
+                recipient: recipient.to_string(),
+                route: Some(SwapRoute {requests, minimum_receive: None}),
+                timeout_height: 100,
+                timeout_timestamp: 100,
+            };
+
+            // router message
+            execute_msgs.push(CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr:  val,
+                msg: to_binary(&swap_msg)?,
+                funds: vec![token_in],
+            }));
+
+            return Ok(Response::new()
+                .add_messages(execute_msgs)
+                .add_attribute("action", "hop_swap")
+            );
+        }
+        
         let swap_msg = CosmosMsg::Custom(SideMsg::Swap {
             pool_id: next_hop.pool_id,
             token_in, token_out, slippage: "99".to_string() 
@@ -203,8 +234,6 @@ fn multi_swap(
     let minimum_receive = minimum_receive.unwrap_or(Uint128::zero());
 
     // Current ask token balance available with the router contract
-    
-
     // Check sent tokens
     // Query - Get number of offer asset (Native) tokens sent with the msg
     // check if given tokens are received here
@@ -223,6 +252,41 @@ fn multi_swap(
         )));
     }
 
+    // Create SingleSwapRequest for the first hop
+    let first_hop = requests[0].clone();
+    let token_in: Coin = Coin { denom: first_hop.asset_in.clone(), amount: tokens_received };
+    let token_out: Coin = Coin { denom: first_hop.asset_out.clone(), amount: Uint128::from(1u64) };
+
+    // Handle interchain paths here
+    if let Some(val) = first_hop.contract_address {
+        let swap_msg = MsgSwapRequest {
+            swap_type: SwapMsgType::LEFT,
+            sender: env.contract.address.to_string(),
+            pool_id: first_hop.pool_id,
+            token_in: Coin { denom: first_hop.asset_in, amount: tokens_received },
+            token_out: Coin { denom: first_hop.asset_out, amount: Uint128::from(0u64) },
+            slippage: 90,
+            recipient: recipient.to_string(),
+            route: Some(SwapRoute {requests, minimum_receive: None}),
+            timeout_height: 100,
+            timeout_timestamp: 100,
+        };
+
+        // router message
+        execute_msgs.push(CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr:  val,
+            msg: to_binary(&swap_msg)?,
+            funds: vec![token_in],
+        }));
+
+        return Ok(Response::new()
+            .add_messages(execute_msgs)
+            .add_attribute("action", "multi_swap")
+            .add_attribute("offer_amount", offer_amount.to_string())
+            .add_attribute("minimum_receive", minimum_receive.to_string())
+        );
+    }
+
     // Error - if the number of native tokens sent is less than the offer amount, then return error
     if tokens_received < offer_amount {
         return Err(ContractError::InvalidMultihopSwapRequest {
@@ -232,12 +296,6 @@ fn multi_swap(
             ),
         });
     }
-
-    // Create SingleSwapRequest for the first hop
-    let first_hop = requests[0].clone();
-
-    let token_in: Coin = Coin { denom: first_hop.asset_in, amount: tokens_received };
-    let token_out: Coin = Coin { denom: first_hop.asset_out.clone(), amount: Uint128::from(1u64) };
 
     let swap_msg = CosmosMsg::Custom(SideMsg::Swap {
         pool_id: first_hop.pool_id,

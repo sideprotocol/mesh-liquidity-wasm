@@ -279,6 +279,8 @@ pub struct SwapRequest {
     pub asset_in: String,
     ///  The ask asset denom
     pub asset_out: String,
+    /// Contract address, if interchain request
+    pub contract_address: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]

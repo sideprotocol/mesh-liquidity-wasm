@@ -1,4 +1,4 @@
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Coin, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -37,6 +37,42 @@ pub struct SwapRequest {
     pub asset_in: String,
     ///  The ask asset denom
     pub asset_out: String,
+    /// Contract address, if interchain request
+    pub contract_address: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub enum InterchainExecuteMsg {
+    MsgSwapRequest {
+        #[serde(rename = "swapType")]
+        swap_type: SwapMsgType,
+        sender: String,
+        #[serde(rename = "poolId")]
+        pool_id: String,
+        #[serde(rename = "tokenIn")]
+        token_in: Coin,
+        #[serde(rename = "tokenOut")]
+        token_out: Coin,
+        slippage: u64,
+        recipient: String,
+        #[serde(rename = "timeoutHeight")]
+        timeout_height: u64,
+        #[serde(rename = "timeoutTimestamp")]
+        timeout_timestamp: u64,
+        route: Option<SwapRoute>,
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct SwapRoute {
+    pub requests: Vec<SwapRequest>,
+    pub minimum_receive: Option<Uint128>,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub enum SwapMsgType {
+    LEFT = 0,
+    RIGHT = 1,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
