@@ -32,11 +32,12 @@ use crate::state::{
 };
 use crate::types::{
     InterchainMessageType, InterchainSwapPacketData, MultiAssetDepositOrder, OrderStatus,
-    StateChange,
+    StateChange
 };
 use crate::utils::{
     get_coins_from_deposits, get_order_id, get_pool_id_with_tokens, INSTANTIATE_TOKEN_REPLY_ID,
 };
+
 
 // Version info, for migration info
 const CONTRACT_NAME: &str = "ics101-interchainswap";
@@ -225,6 +226,7 @@ pub fn receive_cw20(
                 },
                 timeout_height,
                 timeout_timestamp,
+                memo: None
             };
             multi_asset_withdraw(deps, env, info, msg)
         }
@@ -351,12 +353,16 @@ fn make_pool(
     })?;
 
     let pool_data = to_binary(&msg)?;
+    // Assuming `msg.memo` is an Option<String> containing the base64-encoded memo
+   // Decode the base64 memo using the standard engine
     let ibc_packet_data = InterchainSwapPacketData {
         r#type: InterchainMessageType::MakePool,
         data: pool_data,
         state_change: Some(state_change_data),
+        memo: msg.memo
     };
 
+    
     let ibc_msg = IbcMsg::SendPacket {
         channel_id: source_channel,
         data: to_binary(&ibc_packet_data)?,
@@ -491,6 +497,7 @@ fn take_pool(
         r#type: InterchainMessageType::TakePool,
         data: pool_data,
         state_change: Some(state_change_data),
+        memo: msg.memo,
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -544,6 +551,7 @@ fn cancel_pool(
         r#type: InterchainMessageType::CancelPool,
         data: pool_data,
         state_change: None,
+        memo: msg.memo,
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -631,6 +639,7 @@ pub fn single_asset_deposit(
         r#type: InterchainMessageType::SingleAssetDeposit,
         data: msg_data, // Use proper serialization for the `data` field.
         state_change: Some(state_change_data),
+        memo: msg.memo,
     };
 
     // Send the IBC swap packet.
@@ -761,6 +770,7 @@ fn make_multi_asset_deposit(
         r#type: InterchainMessageType::MakeMultiDeposit,
         data: to_binary(&msg)?,
         state_change: Some(state_change_data),
+        memo: msg.memo
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -820,6 +830,7 @@ fn cancel_multi_asset_deposit(
         r#type: InterchainMessageType::CancelMultiDeposit,
         data: to_binary(&msg)?,
         state_change: None,
+        memo: msg.memo,
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -924,6 +935,7 @@ fn take_multi_asset_deposit(
         r#type: InterchainMessageType::TakeMultiDeposit,
         data: to_binary(&msg)?,
         state_change: Some(state_change_data),
+        memo: msg.memo
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -1036,6 +1048,7 @@ fn multi_asset_withdraw(
         r#type: InterchainMessageType::MultiWithdraw,
         data: to_binary(&msg)?,
         state_change: Some(state_change_data),
+        memo: msg.memo,
     };
 
     let ibc_msg = IbcMsg::SendPacket {
@@ -1142,10 +1155,12 @@ fn swap(
         source_chain_id: None,
         shares: None,
     })?;
+
     let packet = InterchainSwapPacketData {
         r#type: msg_type,
         data: swap_data,
         state_change: Some(state_change_data),
+        memo: msg.memo,
     };
 
     let ibc_msg = IbcMsg::SendPacket {

@@ -1,6 +1,6 @@
 [package]
 name = "ics101"
-version = "0.1.0"
+version = "0.1.3"
 edition = "2021"
 
 [dependencies]
@@ -15,7 +15,7 @@ serde = {version = "1.0.103", default-features = false, features = ["derive"]}
 sha2 = {version = "0.8.0"}
 thiserror = {version = "1.0.23"}
 protobuf = { version = "2", features = ["with-bytes"] }
-
+base64 = "0.21.7" 
 [dev-dependencies]
 cosmwasm-schema = {version = "1.2.1"}
 

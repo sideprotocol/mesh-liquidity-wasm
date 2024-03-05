@@ -2,7 +2,7 @@ use cw20::{Cw20Coin, Logo, MinterResponse};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{Addr, Coin, Response, StdError, StdResult, Uint128};
+use cosmwasm_std::{Addr, Binary, Coin, Response, StdError, StdResult, Uint128};
 
 use crate::error::ContractError;
 use crate::market::{InterchainLiquidityPool, InterchainMarketMaker, PoolAsset, PoolStatus};
@@ -72,6 +72,7 @@ pub struct MsgMakePoolRequest {
     pub swap_fee: u32,
     pub timeout_height: u64,
     pub timeout_timestamp: u64,
+    pub memo: Option<Binary>,
 }
 
 impl MsgMakePoolRequest {
@@ -96,6 +97,7 @@ impl MsgMakePoolRequest {
     }
 }
 
+
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct MsgMakePoolResponse {
@@ -111,6 +113,7 @@ pub struct MsgTakePoolRequest {
     pub lp_allocation: LPAllocation,
     pub timeout_height: u64,
     pub timeout_timestamp: u64,
+    pub memo: Option<Binary>,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -119,6 +122,7 @@ pub struct MsgCancelPoolRequest {
     pub pool_id: String,
     pub timeout_height: u64,
     pub timeout_timestamp: u64,
+    pub memo: Option<Binary>,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -131,6 +135,7 @@ pub struct MsgSingleAssetDepositRequest {
     pub lp_taker: String,
     pub timeout_height: u64,
     pub timeout_timestamp: u64,
+    pub memo: Option<Binary>,
 }
 
 impl MsgSingleAssetDepositRequest {
@@ -166,6 +171,7 @@ pub struct MsgMakeMultiAssetDepositRequest {
     pub chain_id: String,
     pub timeout_height: u64,
     pub timeout_timestamp: u64,
+    pub memo: Option<Binary>,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -177,6 +183,7 @@ pub struct MsgTakeMultiAssetDepositRequest {
     pub lp_allocation: LPAllocation,
     pub timeout_height: u64,
     pub timeout_timestamp: u64,
+    pub memo: Option<Binary>,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -187,6 +194,7 @@ pub struct MsgCancelMultiAssetDepositRequest {
     pub order_id: String,
     pub timeout_height: u64,
     pub timeout_timestamp: u64,
+    pub memo: Option<Binary>,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -211,6 +219,7 @@ pub struct MsgMultiAssetWithdrawRequest {
     pub pool_token: Coin,
     pub timeout_height: u64,
     pub timeout_timestamp: u64,
+    pub memo: Option<Binary>,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -225,6 +234,7 @@ pub struct MsgSingleAssetWithdrawRequest {
     pub sender: String,
     pub denom_out: String,
     pub pool_coin: Coin,
+    pub memo: Option<Binary>,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -251,6 +261,7 @@ pub struct MsgSwapRequest {
     #[serde(rename = "timeoutTimestamp")]
     pub timeout_timestamp: u64,
     pub route: Option<SwapRoute>,
+    pub memo: Option<Binary>,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -539,3 +550,5 @@ pub struct PageResponse {
     #[serde(rename = "total")]
     pub total: u64,
 }
+
+

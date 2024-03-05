@@ -44,6 +44,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e1b586273c5702936fe7b7d6896644d8be71e6314cfe09d3167c95f712589e8"
 
 [[package]]
+name = "base64"
+version = "0.21.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
+
+[[package]]
 name = "base64ct"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -263,7 +269,7 @@ version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a14b383575cc9a579d1bb5b7d5eaee74fda8449c25f9d6c736fee282dc025013"
 dependencies = [
- "base64",
+ "base64 0.13.1",
  "cosmwasm-crypto 0.16.1",
  "cosmwasm-derive 0.16.7",
  "schemars",
@@ -279,7 +285,7 @@ version = "1.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da78abcf059181e8cb01e95e5003cf64fe95dde6c72b3fe37e5cabc75cdba32a"
 dependencies = [
- "base64",
+ "base64 0.13.1",
  "bnum",
  "cosmwasm-crypto 1.5.0",
  "cosmwasm-derive 1.3.3",
@@ -883,8 +889,9 @@ dependencies = [
 
 [[package]]
 name = "ics101"
-version = "0.1.0"
+version = "0.1.3"
 dependencies = [
+ "base64 0.21.7",
  "cosmwasm-schema",
  "cosmwasm-std 1.3.3",
  "cw-storage-plus 1.1.0",
