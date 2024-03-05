@@ -250,7 +250,7 @@ pub struct MsgSwapRequest {
     pub timeout_height: u64,
     #[serde(rename = "timeoutTimestamp")]
     pub timeout_timestamp: u64,
-    pub route: Option<SwapRoute>
+    pub route: Option<SwapRoute>,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -268,6 +268,8 @@ pub struct SwapRequest {
     pub asset_in: String,
     ///  The ask asset denom
     pub asset_out: String,
+    /// Contract address, if interchain request
+    pub contract_address: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
