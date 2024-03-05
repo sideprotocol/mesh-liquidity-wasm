@@ -38,7 +38,7 @@ pub struct SwapRequest {
     ///  The ask asset denom
     pub asset_out: String,
     /// Contract address, if interchain request
-    pub contract_address: String,
+    pub contract_address: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
