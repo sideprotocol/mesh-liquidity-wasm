@@ -151,7 +151,7 @@ fn hop_swap(
                 token_out: Coin { denom: next_hop.asset_out, amount: Uint128::from(0u64) },
                 slippage: 90,
                 recipient: recipient.to_string(),
-                route: Some(SwapRoute {requests: requests, minimum_receive: None}),
+                route: Some(SwapRoute {requests, minimum_receive: None}),
                 timeout_height: 100,
                 timeout_timestamp: 100,
             };
@@ -267,7 +267,7 @@ fn multi_swap(
             token_out: Coin { denom: first_hop.asset_out, amount: Uint128::from(0u64) },
             slippage: 90,
             recipient: recipient.to_string(),
-            route: Some(SwapRoute {requests: requests, minimum_receive: None}),
+            route: Some(SwapRoute {requests, minimum_receive: None}),
             timeout_height: 100,
             timeout_timestamp: 100,
         };
