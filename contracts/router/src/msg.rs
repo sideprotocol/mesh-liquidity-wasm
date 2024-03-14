@@ -43,7 +43,7 @@ pub struct SwapRequest {
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub enum InterchainExecuteMsg {
-    MsgSwapRequest {
+    Swap {
         #[serde(rename = "swapType")]
         swap_type: SwapMsgType,
         sender: String,

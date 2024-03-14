@@ -7,7 +7,7 @@ use cosmwasm_std::{
 use crate::error::ContractError;
 use crate::interaction_gmm::SideMsg;
 use crate::msg::{SwapMsgType, SwapRoute};
-use crate::msg::{ CallbackMsg, ExecuteMsg, InstantiateMsg, QueryMsg, SwapRequest, InterchainExecuteMsg::MsgSwapRequest};
+use crate::msg::{ CallbackMsg, ExecuteMsg, InstantiateMsg, QueryMsg, SwapRequest, InterchainExecuteMsg::Swap};
 use crate::querier::SideQuerier;
 use crate::query::SideQuery;
 use crate::state::{Constants, CONSTANTS};
@@ -143,7 +143,7 @@ fn hop_swap(
     
         // Handle interchain paths here
         if let Some(val) = next_hop.contract_address {
-            let swap_msg = MsgSwapRequest {
+            let swap_msg = Swap {
                 swap_type: SwapMsgType::LEFT,
                 sender: env.contract.address.to_string(),
                 pool_id: next_hop.pool_id,
@@ -259,7 +259,7 @@ fn multi_swap(
 
     // Handle interchain paths here
     if let Some(val) = first_hop.contract_address {
-        let swap_msg = MsgSwapRequest {
+        let swap_msg = Swap {
             swap_type: SwapMsgType::LEFT,
             sender: env.contract.address.to_string(),
             pool_id: first_hop.pool_id,
